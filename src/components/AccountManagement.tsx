@@ -649,80 +649,27 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-red-650/5 to-transparent pointer-events-none" />
       <div className="absolute bottom-12 right-12 w-96 h-96 bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
 
-      {/* Main Container - Desktop Smartphone Frame & Backcover Grid / Mobile full-bleed */}
-      <div className="w-full max-w-5xl h-full md:h-[840px] flex gap-8 items-center justify-center">
+      {/* Main Content Area - Full Bleed */}
+      <div className="w-full h-full bg-[#0c1622] relative overflow-hidden flex flex-col">
         
-        {/* LEFT COLUMN: Trainer Desk Dashboard Info (Visible only on desktop md+) */}
-        <div className="hidden lg:flex flex-col flex-1 max-w-sm space-y-6 text-left shrink-0">
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/15 border border-red-550/20 text-red-500 text-[10px] uppercase font-black tracking-widest">
-              <Award className="w-3.5 h-3.5 animate-pulse" /> CONSOLE ADMINISTRATIVO
-            </span>
-            <h1 className="text-3.5xl font-black italic tracking-tighter uppercase leading-none">
-              CADU PONCE <br />
-              <span className="text-red-600">PERSONAL</span>
-            </h1>
-            <p className="text-slate-400 text-sm leading-relaxed font-semibold">
-              Esta é a sua central de controle idêntica às ferramentas premium do mercado brasileiro de consultoria online. Gerencie alunos ativos, faturamento, envie links de vendas e responda feedbacks direto de forma integrada.
-            </p>
-          </div>
-
-          <div className="p-5 rounded-3xl bg-slate-900/50 border border-slate-900 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Métricas Rápidas</span>
-              <TrendingUp className="w-4 h-4 text-emerald-500" />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Alunos Ativos</span>
-                <span className="text-2xl font-black text-white">{users.filter(u => u.role === 'student').length}</span>
-              </div>
-              <div>
-                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Faturamento Est.</span>
-                <span className="text-2xl font-black text-emerald-500">R$ 5.480</span>
-              </div>
-            </div>
-          </div>
-
+        {/* Top App Header (Mobile style but visible everywhere) */}
+        <div className="h-14 bg-[#0c1622] px-6 flex items-center justify-between shrink-0 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={onClose}
-              className="flex-1 py-4.5 px-6 rounded-2xl bg-red-600 text-white font-black uppercase text-xs italic tracking-wider shadow-lg shadow-red-600/20 hover:bg-red-500 transition-all active:scale-95 text-center"
-              id="desktop-close-console"
-            >
-              Voltar ao Meu Aplicativo
-            </button>
+            <span className="text-white font-black italic uppercase tracking-tighter text-lg">
+              Painel Admin
+            </span>
           </div>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-red-600/10 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-600/20 transition-colors"
+          >
+            Voltar ao App
+          </button>
         </div>
 
-        {/* RIGHT COLUMN: Interactive Smartphone Container (Matches reference image perfectly!) */}
-        <div id="smartphone-mockup" className="w-full md:w-[390px] h-full md:h-[800px] bg-[#0c1622] md:rounded-[48px] md:border-[10px] md:border-slate-800 shadow-2xl relative overflow-hidden flex flex-col shrink-0">
-          
-          {/* Smartphone Hardware Notch elements on desktop only */}
-          <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-2xl z-50">
-            <div className="w-2.5 h-2.5 bg-black rounded-full absolute left-4 top-1/2 -translate-y-1/2" />
-            <div className="w-12 h-1 bg-slate-900 rounded-full absolute left-1/2 -translate-x-1/2 top-11/2 -translate-y-1/2" />
-          </div>
-
-          {/* Smartphone StatusBar (Matches iOS layout visible in original screenshot) */}
-          <div className="h-10 pt-2 shrink-0 bg-[#0c1622] px-6 flex justify-between items-center text-[10px] font-black tracking-tighter text-slate-400 z-30 select-none">
-            <span>{getSimulatedTime()}</span>
-            
-            {/* iOS style indicators (Wi-Fi, signal, battery) */}
-            <div className="flex items-center space-x-1.5 opacity-80">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 512 512">
-                <path d="M416 339h-48v-212h48v212zm-80 0h-48V214h48v125zm-80 0h-48V281h48v58zm-80 0h-48V140h48v199z"/>
-              </svg>
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 512 512">
-                <path d="M432,160V192h16c8.8,0,16,7.2,16,16V304c0,8.8-7.2,16-16,16H432v32H112V160H432M320,112H64A32,32,0,0,0,32,144V368a32,32,0,0,0,32,32H416a32,32,0,0,0,32-32V336h.5c26.2,0,47.5-21.3,47.5-47.5V223.5C496,177.4,458,112,416.5,112H320Z"/>
-              </svg>
-            </div>
-          </div>
-
-          {/* APP BODY WORK AREA - INTERACTIVE NAVIGATION MAP */}
-          <div className="flex-1 overflow-hidden flex flex-col relative">
-            <AnimatePresence mode="wait">
+        {/* APP BODY WORK AREA - INTERACTIVE NAVIGATION MAP */}
+        <div className="flex-1 overflow-hidden flex flex-col relative">
+          <AnimatePresence mode="wait">
               
               {/* CURRENT VIEW 1: HOME (Início) */}
               {activeTab === 'home' && (
@@ -2648,8 +2595,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           </nav>
 
         </div>
-
-      </div>
 
       {/* OVERLAY 1: STUDENT DETAILS & COACH ACTIONS MODAL */}
       <AnimatePresence>
