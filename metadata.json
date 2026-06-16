@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Cadu Ponce Personal",
+  "description": "App de consultoria fitness e fichas de treino personalizadas com acompanhamento de progresso e fotos de evolução.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

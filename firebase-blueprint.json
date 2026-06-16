@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "student"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Workout": {
+      "title": "Workout",
+      "description": "A workout routine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "exercises": {
+          "type": "array",
+          "items": { "type": "object", "$ref": "#/entities/Exercise" }
+        },
+        "studentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "exercises", "studentId"]
+    },
+    "Exercise": {
+      "title": "Exercise",
+      "description": "An exercise within a workout",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sets": { "type": "integer" },
+        "reps": { "type": "string" },
+        "rest": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["name", "sets", "reps"]
+    },
+    "ProgressEntry": {
+      "title": "ProgressEntry",
+      "description": "A log of load/progress for an exercise",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "load": { "type": "number" },
+        "reps": { "type": "integer" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "exerciseName", "load", "date"]
+    },
+    "EvolutionPhoto": {
+      "title": "EvolutionPhoto",
+      "description": "Progress photo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "studentId", "photoURL", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/workouts/{workoutId}": {
+      "schema": "Workout",
+      "description": "Workout routines"
+    },
+    "/progress/{entryId}": {
+      "schema": "ProgressEntry",
+      "description": "Exercise progress logs"
+    },
+    "/evolution/{photoId}": {
+      "schema": "EvolutionPhoto",
+      "description": "Progress photos"
+    }
+  }
+}

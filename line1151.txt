@@ -1,0 +1,8 @@
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-5">
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center justify-center space-y-6">
+                                      <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4 text-left">
+                             <div className="m-4 bg-white rounded-xl shadow-sm bor                                   <div className="space-y-1.5 text-left">
+                          <div className="flex-1 bg-white m-4 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center justify-center p-8 space-y-6">
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
+                                        className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
