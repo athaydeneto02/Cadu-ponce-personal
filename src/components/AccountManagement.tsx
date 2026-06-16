@@ -1866,6 +1866,62 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                            </div>
                         </div>
                      </div>
+                  ) : homeSubView === 'workout_library' ? (
+                     /* WORKOUT LIBRARY VIEW */
+                     <div className="flex flex-col h-full bg-[#f4f7fa]">
+                        <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
+                           <div className="flex items-center gap-1.5 grayscale opacity-80 brightness-200">
+                              <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
+                                 <div className="w-1 h-3 bg-white" />
+                              </div>
+                              <span className="text-sm font-black tracking-tighter text-white">MFITPERSONAL</span>
+                           </div>
+                        </div>
+
+                        <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-3">
+                           <button 
+                             onClick={() => setHomeSubView('dashboard')}
+                             className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
+                           >
+                             <ChevronLeft className="w-3.5 h-3.5" /> Voltar
+                           </button>
+                           <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Biblioteca de Treinos</h4>
+                        </div>
+
+                        <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                           <button 
+                             onClick={() => setHomeSubView('create_routine')}
+                             className="w-full bg-[#1da1f2] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:bg-[#1a90d9] transition active:scale-95 cursor-pointer"
+                           >
+                             <Plus className="w-4 h-4" /> Nova Rotina
+                           </button>
+
+                           <div className="space-y-3">
+                              <h5 className="text-[10px] font-black uppercase text-slate-500 tracking-wider text-left pt-2">Suas Rotinas Salvas</h5>
+                              
+                              {[
+                                { id: '1', name: 'Hipertrofia A - Peito/Tríceps', goal: 'Hipertrofia', level: 'Intermediário', exercises: 6 },
+                                { id: '2', name: 'Hipertrofia B - Costas/Bíceps', goal: 'Hipertrofia', level: 'Intermediário', exercises: 7 },
+                                { id: '3', name: 'Emagrecimento Seca Barriga', goal: 'Emagrecimento', level: 'Iniciante', exercises: 5 },
+                                { id: '4', name: 'Força Bruta - Pernas', goal: 'Ganho de Força', level: 'Avançado', exercises: 6 },
+                              ].map((routine) => (
+                                <div key={routine.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-col text-left group hover:border-[#1da1f2]/30 transition cursor-pointer">
+                                  <div className="flex justify-between items-start mb-2">
+                                     <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#1da1f2] transition">{routine.name}</h6>
+                                     <button className="text-slate-400 hover:text-red-500 transition cursor-pointer">
+                                        <Trash2 className="w-4 h-4" />
+                                     </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 mt-auto">
+                                     <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.goal}</span>
+                                     <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.level}</span>
+                                     <span className="px-2 py-1 bg-[#1da1f2]/10 text-[#1da1f2] text-[9px] font-black italic uppercase rounded-md ml-auto">{routine.exercises} Exer.</span>
+                                  </div>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
                   ) : (
                         /* STUDENT LIST VIEW (Image 2) */
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
