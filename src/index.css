@@ -13,3 +13,7 @@
 .animate-scanline {
   animation: scanline 6s linear infinite;
 }
+
+html, body {
+  overscroll-behavior-y: none;
+}
