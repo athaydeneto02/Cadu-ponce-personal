@@ -1573,7 +1573,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
                                    <div className="w-1 h-3 bg-white" />
                                 </div>
-                                <span className="text-sm font-black tracking-tighter text-white">MFITPERSONAL</span>
+                                <span className="text-sm font-black tracking-tighter text-white">CADU PONCE</span>
                              </div>
                           </div>
 
@@ -1714,7 +1714,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
                                    <div className="w-1 h-3 bg-white" />
                                 </div>
-                                <span className="text-sm font-black tracking-tighter text-white">MFITPERSONAL</span>
+                                <span className="text-sm font-black tracking-tighter text-white">CADU PONCE</span>
                              </div>
                           </div>
 
@@ -1874,7 +1874,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
                                  <div className="w-1 h-3 bg-white" />
                               </div>
-                              <span className="text-sm font-black tracking-tighter text-white">MFITPERSONAL</span>
+                              <span className="text-sm font-black tracking-tighter text-white">CADU PONCE</span>
                            </div>
                         </div>
 
