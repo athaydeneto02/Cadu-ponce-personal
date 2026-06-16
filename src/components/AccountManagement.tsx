@@ -178,7 +178,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Oscilando', count: activeCount > 1 ? 1 : 0, percent: activeCount > 0 ? Math.round(( (activeCount > 1 ? 1 : 0) / activeCount) * 100) : 0, color: 'bg-amber-300' },
     { label: 'Em risco', count: activeCount > 2 ? 1 : 0, percent: activeCount > 0 ? Math.round(( (activeCount > 2 ? 1 : 0) / activeCount) * 100) : 0, color: 'bg-amber-400' },
     { label: 'Abandono', count: inactiveCount, percent: studentUsers.length > 0 ? Math.round((inactiveCount / studentUsers.length) * 100) : 0, color: 'bg-rose-500' },
-    { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#1da1f2]' },
+    { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
   const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes'>('inicio');
@@ -687,13 +687,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         setActiveTab('home');
                         setHomeSubView('dashboard');
                       }}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'home' && homeSubView === 'dashboard' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#1da1f2] text-white border-[#1da1f2]'}`}
+                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'home' && homeSubView === 'dashboard' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#dc2626] text-white border-[#dc2626]'}`}
                     >
                       Início
                     </button>
                     <button 
                       onClick={() => setActiveTab('wallet')}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'wallet' ? 'bg-white text-slate-900 border-white rounded-t-lg' : 'bg-[#1da1f2] text-white border-[#1da1f2]'}`}
+                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'wallet' ? 'bg-white text-slate-900 border-white rounded-t-lg' : 'bg-[#dc2626] text-white border-[#dc2626]'}`}
                     >
                       Finanças
                     </button>
@@ -706,7 +706,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {users.filter(u => u.role === 'student').length === 0 ? (
                        /* WELCOME VIEW (Image 1) */
                        <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
-                          <div className="w-24 h-24 bg-[#1da1f2] rounded-full flex items-center justify-center shadow-lg mb-8">
+                          <div className="w-24 h-24 bg-[#dc2626] rounded-full flex items-center justify-center shadow-lg mb-8">
                              <Dumbbell className="w-12 h-12 text-white" />
                           </div>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-2">Bem-vindo à MFIT</h3>
@@ -717,7 +717,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <div className="w-full space-y-3 max-w-xs">
                             <button 
                               onClick={() => setIsAddingUser(true)}
-                              className="w-full bg-[#1da1f2] hover:bg-[#1a90d9] text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-xs uppercase tracking-wider"
+                              className="w-full bg-[#dc2626] hover:bg-[#ef4444] text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-xs uppercase tracking-wider"
                             >
                               Cadastrar aluno
                             </button>
@@ -738,7 +738,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  onClick={() => setActivePanel('feedbacks')}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#1da1f2] border border-slate-100 group-hover:bg-blue-50/50 transition shadow-md shadow-blue-150/10">
+                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
                                    <MessageSquare className="w-5 h-5" />
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Feedbacks</span>
@@ -747,7 +747,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  onClick={() => setActivePanel('updates')}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#1da1f2] border border-slate-100 group-hover:bg-blue-50/50 transition shadow-md shadow-blue-150/10">
+                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
                                    <Calendar className="w-5 h-5" />
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Atualizações</span>
@@ -762,7 +762,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  }}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#1da1f2] border border-slate-100 group-hover:bg-blue-50/50 transition shadow-md shadow-blue-150/10">
+                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
                                    <Send className="w-5 h-5" />
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Notificações</span>
@@ -776,7 +776,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             <div className="grid grid-cols-2 gap-3">
                                <button 
                                  onClick={() => setIsAddingUser(true)}
-                                 className="bg-[#1da1f2] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-blue-600 transition shadow-lg shadow-blue-200"
+                                 className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
                                >
                                   <UserCheck className="w-6 h-6" />
                                   <div className="space-y-0.5">
@@ -787,7 +787,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                <button 
                                  onClick={() => handleCopyLink('https://caduponce.app/registro', 'reg')}
-                                 className="bg-[#1da1f2] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-blue-600 transition shadow-lg shadow-blue-200"
+                                 className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
                                >
                                   <LinkIcon className="w-6 h-6 rotate-45" />
                                   <div className="space-y-0.5">
@@ -799,7 +799,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                             <button 
                               onClick={() => setHomeSubView('student_list')}
-                              className="w-full bg-[#1da1f2] p-4 rounded-xl text-white flex items-center justify-between shadow-lg shadow-blue-200"
+                              className="w-full bg-[#dc2626] p-4 rounded-xl text-white flex items-center justify-between shadow-lg shadow-red-200"
                             >
                                <div className="flex items-center gap-4">
                                   <Users className="w-8 h-8" />
@@ -819,12 +819,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               className="w-full bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm hover:bg-slate-50 transition"
                             >
                                <div className="flex items-center gap-3">
-                                  <BarChart3 className="w-5 h-5 text-[#1da1f2]" />
-                                  <span className="text-[11px] font-black italic uppercase text-[#1da1f2]">Retenção</span>
+                                  <BarChart3 className="w-5 h-5 text-[#dc2626]" />
+                                  <span className="text-[11px] font-black italic uppercase text-[#dc2626]">Retenção</span>
                                </div>
                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black text-[#1da1f2] uppercase tracking-tighter">{engagementRate}% de engajamento</span>
-                                  <ChevronLeft className="w-4 h-4 text-[#1da1f2] rotate-180" />
+                                  <span className="text-[10px] font-black text-[#dc2626] uppercase tracking-tighter">{engagementRate}% de engajamento</span>
+                                  <ChevronLeft className="w-4 h-4 text-[#dc2626] rotate-180" />
                                </div>
                             </button>
                           </div>
@@ -835,30 +835,30 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <div className="grid grid-cols-2 gap-3 pb-8">
                              <button 
                                onClick={() => setHomeSubView('workout_library')}
-                               className="border-2 border-[#1da1f2]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
+                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
-                                <div className="w-8 h-8 bg-[#1da1f2]/10 rounded-full flex items-center justify-center text-[#1da1f2]">
+                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
                                    <Dumbbell className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#1da1f2] leading-none">Biblioteca de treinos</span>
+                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Biblioteca de treinos</span>
                              </button>
                              <button 
                                onClick={() => setHomeSubView('frequency_report')}
-                               className="border-2 border-[#1da1f2]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
+                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
-                                <div className="w-8 h-8 bg-[#1da1f2]/10 rounded-full flex items-center justify-center text-[#1da1f2]">
+                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
                                    <FileText className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#1da1f2] leading-none">Relatório de frequência</span>
+                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Relatório de frequência</span>
                              </button>
                              <button 
                                onClick={() => setHomeSubView('exercise_library')}
-                               className="border-2 border-[#1da1f2]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
+                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
-                                <div className="w-8 h-8 bg-[#1da1f2]/10 rounded-full flex items-center justify-center text-[#1da1f2]">
+                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
                                    <PlayCircle className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#1da1f2] leading-none">Biblioteca de exercícios</span>
+                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Biblioteca de exercícios</span>
                              </button>
                           </div>
                           </div>
@@ -882,7 +882,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4 border border-slate-100">
                                 <div className="flex justify-between items-center px-1">
                                    <h5 className="text-[11px] font-black italic uppercase text-slate-900 leading-none">Resumo do mês</h5>
-                                   <button className="text-[10px] font-bold text-[#1da1f2]">Ver gráficos</button>
+                                   <button className="text-[10px] font-bold text-[#dc2626]">Ver gráficos</button>
                                 </div>
                                 
                                 <div className="grid grid-cols-2 gap-3">
@@ -928,7 +928,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                    </div>
                                 </div>
 
-                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#1da1f2] uppercase tracking-wider">
+                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider">
                                    O que significam essas métricas?
                                 </button>
                              </div>
@@ -958,7 +958,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                    ))}
                                 </div>
 
-                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#1da1f2] uppercase tracking-wider border-t border-slate-50 mt-2">
+                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider border-t border-slate-50 mt-2">
                                    Entenda a classificação de engajamento
                                 </button>
                              </div>
@@ -991,7 +991,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         setSelectedUidsForNotify([]);
                                         setSendComplete(false);
                                      }}
-                                     className="bg-[#1da1f2] px-6 py-3 rounded-xl text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-200 hover:bg-blue-600 transition whitespace-nowrap"
+                                     className="bg-[#dc2626] px-6 py-3 rounded-xl text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-200 hover:bg-red-600 transition whitespace-nowrap"
                                    >
                                       <Send className="w-4 h-4" />
                                       <span>Notificar alunos</span>
@@ -1021,7 +1021,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-4">
                              <div className="bg-white rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-4 border border-slate-100 shadow-sm">
-                                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-[#1da1f2]">
+                                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-[#dc2626]">
                                    <FileText className="w-8 h-8" />
                                 </div>
                                 <div className="space-y-1">
@@ -1142,7 +1142,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     {/* Create button */}
                                     <button 
                                       onClick={() => setIsCreatingExercise(true)}
-                                      className="w-full py-4 border-2 border-[#1da1f2] rounded-xl text-[#1da1f2] text-xs font-black italic uppercase tracking-widest hover:bg-blue-50 transition cursor-pointer"
+                                      className="w-full py-4 border-2 border-[#dc2626] rounded-xl text-[#dc2626] text-xs font-black italic uppercase tracking-widest hover:bg-red-50 transition cursor-pointer"
                                     >
                                        + Criar exercício
                                     </button>
@@ -1151,13 +1151,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <div className="flex gap-2">
                                        <button 
                                          onClick={() => setExerciseTab('grupos')}
-                                         className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'grupos' ? 'bg-[#1da1f2]/10 text-[#1da1f2]' : 'bg-slate-50 text-slate-400'}`}
+                                         className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'grupos' ? 'bg-[#dc2626]/10 text-[#dc2626]' : 'bg-slate-50 text-slate-400'}`}
                                        >
                                           Grupos
                                        </button>
                                        <button 
                                          onClick={() => setExerciseTab('categorias')}
-                                         className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'categorias' ? 'bg-[#1da1f2]/10 text-[#1da1f2]' : 'bg-slate-50 text-slate-400'}`}
+                                         className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'categorias' ? 'bg-[#dc2626]/10 text-[#dc2626]' : 'bg-slate-50 text-slate-400'}`}
                                        >
                                           Categorias
                                        </button>
@@ -1171,7 +1171,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                          value={exerciseSearch}
                                          onChange={(e) => setExerciseSearch(e.target.value)}
                                          placeholder="Buscar exercícios..."
-                                         className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-11 pr-4 text-xs font-bold text-slate-600 outline-none focus:border-[#1da1f2] transition"
+                                         className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-11 pr-4 text-xs font-bold text-slate-600 outline-none focus:border-[#dc2626] transition"
                                        />
                                        {exerciseSearch && (
                                           <button 
@@ -1187,19 +1187,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <div className="flex flex-wrap justify-center gap-2">
                                        <button 
                                          onClick={() => setExerciseFilter('favoritos')}
-                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'favoritos' ? 'bg-[#1da1f2] text-white' : 'bg-[#e3f2fd] text-[#1da1f2]'}`}
+                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'favoritos' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
                                           Favoritos
                                        </button>
                                        <button 
                                          onClick={() => setExerciseFilter('app')}
-                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'app' ? 'bg-[#1da1f2] text-white' : 'bg-[#e3f2fd] text-[#1da1f2]'}`}
+                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'app' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
                                           Exercícios do app
                                        </button>
                                        <button 
                                          onClick={() => setExerciseFilter('mine')}
-                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'mine' ? 'bg-[#1da1f2] text-white' : 'bg-[#e3f2fd] text-[#1da1f2]'}`}
+                                         className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'mine' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
                                           Seus exercícios
                                        </button>
@@ -1212,7 +1212,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                             setIsGroupDropdownOpen(!isGroupDropdownOpen);
                                             setIsCategoryDropdownOpen(false);
                                          }}
-                                         className={`flex items-center gap-1 text-[10px] font-black italic uppercase transition cursor-pointer ${selectedGroupFilter ? 'text-[#1da1f2] underline font-bold' : 'text-[#1da1f2]'}`}
+                                         className={`flex items-center gap-1 text-[10px] font-black italic uppercase transition cursor-pointer ${selectedGroupFilter ? 'text-[#dc2626] underline font-bold' : 'text-[#dc2626]'}`}
                                        >
                                           {selectedGroupFilter ? `Grupo: ${selectedGroupFilter}` : 'Grupos musculares'} <ChevronDown className="w-3 h-3" />
                                        </button>
@@ -1221,7 +1221,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                             setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
                                             setIsGroupDropdownOpen(false);
                                          }}
-                                         className={`flex items-center gap-1 text-[10px] font-black italic uppercase transition cursor-pointer ${selectedCategoryFilter ? 'text-[#1da1f2] underline font-bold' : 'text-[#1da1f2]'}`}
+                                         className={`flex items-center gap-1 text-[10px] font-black italic uppercase transition cursor-pointer ${selectedCategoryFilter ? 'text-[#dc2626] underline font-bold' : 'text-[#dc2626]'}`}
                                        >
                                           {selectedCategoryFilter ? `Categorias: ${selectedCategoryFilter}` : 'Categorias'} <ChevronDown className="w-3 h-3" />
                                        </button>
@@ -1233,7 +1233,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                setExerciseSearch('');
                                                setExerciseFilter('app');
                                             }}
-                                            className="text-[10px] font-black italic uppercase text-[#1da1f2] hover:text-[#0b85d3] cursor-pointer"
+                                            className="text-[10px] font-black italic uppercase text-[#dc2626] hover:text-[#ef4444] cursor-pointer"
                                           >
                                              Limpar
                                           </button>
@@ -1250,7 +1250,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                className="w-full px-3 py-1.5 text-[10px] font-bold text-slate-700 uppercase hover:bg-slate-50 flex items-center justify-between text-left cursor-pointer"
                                              >
                                                 Todos
-                                                {!selectedGroupFilter && <Check className="w-3 h-3 text-[#1da1f2]" />}
+                                                {!selectedGroupFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
                                              {['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'].map(grp => (
                                                 <button 
@@ -1262,7 +1262,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   className="w-full px-3 py-1.5 text-[10px] font-bold text-slate-700 uppercase hover:bg-slate-50 flex items-center justify-between text-left cursor-pointer"
                                                 >
                                                    {grp}
-                                                   {selectedGroupFilter === grp && <Check className="w-3 h-3 text-[#1da1f2]" />}
+                                                   {selectedGroupFilter === grp && <Check className="w-3 h-3 text-[#dc2626]" />}
                                                 </button>
                                              ))}
                                           </div>
@@ -1279,7 +1279,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                className="w-full px-3 py-1.5 text-[10px] font-bold text-slate-700 uppercase hover:bg-slate-50 flex items-center justify-between text-left cursor-pointer"
                                              >
                                                 Todas
-                                                {!selectedCategoryFilter && <Check className="w-3 h-3 text-[#1da1f2]" />}
+                                                {!selectedCategoryFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
                                              {['Musculação', 'Funcional', 'Alongamento'].map(cat => (
                                                 <button 
@@ -1291,7 +1291,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   className="w-full px-3 py-1.5 text-[10px] font-bold text-slate-700 uppercase hover:bg-slate-50 flex items-center justify-between text-left cursor-pointer"
                                                 >
                                                    {cat}
-                                                   {selectedCategoryFilter === cat && <Check className="w-3 h-3 text-[#1da1f2]" />}
+                                                   {selectedCategoryFilter === cat && <Check className="w-3 h-3 text-[#dc2626]" />}
                                                 </button>
                                              ))}
                                           </div>
@@ -1324,7 +1324,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        ) : (
                                           Object.keys(grouped).sort().map(sectionTitle => (
                                              <div key={sectionTitle} className="space-y-2 text-left">
-                                                <h5 className="text-[10px] font-black italic tracking-widest text-[#1da1f2] uppercase bg-[#1da1f2]/5 px-2.5 py-1 rounded-md w-fit border border-[#1da1f2]/10 mb-2">
+                                                <h5 className="text-[10px] font-black italic tracking-widest text-[#dc2626] uppercase bg-[#dc2626]/5 px-2.5 py-1 rounded-md w-fit border border-[#dc2626]/10 mb-2">
                                                    {sectionTitle} ({grouped[sectionTitle].length})
                                                 </h5>
                                                 <div className="grid grid-cols-1 gap-3">
@@ -1332,7 +1332,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                       <div 
                                                         key={idx} 
                                                         onClick={() => setPreviewingExercise(ex)}
-                                                        className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex items-center p-2 gap-4 text-left hover:border-[#1da1f2]/40 transition duration-250 cursor-pointer hover:shadow-md group"
+                                                        className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex items-center p-2 gap-4 text-left hover:border-[#dc2626]/40 transition duration-250 cursor-pointer hover:shadow-md group"
                                                       >
                                                          <div className="relative w-24 h-20 bg-slate-900 rounded-lg shrink-0 overflow-hidden shadow-inner">
                                                             <img src={ex.image} alt={ex.title} className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-300" referrerPolicy="no-referrer" />
@@ -1341,7 +1341,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                             </div>
                                                          </div>
                                                          <div className="flex-1 min-w-0 pr-1">
-                                                            <h5 className="text-[11px] font-black italic uppercase text-slate-900 tracking-tight leading-tight mb-2 truncate group-hover:text-[#1da1f2] transition-colors">
+                                                            <h5 className="text-[11px] font-black italic uppercase text-slate-900 tracking-tight leading-tight mb-2 truncate group-hover:text-[#dc2626] transition-colors">
                                                                {ex.title}
                                                             </h5>
                                                             <div className="flex flex-wrap gap-1.5">
@@ -1381,7 +1381,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           <div className="flex justify-between items-start gap-4 text-left">
                                              <div>
                                                 <div className="flex gap-2 mb-1">
-                                                   <span className="px-2 py-0.5 bg-blue-50 text-[#1da1f2] rounded text-[8px] font-bold uppercase">{previewingExercise.group}</span>
+                                                   <span className="px-2 py-0.5 bg-red-50 text-[#dc2626] rounded text-[8px] font-bold uppercase">{previewingExercise.group}</span>
                                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[8px] font-bold uppercase">{previewingExercise.category}</span>
                                                 </div>
                                                 <h3 className="text-[13px] font-black italic uppercase text-slate-900 tracking-tight leading-none text-left">
@@ -1439,7 +1439,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                              </button>
                                              <button 
                                                onClick={() => setPreviewingExercise(null)}
-                                               className="flex-1 py-3 bg-[#1da1f2] text-white rounded-xl text-xs font-black italic uppercase tracking-wider hover:bg-[#0c8adc] transition cursor-pointer"
+                                               className="flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider hover:bg-[#ef4444] transition cursor-pointer"
                                              >
                                                 Fechar modal
                                              </button>
@@ -1458,7 +1458,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        >
                                           <div className="flex justify-between items-start text-left">
                                              <div>
-                                                <span className="text-[8px] font-black italic tracking-widest text-[#1da1f2] uppercase">Novo elemento</span>
+                                                <span className="text-[8px] font-black italic tracking-widest text-[#dc2626] uppercase">Novo elemento</span>
                                                 <h3 className="text-md font-black italic uppercase text-slate-900 leading-none">Criar Exercício</h3>
                                              </div>
                                              <button 
@@ -1478,7 +1478,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   onChange={(e) => setNewExName(e.target.value)} 
                                                   placeholder="Ex: Tríceps Testa Pronado" 
                                                   required 
-                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#1da1f2]"
+                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
                                                 />
                                              </div>
 
@@ -1488,7 +1488,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    <select 
                                                      value={newExGroup}
                                                      onChange={(e) => setNewExGroup(e.target.value)}
-                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#1da1f2]"
+                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
                                                    >
                                                       {['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'].map(grp => (
                                                          <option key={grp} value={grp}>{grp.toUpperCase()}</option>
@@ -1500,7 +1500,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    <select 
                                                      value={newExCategory}
                                                      onChange={(e) => setNewExCategory(e.target.value)}
-                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#1da1f2]"
+                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
                                                    >
                                                       {['Musculação', 'Funcional', 'Alongamento'].map(cat => (
                                                          <option key={cat} value={cat}>{cat.toUpperCase()}</option>
@@ -1516,7 +1516,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   value={newExImage} 
                                                   onChange={(e) => setNewExImage(e.target.value)} 
                                                   placeholder="https://images.unsplash.com/photo-..." 
-                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#1da1f2]"
+                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
                                                 />
                                              </div>
 
@@ -1527,7 +1527,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   value={newExVideo} 
                                                   onChange={(e) => setNewExVideo(e.target.value)} 
                                                   placeholder="https://site.com/video.mp4" 
-                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#1da1f2]"
+                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
                                                 />
                                              </div>
 
@@ -1538,7 +1538,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                   onChange={(e) => setNewExDesc(e.target.value)} 
                                                   placeholder="Descreva a postura recomendada, respiração e repetições sugeridas." 
                                                   rows={3}
-                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#1da1f2] resize-none"
+                                                  className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626] resize-none"
                                                 />
                                              </div>
 
@@ -1552,7 +1552,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 </button>
                                                 <button 
                                                   type="submit"
-                                                  className="flex-1 py-3 bg-[#1da1f2] text-white rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-[#0a86d5] cursor-pointer"
+                                                  className="flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-[#ef4444] cursor-pointer"
                                                 >
                                                    Salvar
                                                 </button>
@@ -1593,7 +1593,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-5">
                                 <div className="flex items-center justify-between">
                                    <div className="flex items-center gap-3">
-                                      <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1da1f2]">
+                                      <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#dc2626]">
                                          <Accessibility className="w-7 h-7" />
                                       </div>
                                       <div className="text-left">
@@ -1629,7 +1629,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl flex items-center justify-between"
                                   >
                                      <span className="text-[11px] font-black italic uppercase text-slate-900">Orientações gerais</span>
-                                     <Eye className={`w-4 h-4 transition ${showRoutineNotes ? 'text-[#1da1f2]' : 'text-slate-400'}`} />
+                                     <Eye className={`w-4 h-4 transition ${showRoutineNotes ? 'text-[#dc2626]' : 'text-slate-400'}`} />
                                   </button>
                                   <AnimatePresence>
                                     {showRoutineNotes && (
@@ -1651,7 +1651,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              {/* Empty Training State OR Workouts List */}
                              {routineWorkouts.length === 0 ? (
                                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center justify-center space-y-6">
-                                   <div className="w-16 h-16 bg-[#1da1f2]/10 rounded-full flex items-center justify-center text-[#1da1f2]">
+                                   <div className="w-16 h-16 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
                                       <Dumbbell className="w-8 h-8" />
                                    </div>
                                    
@@ -1659,7 +1659,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                    <button 
                                       onClick={() => setIsCreateWorkoutModalOpen(true)}
-                                      className="w-full bg-[#1da1f2] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-600 transition"
+                                      className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-red-600 transition"
                                    >
                                       Criar primeiro treino
                                    </button>
@@ -1668,12 +1668,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <div className="space-y-4">
                                    {/* Action Buttons */}
                                    <div className="flex gap-3">
-                                      <button className="flex-1 bg-white border border-[#1da1f2] py-3 rounded-lg flex items-center justify-center gap-2 text-[#1da1f2] text-[10px] font-black uppercase italic tracking-tight">
+                                      <button className="flex-1 bg-white border border-[#dc2626] py-3 rounded-lg flex items-center justify-center gap-2 text-[#dc2626] text-[10px] font-black uppercase italic tracking-tight">
                                          <ArrowUpDown className="w-3.5 h-3.5" /> Reordenar treinos
                                       </button>
                                       <button 
                                         onClick={() => setIsCreateWorkoutModalOpen(true)}
-                                        className="flex-1 bg-[#1da1f2] py-3 rounded-lg flex items-center justify-center gap-2 text-white text-[10px] font-black uppercase italic tracking-tight"
+                                        className="flex-1 bg-[#dc2626] py-3 rounded-lg flex items-center justify-center gap-2 text-white text-[10px] font-black uppercase italic tracking-tight"
                                       >
                                          <Plus className="w-3.5 h-3.5" /> Adicionar treino
                                       </button>
@@ -1738,7 +1738,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         type="text" 
                                         value={routineName}
                                         onChange={(e) => setRoutineName(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#1da1f2] transition"
+                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
                                       />
                                    </div>
 
@@ -1788,7 +1788,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         placeholder="Orientações gerais"
                                         value={routineNotes}
                                         onChange={(e) => setRoutineNotes(e.target.value)}
-                                        className="w-full min-h-[100px] px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#1da1f2] resize-none transition"
+                                        className="w-full min-h-[100px] px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] resize-none transition"
                                       />
                                    </div>
 
@@ -1796,7 +1796,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       <p className="text-[10px] font-bold text-slate-900 text-left">Permitir que o aluno baixe o treino em pdf?</p>
                                       <div className="flex flex-col gap-2">
                                          <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#1da1f2]">
+                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
                                                <input 
                                                  type="radio" 
                                                  name="pdf" 
@@ -1804,12 +1804,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                  checked={routinePdfPermission === 'Sim'}
                                                  onChange={() => setRoutinePdfPermission('Sim')}
                                                />
-                                               <div className="w-2 h-2 rounded-full bg-[#1da1f2] opacity-0 peer-checked:opacity-100" />
+                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-700">Sim</span>
                                          </label>
                                          <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#1da1f2]">
+                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
                                                <input 
                                                  type="radio" 
                                                  name="pdf" 
@@ -1817,7 +1817,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                  checked={routinePdfPermission === 'Não'}
                                                  onChange={() => setRoutinePdfPermission('Não')}
                                                />
-                                               <div className="w-2 h-2 rounded-full bg-[#1da1f2] opacity-0 peer-checked:opacity-100" />
+                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-700">Não</span>
                                          </label>
@@ -1828,7 +1828,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       <p className="text-[10px] font-bold text-slate-900 text-left">Mostrar o tempo do treino para o aluno?</p>
                                       <div className="flex flex-col gap-2">
                                          <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#1da1f2]">
+                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
                                                <input 
                                                  type="radio" 
                                                  name="time" 
@@ -1836,12 +1836,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                  checked={routineShowTime === 'Sim'}
                                                  onChange={() => setRoutineShowTime('Sim')}
                                                />
-                                               <div className="w-2 h-2 rounded-full bg-[#1da1f2] opacity-0 peer-checked:opacity-100" />
+                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-700">Sim</span>
                                          </label>
                                          <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#1da1f2]">
+                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
                                                <input 
                                                  type="radio" 
                                                  name="time" 
@@ -1849,7 +1849,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                  checked={routineShowTime === 'Não'}
                                                  onChange={() => setRoutineShowTime('Não')}
                                                />
-                                               <div className="w-2 h-2 rounded-full bg-[#1da1f2] opacity-0 peer-checked:opacity-100" />
+                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
                                             </div>
                                             <span className="text-[11px] font-bold text-slate-700">Não</span>
                                          </label>
@@ -1859,7 +1859,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               
                               <button 
                                 onClick={() => setHomeSubView('workout_library')}
-                                className="w-full bg-[#1da1f2] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-600 transition"
+                                className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-red-600 transition"
                               >
                                  Salvar
                               </button>
@@ -1891,7 +1891,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <div className="p-4 space-y-4 overflow-y-auto flex-1">
                            <button 
                              onClick={() => setHomeSubView('create_routine')}
-                             className="w-full bg-[#1da1f2] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:bg-[#1a90d9] transition active:scale-95 cursor-pointer"
+                             className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-200 hover:bg-[#ef4444] transition active:scale-95 cursor-pointer"
                            >
                              <Plus className="w-4 h-4" /> Nova Rotina
                            </button>
@@ -1905,9 +1905,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 { id: '3', name: 'Emagrecimento Seca Barriga', goal: 'Emagrecimento', level: 'Iniciante', exercises: 5 },
                                 { id: '4', name: 'Força Bruta - Pernas', goal: 'Ganho de Força', level: 'Avançado', exercises: 6 },
                               ].map((routine) => (
-                                <div key={routine.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-col text-left group hover:border-[#1da1f2]/30 transition cursor-pointer">
+                                <div key={routine.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-col text-left group hover:border-[#dc2626]/30 transition cursor-pointer">
                                   <div className="flex justify-between items-start mb-2">
-                                     <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#1da1f2] transition">{routine.name}</h6>
+                                     <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#dc2626] transition">{routine.name}</h6>
                                      <button className="text-slate-400 hover:text-red-500 transition cursor-pointer">
                                         <Trash2 className="w-4 h-4" />
                                      </button>
@@ -1915,7 +1915,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   <div className="flex flex-wrap gap-2 mt-auto">
                                      <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.goal}</span>
                                      <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.level}</span>
-                                     <span className="px-2 py-1 bg-[#1da1f2]/10 text-[#1da1f2] text-[9px] font-black italic uppercase rounded-md ml-auto">{routine.exercises} Exer.</span>
+                                     <span className="px-2 py-1 bg-[#dc2626]/10 text-[#dc2626] text-[9px] font-black italic uppercase rounded-md ml-auto">{routine.exercises} Exer.</span>
                                   </div>
                                 </div>
                               ))}
@@ -1939,7 +1939,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           {/* Inner Tabs for Alunos/Grupos */}
                           <div className="flex bg-[#0c1622] px-1">
                              <button className="flex-1 py-3 text-sm font-bold bg-white text-slate-900 border-white rounded-t-lg">Alunos</button>
-                             <button className="flex-1 py-3 text-sm font-bold bg-[#1da1f2] text-white">Grupos</button>
+                             <button className="flex-1 py-3 text-sm font-bold bg-[#dc2626] text-white">Grupos</button>
                           </div>
 
                           <div className="p-4 space-y-4">
@@ -1961,19 +1961,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="flex items-center justify-center gap-2">
                                 <button 
                                   onClick={() => setStatusFilter('active')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'active' ? 'bg-[#1da1f2]/10 border-[#1da1f2] text-[#1da1f2]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'active' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                 >
                                    Ativos: {activeStudents.length}
                                 </button>
                                 <button 
                                   onClick={() => setStatusFilter('inactive')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'inactive' ? 'bg-[#1da1f2]/10 border-[#1da1f2] text-[#1da1f2]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'inactive' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                 >
                                    Inativos: {inactiveStudents.length}
                                 </button>
                                 <button 
                                   onClick={() => setStatusFilter('excluded')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#1da1f2]/10 border-[#1da1f2] text-[#1da1f2]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                 >
                                    Excluídos
                                 </button>
@@ -1982,7 +1982,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              {/* Add Student link */}
                              <button 
                                onClick={() => setIsAddingUser(true)}
-                               className="flex items-center justify-center gap-2 text-[#1da1f2] text-xs font-bold w-full py-2 hover:opacity-80 transition"
+                               className="flex items-center justify-center gap-2 text-[#dc2626] text-xs font-bold w-full py-2 hover:opacity-80 transition"
                              >
                                 <UserCheck className="w-4 h-4" />
                                 <span>Adicionar aluno</span>
@@ -2187,7 +2187,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         { label: 'Oscilando', desc: 'TREINAM MENOS DE 3X POR SEMANA', color: 'bg-amber-300' },
                         { label: 'Abandono', desc: '30+ DIAS SEM TREINO', color: 'bg-rose-500' },
                         { label: 'Engajado', desc: 'TREINAM MAIS DE 3X POR SEMANA', color: 'bg-emerald-400' },
-                        { label: 'Recuperado', desc: 'RETORNARAM APÓS ABANDONO', color: 'bg-[#1da1f2]' },
+                        { label: 'Recuperado', desc: 'RETORNARAM APÓS ABANDONO', color: 'bg-[#dc2626]' },
                       ].map((cat) => {
                         const categoryData = engajamentoCategorias.find(c => c.label === cat.label);
                         return (
@@ -2215,7 +2215,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             </div>
                             <div className="flex items-center gap-2">
                                <span className="text-[10px] font-bold text-slate-400 uppercase">{categoryData?.count || 0} alunos</span>
-                               <ChevronLeft className="w-4 h-4 text-slate-300 rotate-180 group-hover:text-[#1da1f2] transition" />
+                               <ChevronLeft className="w-4 h-4 text-slate-300 rotate-180 group-hover:text-[#dc2626] transition" />
                             </div>
                           </button>
                         );
@@ -2231,7 +2231,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  if (selectedUidsForNotify.length === students.length) setSelectedUidsForNotify([]);
                                  else setSelectedUidsForNotify(students.map(s => s.uid));
                               }}
-                              className="text-[10px] font-black uppercase text-[#1da1f2]"
+                              className="text-[10px] font-black uppercase text-[#dc2626]"
                             >
                                {selectedUidsForNotify.length === users.filter(u => u.role === 'student').length ? 'Desmarcar todos' : 'Selecionar todos'}
                             </button>
@@ -2247,9 +2247,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     setSelectedUidsForNotify(prev => [...prev, student.uid]);
                                  }
                               }}
-                              className={`w-full p-4 rounded-xl border transition flex items-center gap-3 ${selectedUidsForNotify.includes(student.uid) ? 'bg-blue-50 border-[#1da1f2]' : 'bg-white border-slate-100'}`}
+                              className={`w-full p-4 rounded-xl border transition flex items-center gap-3 ${selectedUidsForNotify.includes(student.uid) ? 'bg-red-50 border-[#dc2626]' : 'bg-white border-slate-100'}`}
                             >
-                               <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${selectedUidsForNotify.includes(student.uid) ? 'bg-[#1da1f2] border-[#1da1f2]' : 'bg-white border-slate-300'}`}>
+                               <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${selectedUidsForNotify.includes(student.uid) ? 'bg-[#dc2626] border-[#dc2626]' : 'bg-white border-slate-300'}`}>
                                   {selectedUidsForNotify.includes(student.uid) && <Check className="w-3.5 h-3.5 text-white stroke-[4]" />}
                                </div>
                                <div className="flex-1 text-left">
@@ -2271,8 +2271,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             />
                          </div>
                          
-                         <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                            <p className="text-[10px] font-bold text-[#1da1f2] text-left">
+                         <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                            <p className="text-[10px] font-bold text-[#dc2626] text-left">
                                A mensagem será enviada individualmente para os {selectedUidsForNotify.length} alunos através do aplicativo e notificações push.
                             </p>
                          </div>
@@ -2296,7 +2296,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                }, 1500);
                             }
                          }}
-                         className={`w-full py-4 rounded-xl font-black italic uppercase text-xs tracking-widest shadow-lg transition flex items-center justify-center gap-2 ${selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) ? 'bg-slate-200 text-slate-400 shadow-none' : 'bg-[#1da1f2] text-white shadow-blue-200 hocus:bg-blue-600'}`}
+                         className={`w-full py-4 rounded-xl font-black italic uppercase text-xs tracking-widest shadow-lg transition flex items-center justify-center gap-2 ${selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) ? 'bg-slate-200 text-slate-400 shadow-none' : 'bg-[#dc2626] text-white shadow-red-200 hocus:bg-red-600'}`}
                        >
                           {isSending ? (
                              <div className="flex items-center gap-2 capitalize">
@@ -2338,7 +2338,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </div>
                     <div className="px-4 pb-6 space-y-2.5">
                        <button 
-                         className="w-full py-2.5 px-4 border border-[#1da1f2] rounded-lg text-[#1da1f2] text-[10px] font-black uppercase tracking-tight hover:bg-blue-50 transition text-center"
+                         className="w-full py-2.5 px-4 border border-[#dc2626] rounded-lg text-[#dc2626] text-[10px] font-black uppercase tracking-tight hover:bg-red-50 transition text-center"
                          onClick={() => {
                             setIsWorkoutActionModalOpen(false);
                             setHomeSubView('create_routine');
@@ -2347,7 +2347,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           Adicionar novo treino
                        </button>
                        <button 
-                         className="w-full py-2.5 px-4 border border-[#1da1f2] rounded-lg text-[#1da1f2] text-[10px] font-black uppercase tracking-tight hover:bg-blue-50 transition text-center"
+                         className="w-full py-2.5 px-4 border border-[#dc2626] rounded-lg text-[#dc2626] text-[10px] font-black uppercase tracking-tight hover:bg-red-50 transition text-center"
                          onClick={() => setIsWorkoutActionModalOpen(false)}
                        >
                           Adicionar nova pasta
@@ -2378,7 +2378,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <select 
                             value={newWorkoutDay}
                             onChange={(e) => setNewWorkoutDay(e.target.value)}
-                            className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-blue-200 text-xs font-bold text-slate-800 outline-none appearance-none"
+                            className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-red-200 text-xs font-bold text-slate-800 outline-none appearance-none"
                           >
                              <option value="">Selecione um dia</option>
                              <option value="Segunda-Feira">Segunda-Feira</option>
@@ -2422,13 +2422,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        <div className="space-y-2 pt-2">
                           <button 
                             onClick={handleSaveWorkout}
-                            className="w-full bg-[#1da1f2] py-3.5 rounded-lg text-white font-black italic uppercase text-[11px] tracking-widest shadow-lg shadow-blue-100"
+                            className="w-full bg-[#dc2626] py-3.5 rounded-lg text-white font-black italic uppercase text-[11px] tracking-widest shadow-lg shadow-red-100"
                           >
                              Salvar
                           </button>
                           <button 
                             onClick={() => setIsCreateWorkoutModalOpen(false)}
-                            className="w-full py-3.5 rounded-lg border border-[#1da1f2] text-[#1da1f2] font-black italic uppercase text-[11px] tracking-widest font-bold"
+                            className="w-full py-3.5 rounded-lg border border-[#dc2626] text-[#dc2626] font-black italic uppercase text-[11px] tracking-widest font-bold"
                           >
                              Fechar
                           </button>
@@ -2613,7 +2613,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 setActivePanel(null);
               }}
               className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
-                activeTab === 'home' ? 'text-[#1da1f2]' : 'text-slate-500 hover:text-white'
+                activeTab === 'home' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
               }`}
             >
               <Home className="w-5 h-5 mx-auto" />
@@ -2627,7 +2627,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 setActivePanel(null);
               }}
               className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
-                activeTab === 'wallet' ? 'text-[#1da1f2]' : 'text-slate-500 hover:text-white'
+                activeTab === 'wallet' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
               }`}
             >
               <DollarSign className="w-5 h-5 mx-auto" />
@@ -2641,7 +2641,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 setActivePanel(null);
               }}
               className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
-                activeTab === 'menu' ? 'text-[#1da1f2]' : 'text-slate-500 hover:text-white'
+                activeTab === 'menu' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
               }`}
             >
               <Menu className="w-5 h-5 mx-auto" />
@@ -3233,7 +3233,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     type="text"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#1da1f2] transition duration-200"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
                   />
                 </div>
 
@@ -3245,7 +3245,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     type="email"
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#1da1f2] transition duration-200"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
                   />
                 </div>
 
@@ -3259,7 +3259,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       value={formPassword}
                       onChange={(e) => setFormPassword(e.target.value)}
                       placeholder="Ex: 123456"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#1da1f2] transition duration-200"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -3268,7 +3268,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       <select 
                         value={formRole}
                         onChange={(e) => setFormRole(e.target.value as 'student' | 'admin')}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                       >
                         <option value="student">Aluno</option>
                         <option value="admin">Administrador</option>
@@ -3285,7 +3285,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <select 
                       value={formGroup}
                       onChange={(e) => setFormGroup(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                     >
                       <option value="">Selecione</option>
                       <option value="Consultoria">Consultoria</option>
@@ -3304,7 +3304,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     placeholder="DD/MM/YYYY"
                     value={formBirthDate}
                     onChange={(e) => setFormBirthDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-400 outline-none focus:bg-white focus:border-[#1da1f2]"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-400 outline-none focus:bg-white focus:border-[#dc2626]"
                   />
                 </div>
 
@@ -3320,7 +3320,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       type="text"
                       value={formPhone}
                       onChange={(e) => setFormPhone(e.target.value)}
-                      className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-r-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#1da1f2]"
+                      className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-r-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626]"
                     />
                   </div>
                 </div>
@@ -3332,7 +3332,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <select 
                       value={formGender}
                       onChange={(e) => setFormGender(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                     >
                       <option value="">Selecione</option>
                       <option value="Masculino">Masculino</option>
@@ -3350,7 +3350,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <select 
                       value={formSendAccessInfo}
                       onChange={(e) => setFormSendAccessInfo(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                     >
                       <option value="Sim">Sim</option>
                       <option value="Não">Não</option>
@@ -3366,7 +3366,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <select 
                       value={formSendAnamnesis}
                       onChange={(e) => setFormSendAnamnesis(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                     >
                       <option value="">Selecione</option>
                       <option value="Anamnese Padrão">Anamnese Padrão</option>
@@ -3383,7 +3383,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <select 
                       value={formBlockDefaulters}
                       onChange={(e) => setFormBlockDefaulters(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#1da1f2]"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
                     >
                       <option value="">Selecione</option>
                       <option value="Automático">Automático</option>
@@ -3396,7 +3396,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {/* Salvar Button */}
                 <button 
                   type="submit"
-                  className="w-full bg-[#1da1f2] hover:bg-[#1a90d9] text-white font-black py-4 rounded-xl shadow-lg transition-all active:scale-95 text-xs uppercase tracking-widest italic"
+                  className="w-full bg-[#dc2626] hover:bg-[#ef4444] text-white font-black py-4 rounded-xl shadow-lg transition-all active:scale-95 text-xs uppercase tracking-widest italic"
                 >
                   Salvar
                 </button>

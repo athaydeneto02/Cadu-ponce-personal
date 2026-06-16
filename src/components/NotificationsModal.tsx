@@ -241,12 +241,12 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
           <div className={`px-5 py-3 border-b flex items-center justify-between gap-4 ${
             isDark ? 'bg-slate-900/10 border-slate-850' : 'bg-slate-50 border-slate-100'
           }`}>
-            <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-[#1da1f2]/90 flex items-center gap-1.5 animate-pulse">
+            <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-[#dc2626]/90 flex items-center gap-1.5 animate-pulse">
               <Zap className="w-4.5 h-4.5" /> SIMULADOR ACTIVE ACTION
             </span>
             <button
               onClick={triggerSimulateWorkoutCompletion}
-              className="py-1 px-3 bg-[#1da1f2] hover:bg-[#158cd4] text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95 shadow-sm"
+              className="py-1 px-3 bg-[#dc2626] hover:bg-[#ef4444] text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95 shadow-sm"
               id="btn-simulate-completion"
             >
               <Dumbbell className="w-3 h-3" /> Concluir Novo Treino
@@ -279,7 +279,7 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
             >
               Não lidas
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-[#1da1f2] text-white text-[8.5px] font-extrabold rounded-full flex items-center justify-center animate-pulse">
+                <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-[#dc2626] text-white text-[8.5px] font-extrabold rounded-full flex items-center justify-center animate-pulse">
                   {unreadCount}
                 </span>
               )}
@@ -356,13 +356,13 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
                     onClick={() => toggleRead(notif.id)}
                     className={`p-4 rounded-2xl border text-left transition-all relative flex gap-3.5 overflow-hidden group cursor-pointer ${
                       isUnread 
-                        ? isDark ? 'bg-slate-900 border-[#1da1f2]/20 hover:border-[#1da1f2]/30 shadow-md shadow-[#1da1f2]/2' : 'bg-white border-[#1da1f2]/20 hover:border-[#1da1f2]/30 shadow-sm'
+                        ? isDark ? 'bg-slate-900 border-[#dc2626]/20 hover:border-[#dc2626]/30 shadow-md shadow-[#dc2626]/2' : 'bg-white border-[#dc2626]/20 hover:border-[#dc2626]/30 shadow-sm'
                         : isDark ? 'bg-slate-900/40 border-slate-900 hover:border-slate-850' : 'bg-white border-slate-100 hover:border-slate-200'
                     }`}
                   >
                     {/* Unread marker bar on LHS */}
                     {isUnread && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#1da1f2]" />
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#dc2626]" />
                     )}
 
                     {/* Left Icon status badge */}
@@ -392,7 +392,7 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
                         <div className="flex items-center space-x-2 shrink-0">
                           <span className="text-[9px] text-slate-450 font-bold">{notif.timestamp}</span>
                           {isUnread && (
-                            <span className="w-2 h-2 bg-[#1da1f2] rounded-full shrink-0" />
+                            <span className="w-2 h-2 bg-[#dc2626] rounded-full shrink-0" />
                           )}
                         </div>
                       </div>
