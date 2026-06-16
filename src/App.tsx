@@ -127,13 +127,10 @@ export default function App() {
     });
 
     if (error) {
-      setNotification({
-        title: "Erro no login ❌",
-        body: error.message === 'Invalid login credentials'
-          ? 'Email ou senha incorretos. Verifique seus dados.'
-          : error.message,
-      });
-      return;
+      const errorMessage = error.message === 'Invalid login credentials'
+        ? 'E-mail ou senha incorretos. Verifique seus dados e tente novamente.'
+        : error.message;
+      throw new Error(errorMessage);
     }
 
     if (data.user) {

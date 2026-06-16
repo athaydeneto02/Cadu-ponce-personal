@@ -31,9 +31,17 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
     e.preventDefault();
     setIsSubmitting(true);
     setLoginError(null);
-    // Delegate to App.tsx handler which calls supabase.auth.signInWithPassword
-    await onLogin(email, password);
-    setIsSubmitting(false);
+    try {
+      await onLogin(email, password);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setLoginError(err.message);
+      } else {
+        setLoginError('Ocorreu um erro ao fazer login.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
