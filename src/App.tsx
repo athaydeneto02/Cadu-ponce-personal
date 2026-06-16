@@ -260,50 +260,6 @@ export default function App() {
             </div>
             
             <div className="mt-8 space-y-4">
-              {/* Trainer Mode Simulator Toggle - Only visible to admins */}
-              {user?.role === 'admin' && (
-                <div className={`flex items-center justify-between p-5 rounded-3xl border shadow-sm transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
-                  <div className="flex items-center space-x-4">
-                    <div className={`p-2.5 rounded-xl bg-red-600/10 text-red-600`}>
-                      <Shield className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="font-bold block text-sm">Acesso de Treinador</span>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">
-                        ADMINISTRADOR ATIVO
-                      </span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      // Allow toggling roles for demo purposes IF the user is already an admin
-                      const nextRole = user?.role === 'admin' ? 'student' : 'admin';
-                      const updated: UserProfile = {
-                        ...user!,
-                        role: nextRole,
-                        name: nextRole === 'admin' ? 'Cadu Ponce' : 'Felippe Leitao',
-                        email: nextRole === 'admin' ? 'admin@caduponce.com' : 'athaydefelippeleitao@gmail.com',
-                      };
-                      setUser(updated);
-                      storage.saveUser(updated);
-                      setNotification({
-                        title: nextRole === 'admin' ? 'Console Admin Ativado! 🛠️' : 'Modo Aluno Ativo 👤',
-                        body: nextRole === 'admin' 
-                          ? 'Você agora é Administrador! O menu de Gerenciamento de Contas está liberado.' 
-                          : 'Sua visualização retornou ao perfil de aluno comum.'
-                      });
-                    }}
-                    className={`w-14 h-8 rounded-full relative transition-colors duration-300 shrink-0 ${user?.role === 'admin' ? 'bg-red-600' : 'bg-gray-200 dark:bg-slate-800'}`}
-                  >
-                    <motion.div 
-                      layout
-                      className="w-6 h-6 bg-white rounded-full absolute top-1 left-1 shadow-sm"
-                      animate={{ x: user?.role === 'admin' ? 26 : 0 }}
-                      transition={{ type: 'spring', stiffness: 450, damping: 25 }}
-                    />
-                  </button>
-                </div>
-              )}
 
               {/* Theme Selector */}
               <div className={`flex items-center justify-between p-5 rounded-2xl border shadow-sm transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
