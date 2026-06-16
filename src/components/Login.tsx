@@ -37,7 +37,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 px-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background decoration */}
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/10 rounded-full blur-3xl"></div>
       <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-red-600/5 rounded-full blur-3xl"></div>
