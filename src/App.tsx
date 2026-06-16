@@ -85,9 +85,7 @@ export default function App() {
             setIsAuthenticated(true);
             setWorkouts(fetchedWorkouts);
 
-            if (profile.role === 'admin') {
-              setIsManagingAccounts(true);
-            }
+
           }
         } else {
           // Signed out — clear everything
