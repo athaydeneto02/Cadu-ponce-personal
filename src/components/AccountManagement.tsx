@@ -45,6 +45,7 @@ import {
   Zap,
   BookOpen,
   Users,
+  UserPlus,
   BarChart3,
   PlayCircle,
   FileText,
@@ -231,6 +232,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   // Admin Routines State
   const [adminRoutines, setAdminRoutines] = useState<import('../types').AdminRoutine[]>(() => storage.getAdminRoutines());
   const [editingRoutine, setEditingRoutine] = useState<import('../types').AdminRoutine | null>(null);
+  const [assigningRoutine, setAssigningRoutine] = useState<import('../types').AdminRoutine | null>(null);
   const [routineExercises, setRoutineExercises] = useState<import('../types').AdminExercise[]>([]);
   const [routineStudentIds, setRoutineStudentIds] = useState<string[]>([]);
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
@@ -338,6 +340,23 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setRoutineName('NOME DA ROTINA');
     setRoutineNotes('');
     setHomeSubView('workout_library');
+  };
+
+  const handleSaveRoutineAssignment = () => {
+    if (!assigningRoutine) return;
+    const studentNames = routineStudentIds.map(id => {
+      const s = users.find(u => u.uid === id);
+      return s ? s.name : '';
+    });
+    const updatedRoutine = {
+      ...assigningRoutine,
+      studentIds: routineStudentIds,
+      studentNames,
+    };
+    storage.saveAdminRoutine(updatedRoutine);
+    setAdminRoutines(storage.getAdminRoutines());
+    setAssigningRoutine(null);
+    setRoutineStudentIds([]);
   };
 
   const handleDeleteAdminRoutine = (id: string) => {
@@ -1871,34 +1890,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   </select>
                                 </div>
 
-                                {/* Assign to Students */}
-                                <div className="space-y-1.5 text-left">
-                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Atribuir a alunos</label>
-                                  <div className="space-y-1.5 max-h-32 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-slate-50">
-                                    {users.filter(u => u.role === 'student').length === 0 ? (
-                                      <p className="text-[10px] text-slate-400 font-bold text-center py-2">Nenhum aluno cadastrado</p>
-                                    ) : users.filter(u => u.role === 'student').map(student => (
-                                      <label key={student.uid} className="flex items-center gap-2 cursor-pointer py-1">
-                                        <input
-                                          type="checkbox"
-                                          checked={routineStudentIds.includes(student.uid)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              setRoutineStudentIds(prev => [...prev, student.uid]);
-                                            } else {
-                                              setRoutineStudentIds(prev => prev.filter(id => id !== student.uid));
-                                            }
-                                          }}
-                                          className="accent-[#dc2626] w-3.5 h-3.5"
-                                        />
-                                        <span className="text-xs font-bold text-slate-700">{student.name}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                  {routineStudentIds.length > 0 && (
-                                    <p className="text-[9px] text-[#dc2626] font-bold">{routineStudentIds.length} aluno(s) selecionado(s)</p>
-                                  )}
-                                </div>
+                                {/* Assign to Students REMOVED FROM HERE */}
 
                                 {/* General notes */}
                                 <div className="space-y-1.5 text-left">
@@ -2142,6 +2134,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <div className="flex justify-between items-start mb-2">
                                        <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#dc2626] transition flex-1 mr-2">{routine.name}</h6>
                                        <div className="flex gap-1 shrink-0">
+                                         <button
+                                           onClick={() => {
+                                             setAssigningRoutine(routine);
+                                             setRoutineStudentIds(routine.studentIds || []);
+                                           }}
+                                           className="p-1.5 text-slate-400 hover:text-blue-500 transition cursor-pointer"
+                                           title="Atribuir a Alunos"
+                                         >
+                                           <UserPlus className="w-3.5 h-3.5" />
+                                         </button>
                                          <button
                                            onClick={() => handleEditAdminRoutine(routine)}
                                            className="p-1.5 text-slate-400 hover:text-[#dc2626] transition cursor-pointer"
@@ -3658,6 +3660,74 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* ASSIGN ROUTINE MODAL */}
+      <AnimatePresence>
+        {assigningRoutine && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+                <div>
+                  <h3 className="font-black italic uppercase text-slate-900 tracking-tighter">Atribuir Rotina</h3>
+                  <p className="text-[10px] font-bold text-slate-500 mt-0.5">{assigningRoutine.name}</p>
+                </div>
+                <button
+                  onClick={() => setAssigningRoutine(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm border border-slate-100 transition active:scale-95"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                <p className="text-xs font-bold text-slate-600">Selecione os alunos que devem receber este treino:</p>
+                
+                <div className="space-y-2">
+                  {users.filter(u => u.role === 'student').length === 0 ? (
+                    <p className="text-xs text-slate-400 font-medium text-center py-4 bg-slate-50 rounded-xl">Nenhum aluno cadastrado</p>
+                  ) : users.filter(u => u.role === 'student').map(student => (
+                    <label key={student.uid} className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border border-slate-100 hover:border-[#dc2626]/30 transition bg-white">
+                      <input
+                        type="checkbox"
+                        checked={routineStudentIds.includes(student.uid)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setRoutineStudentIds(prev => [...prev, student.uid]);
+                          } else {
+                            setRoutineStudentIds(prev => prev.filter(id => id !== student.uid));
+                          }
+                        }}
+                        className="accent-[#dc2626] w-4 h-4"
+                      />
+                      <span className="text-sm font-bold text-slate-800">{student.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-slate-100 bg-slate-50 shrink-0">
+                <button
+                  onClick={handleSaveRoutineAssignment}
+                  className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase tracking-widest text-xs shadow-lg shadow-red-200 hover:bg-[#ef4444] active:scale-95 transition"
+                >
+                  Salvar Atribuição ({routineStudentIds.length})
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
