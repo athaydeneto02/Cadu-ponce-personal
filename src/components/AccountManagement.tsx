@@ -1947,17 +1947,25 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   <div key={ex.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 space-y-3">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[9px] font-black text-[#dc2626] uppercase tracking-widest">Exercício {idx + 1}</span>
-                                      <button
-                                        onClick={() => removeRoutineExercise(idx)}
-                                        className="text-slate-400 hover:text-red-500 transition cursor-pointer"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          onClick={() => setSelectingExerciseForIdx(idx)}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-[#dc2626] hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-tight transition cursor-pointer"
+                                        >
+                                          <Search className="w-3.5 h-3.5" /> Puxar da Biblioteca
+                                        </button>
+                                        <button
+                                          onClick={() => removeRoutineExercise(idx)}
+                                          className="text-slate-400 hover:text-red-500 transition cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
 
                                     {/* Exercise Name */}
                                     {/* Exercise Name */}
-                                    <div className="flex gap-2">
+                                    <div>
                                       <input
                                         type="text"
                                         list="exercise-library-list"
@@ -1978,15 +1986,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           }
                                         }}
                                         placeholder="Nome do exercício"
-                                        className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
+                                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
                                       />
-                                      <button
-                                        onClick={() => setSelectingExerciseForIdx(idx)}
-                                        className="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition shrink-0 flex items-center justify-center cursor-pointer"
-                                        title="Buscar na Biblioteca"
-                                      >
-                                        <Search className="w-4 h-4" />
-                                      </button>
                                     </div>
 
                                     {/* Sets / Reps / Rest */}
