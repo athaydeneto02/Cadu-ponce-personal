@@ -72,3 +72,26 @@ export interface Goal {
   category: 'strength' | 'frequency' | 'weight' | 'other';
   deadline?: string;
 }
+
+export interface AdminExercise {
+  id: string;
+  name: string;
+  sets: number;
+  reps: string;
+  rest: string;
+  notes?: string;
+  videoUrl?: string;      // YouTube link or any URL
+  videoFileUrl?: string;  // Supabase Storage public URL
+}
+
+export interface AdminRoutine {
+  id: string;
+  name: string;
+  goal: string;
+  difficulty: string;
+  notes?: string;
+  studentIds: string[];      // array of student IDs this is assigned to
+  studentNames: string[];    // parallel array of student names
+  exercises: AdminExercise[];
+  createdAt: string;
+}

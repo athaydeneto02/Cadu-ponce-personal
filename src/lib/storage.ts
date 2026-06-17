@@ -415,4 +415,39 @@ export const storage = {
       }
     });
   },
+
+  // ── Admin Routines ──────────────────────────────────────────────────────
+  ADMIN_ROUTINES_KEY: 'cadu_ponce_admin_routines',
+
+  getAdminRoutines: (): import('../types').AdminRoutine[] => {
+    const data = localStorage.getItem('cadu_ponce_admin_routines');
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveAdminRoutines: (routines: import('../types').AdminRoutine[]): void => {
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
+  },
+
+  saveAdminRoutine: (routine: import('../types').AdminRoutine): void => {
+    const all = storage.getAdminRoutines();
+    const idx = all.findIndex(r => r.id === routine.id);
+    if (idx >= 0) all[idx] = routine;
+    else all.unshift(routine);
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+  },
+
+  deleteAdminRoutine: (id: string): void => {
+    const all = storage.getAdminRoutines().filter(r => r.id !== id);
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+  },
+
+  uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
+    const { supabase } = await import('./supabase');
+    const ext = file.name.split('.').pop();
+    const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('exercise-videos').upload(path, file, { upsert: true });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from('exercise-videos').getPublicUrl(path);
+    return urlData.publicUrl;
+  },
 };

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Dumbbell, ChevronRight, Plus, Calendar, Clock, Download } from 'lucide-react';
+import { Dumbbell, ChevronRight, Plus, Calendar, Clock, Download, PlayCircle } from 'lucide-react';
 import { Workout } from '../types';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
 
@@ -17,6 +17,14 @@ interface WorkoutListProps {
 export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }: WorkoutListProps) {
   const cleanPhone = (trainerPhone || '5511999999999').replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/${cleanPhone}?text=Olá%20Cadu%2C%20tenho%20uma%20dúvida%20sobre%20meu%20treino!`;
+
+  const [adminRoutines, setAdminRoutines] = React.useState<any[]>(() => {
+    try {
+      const uid = JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}').uid;
+      const all = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') || '[]');
+      return all.filter((r: any) => r.studentIds?.includes(uid));
+    } catch { return []; }
+  });
 
   return (
     <div className="p-6">
@@ -98,6 +106,56 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
           ))
         )}
       </div>
+
+      {adminRoutines.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-lg font-bold dark:text-white mb-4">Treinos Prescritos</h2>
+          <div className="space-y-4">
+            {adminRoutines.map((routine: any) => (
+              <div key={routine.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-14 h-14 bg-red-50 dark:bg-red-950/20 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
+                    <Dumbbell className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 dark:text-white italic">{routine.name}</h3>
+                    <div className="flex gap-2 mt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">{routine.goal}</span>
+                      <span className="text-[10px] font-bold text-slate-400">·</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">{routine.difficulty}</span>
+                    </div>
+                  </div>
+                </div>
+                {routine.notes && (
+                  <p className="text-xs text-slate-500 mb-3 italic">{routine.notes}</p>
+                )}
+                <div className="space-y-2">
+                  {routine.exercises.map((ex: any, i: number) => (
+                    <div key={ex.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">{ex.name || `Exercício ${i+1}`}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">{ex.sets}x{ex.reps} · Descanso: {ex.rest}</p>
+                        {ex.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">{ex.notes}</p>}
+                      </div>
+                      {(ex.videoUrl || ex.videoFileUrl) && (
+                        <a
+                          href={ex.videoFileUrl || ex.videoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-3 w-9 h-9 bg-red-600 text-white rounded-xl flex items-center justify-center shrink-0 hover:bg-red-500 transition active:scale-95"
+                          title="Ver execução"
+                        >
+                          <PlayCircle className="w-5 h-5" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-12 bg-slate-950 rounded-[32px] p-6 border border-slate-900 shadow-xl relative overflow-hidden">
         <div className="relative z-10">

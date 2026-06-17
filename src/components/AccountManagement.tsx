@@ -217,6 +217,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [routinePdfPermission, setRoutinePdfPermission] = useState('Não');
   const [routineShowTime, setRoutineShowTime] = useState('Não');
 
+  // Admin Routines State
+  const [adminRoutines, setAdminRoutines] = useState<import('../types').AdminRoutine[]>(() => storage.getAdminRoutines());
+  const [editingRoutine, setEditingRoutine] = useState<import('../types').AdminRoutine | null>(null);
+  const [routineExercises, setRoutineExercises] = useState<import('../types').AdminExercise[]>([]);
+  const [routineStudentIds, setRoutineStudentIds] = useState<string[]>([]);
+  const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
+
   // Exercise Library State
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [exerciseTab, setExerciseTab] = useState<'grupos' | 'categorias'>('grupos');
@@ -293,6 +300,83 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setNewWorkoutDay('');
     setNewWorkoutName('');
     setNewWorkoutNotes('');
+  };
+
+  const handleSaveAdminRoutine = () => {
+    if (!routineName || routineName === 'NOME DA ROTINA') return;
+    const studentNames = routineStudentIds.map(id => {
+      const s = users.find(u => u.uid === id);
+      return s ? s.name : '';
+    });
+    const routine: import('../types').AdminRoutine = {
+      id: editingRoutine?.id || `routine_${Date.now()}`,
+      name: routineName,
+      goal: routineGoal,
+      difficulty: routineDifficulty,
+      notes: routineNotes,
+      studentIds: routineStudentIds,
+      studentNames,
+      exercises: routineExercises,
+      createdAt: editingRoutine?.createdAt || new Date().toISOString(),
+    };
+    storage.saveAdminRoutine(routine);
+    setAdminRoutines(storage.getAdminRoutines());
+    setEditingRoutine(null);
+    setRoutineExercises([]);
+    setRoutineStudentIds([]);
+    setRoutineName('NOME DA ROTINA');
+    setRoutineNotes('');
+    setHomeSubView('workout_library');
+  };
+
+  const handleDeleteAdminRoutine = (id: string) => {
+    storage.deleteAdminRoutine(id);
+    setAdminRoutines(storage.getAdminRoutines());
+  };
+
+  const handleEditAdminRoutine = (routine: import('../types').AdminRoutine) => {
+    setEditingRoutine(routine);
+    setRoutineName(routine.name);
+    setRoutineGoal(routine.goal);
+    setRoutineDifficulty(routine.difficulty);
+    setRoutineNotes(routine.notes || '');
+    setRoutineExercises(routine.exercises);
+    setRoutineStudentIds(routine.studentIds || []);
+    setHomeSubView('create_routine');
+  };
+
+  const addExerciseToRoutine = () => {
+    setRoutineExercises(prev => [...prev, {
+      id: `ex_${Date.now()}`,
+      name: '',
+      sets: 3,
+      reps: '12',
+      rest: '60s',
+      notes: '',
+      videoUrl: '',
+      videoFileUrl: '',
+    }]);
+  };
+
+  const updateRoutineExercise = (idx: number, field: string, value: string | number) => {
+    setRoutineExercises(prev => prev.map((ex, i) => i === idx ? { ...ex, [field]: value } : ex));
+  };
+
+  const removeRoutineExercise = (idx: number) => {
+    setRoutineExercises(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleExerciseVideoUpload = async (idx: number, file: File) => {
+    setUploadingVideoIdx(idx);
+    try {
+      const exId = routineExercises[idx]?.id || `ex_${Date.now()}`;
+      const url = await storage.uploadExerciseVideo(file, exId);
+      updateRoutineExercise(idx, 'videoFileUrl', url);
+    } catch (e) {
+      console.error('Video upload failed', e);
+    } finally {
+      setUploadingVideoIdx(null);
+    }
   };
 
   // Form State for creating a user
@@ -1706,9 +1790,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
                         </div>
                     ) : homeSubView === 'create_routine' ? (
-                       /* CREATE ROUTINE VIEW (Requested Image) */
+                       /* CREATE ROUTINE VIEW — FUNCTIONAL */
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
-                          {/* Top Brand Block */}
                           <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
                              <div className="flex items-center gap-1.5 grayscale opacity-80 brightness-200">
                                 <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
@@ -1718,156 +1801,284 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              </div>
                           </div>
 
-                          {/* Header with Back */}
                           <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-4 shrink-0">
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('workout_library')}
                                className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
                              >
                                <ChevronLeft className="w-3.5 h-3.5" /> Voltar
                              </button>
-                             <h4 className="text-white text-xl font-black italic uppercase italic tracking-tighter text-left leading-none">Criar Rotina</h4>
+                             <h4 className="text-white text-xl font-black italic uppercase tracking-tighter text-left leading-none">
+                               {editingRoutine ? 'Editar Rotina' : 'Nova Rotina'}
+                             </h4>
                           </div>
 
                           <div className="flex-1 overflow-y-auto pb-10">
-                             <div className="m-4 bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-5">
-                                 <div className="space-y-4">
-                                    <div className="space-y-1.5 text-left">
-                                      <label className="text-[10px] font-bold text-slate-900 uppercase">Nome da rotina</label>
-                                      <input 
-                                        type="text" 
-                                        value={routineName}
-                                        onChange={(e) => setRoutineName(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
-                                      />
-                                   </div>
+                             <div className="m-4 bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
 
-                                   <div className="space-y-1.5 text-left">
-                                      <label className="text-[10px] font-bold text-slate-900 uppercase">Tipo dos treinos</label>
-                                      <select 
-                                        value={routineType}
-                                        onChange={(e) => setRoutineType(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none"
+                                {/* Routine Name */}
+                                <div className="space-y-1.5 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Nome da Rotina *</label>
+                                  <input
+                                    type="text"
+                                    value={routineName}
+                                    onChange={(e) => setRoutineName(e.target.value)}
+                                    placeholder="Ex: Treino A — Peito e Tríceps"
+                                    className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
+                                  />
+                                </div>
+
+                                {/* Goal */}
+                                <div className="space-y-1.5 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Objetivo</label>
+                                  <select
+                                    value={routineGoal}
+                                    onChange={(e) => setRoutineGoal(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none"
+                                  >
+                                    <option>Hipertrofia</option>
+                                    <option>Emagrecimento</option>
+                                    <option>Definição muscular</option>
+                                    <option>Ganho de Força</option>
+                                    <option>Condicionamento</option>
+                                    <option>Reabilitação</option>
+                                  </select>
+                                </div>
+
+                                {/* Difficulty */}
+                                <div className="space-y-1.5 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Dificuldade</label>
+                                  <select
+                                    value={routineDifficulty}
+                                    onChange={(e) => setRoutineDifficulty(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none"
+                                  >
+                                    <option>Iniciante</option>
+                                    <option>Adaptação</option>
+                                    <option>Intermediário</option>
+                                    <option>Avançado</option>
+                                  </select>
+                                </div>
+
+                                {/* Assign to Students */}
+                                <div className="space-y-1.5 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Atribuir a alunos</label>
+                                  <div className="space-y-1.5 max-h-32 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-slate-50">
+                                    {users.filter(u => u.role === 'student').length === 0 ? (
+                                      <p className="text-[10px] text-slate-400 font-bold text-center py-2">Nenhum aluno cadastrado</p>
+                                    ) : users.filter(u => u.role === 'student').map(student => (
+                                      <label key={student.uid} className="flex items-center gap-2 cursor-pointer py-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={routineStudentIds.includes(student.uid)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setRoutineStudentIds(prev => [...prev, student.uid]);
+                                            } else {
+                                              setRoutineStudentIds(prev => prev.filter(id => id !== student.uid));
+                                            }
+                                          }}
+                                          className="accent-[#dc2626] w-3.5 h-3.5"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700">{student.name}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  {routineStudentIds.length > 0 && (
+                                    <p className="text-[9px] text-[#dc2626] font-bold">{routineStudentIds.length} aluno(s) selecionado(s)</p>
+                                  )}
+                                </div>
+
+                                {/* General notes */}
+                                <div className="space-y-1.5 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Orientações Gerais</label>
+                                  <textarea
+                                    placeholder="Orientações gerais para o aluno..."
+                                    value={routineNotes}
+                                    onChange={(e) => setRoutineNotes(e.target.value)}
+                                    className="w-full min-h-[70px] px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] resize-none transition"
+                                  />
+                                </div>
+                             </div>
+
+                             {/* Exercises Section */}
+                             <div className="mx-4 mb-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                                    Exercícios ({routineExercises.length})
+                                  </h5>
+                                  <button
+                                    onClick={addExerciseToRoutine}
+                                    className="flex items-center gap-1 text-[10px] font-black text-[#dc2626] uppercase tracking-wide hover:opacity-80 transition cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                                  </button>
+                                </div>
+
+                                {routineExercises.length === 0 && (
+                                  <div className="bg-white border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
+                                    <Dumbbell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                    <p className="text-[11px] font-bold text-slate-400">Nenhum exercício adicionado</p>
+                                    <button
+                                      onClick={addExerciseToRoutine}
+                                      className="mt-3 text-[10px] font-black text-[#dc2626] uppercase"
+                                    >
+                                      + Adicionar exercício
+                                    </button>
+                                  </div>
+                                )}
+
+                                {routineExercises.map((ex, idx) => (
+                                  <div key={ex.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[9px] font-black text-[#dc2626] uppercase tracking-widest">Exercício {idx + 1}</span>
+                                      <button
+                                        onClick={() => removeRoutineExercise(idx)}
+                                        className="text-slate-400 hover:text-red-500 transition cursor-pointer"
                                       >
-                                         <option value="Dia da Semana">Dia da Semana</option>
-                                         <option value="Data Específica">Data Específica</option>
-                                      </select>
-                                   </div>
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
 
-                                   <div className="space-y-1.5 text-left">
-                                      <label className="text-[10px] font-bold text-slate-900 uppercase">Objetivo</label>
-                                      <select 
-                                        value={routineGoal}
-                                        onChange={(e) => setRoutineGoal(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none"
-                                      >
-                                         <option value="Definição muscular">Definição muscular</option>
-                                         <option value="Hipertrofia">Hipertrofia</option>
-                                         <option value="Emagrecimento">Emagrecimento</option>
-                                         <option value="Condicionamento">Condicionamento</option>
-                                      </select>
-                                   </div>
+                                    {/* Exercise Name */}
+                                    <input
+                                      type="text"
+                                      value={ex.name}
+                                      onChange={(e) => updateRoutineExercise(idx, 'name', e.target.value)}
+                                      placeholder="Nome do exercício"
+                                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
+                                    />
 
-                                   <div className="space-y-1.5 text-left">
-                                      <label className="text-[10px] font-bold text-slate-900 uppercase">Dificuldade</label>
-                                      <select 
-                                        value={routineDifficulty}
-                                        onChange={(e) => setRoutineDifficulty(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none"
-                                      >
-                                         <option value="Iniciante">Iniciante</option>
-                                         <option value="Adaptação">Adaptação</option>
-                                         <option value="Intermediário">Intermediário</option>
-                                         <option value="Avançado">Avançado</option>
-                                      </select>
-                                   </div>
-
-                                   <div className="space-y-1.5 text-left">
-                                      <label className="text-[10px] font-bold text-slate-900 uppercase">Orientações gerais</label>
-                                      <textarea 
-                                        placeholder="Orientações gerais"
-                                        value={routineNotes}
-                                        onChange={(e) => setRoutineNotes(e.target.value)}
-                                        className="w-full min-h-[100px] px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] resize-none transition"
-                                      />
-                                   </div>
-
-                                   <div className="space-y-3 pt-2">
-                                      <p className="text-[10px] font-bold text-slate-900 text-left">Permitir que o aluno baixe o treino em pdf?</p>
-                                      <div className="flex flex-col gap-2">
-                                         <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
-                                               <input 
-                                                 type="radio" 
-                                                 name="pdf" 
-                                                 className="hidden peer" 
-                                                 checked={routinePdfPermission === 'Sim'}
-                                                 onChange={() => setRoutinePdfPermission('Sim')}
-                                               />
-                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
-                                            </div>
-                                            <span className="text-[11px] font-bold text-slate-700">Sim</span>
-                                         </label>
-                                         <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
-                                               <input 
-                                                 type="radio" 
-                                                 name="pdf" 
-                                                 className="hidden peer" 
-                                                 checked={routinePdfPermission === 'Não'}
-                                                 onChange={() => setRoutinePdfPermission('Não')}
-                                               />
-                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
-                                            </div>
-                                            <span className="text-[11px] font-bold text-slate-700">Não</span>
-                                         </label>
+                                    {/* Sets / Reps / Rest */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-500 uppercase">Séries</label>
+                                        <input
+                                          type="number"
+                                          value={ex.sets}
+                                          onChange={(e) => updateRoutineExercise(idx, 'sets', parseInt(e.target.value) || 1)}
+                                          min={1}
+                                          className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition text-center"
+                                        />
                                       </div>
-                                   </div>
-
-                                   <div className="space-y-3 pt-2">
-                                      <p className="text-[10px] font-bold text-slate-900 text-left">Mostrar o tempo do treino para o aluno?</p>
-                                      <div className="flex flex-col gap-2">
-                                         <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
-                                               <input 
-                                                 type="radio" 
-                                                 name="time" 
-                                                 className="hidden peer" 
-                                                 checked={routineShowTime === 'Sim'}
-                                                 onChange={() => setRoutineShowTime('Sim')}
-                                               />
-                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
-                                            </div>
-                                            <span className="text-[11px] font-bold text-slate-700">Sim</span>
-                                         </label>
-                                         <label className="flex items-center gap-2 cursor-pointer group">
-                                            <div className="w-4 h-4 rounded-full border-2 border-slate-200 flex items-center justify-center group-has-[:checked]:border-[#dc2626]">
-                                               <input 
-                                                 type="radio" 
-                                                 name="time" 
-                                                 className="hidden peer" 
-                                                 checked={routineShowTime === 'Não'}
-                                                 onChange={() => setRoutineShowTime('Não')}
-                                               />
-                                               <div className="w-2 h-2 rounded-full bg-[#dc2626] opacity-0 peer-checked:opacity-100" />
-                                            </div>
-                                            <span className="text-[11px] font-bold text-slate-700">Não</span>
-                                         </label>
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-500 uppercase">Reps</label>
+                                        <input
+                                          type="text"
+                                          value={ex.reps}
+                                          onChange={(e) => updateRoutineExercise(idx, 'reps', e.target.value)}
+                                          placeholder="12"
+                                          className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition text-center"
+                                        />
                                       </div>
-                                 </div>
-                              </div>
-                              
-                              <button 
-                                onClick={() => setHomeSubView('workout_library')}
-                                className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-red-600 transition"
-                              >
-                                 Salvar
-                              </button>
-                           </div>
-                        </div>
-                     </div>
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-500 uppercase">Descanso</label>
+                                        <input
+                                          type="text"
+                                          value={ex.rest}
+                                          onChange={(e) => updateRoutineExercise(idx, 'rest', e.target.value)}
+                                          placeholder="60s"
+                                          className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition text-center"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Video Link */}
+                                    <div className="space-y-1.5">
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                                        <LinkIcon className="w-3 h-3" /> Link do vídeo (YouTube ou outro)
+                                      </label>
+                                      <input
+                                        type="url"
+                                        value={ex.videoUrl || ''}
+                                        onChange={(e) => updateRoutineExercise(idx, 'videoUrl', e.target.value)}
+                                        placeholder="https://youtube.com/watch?v=..."
+                                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626] transition"
+                                      />
+                                      {ex.videoUrl && (ex.videoUrl.includes('youtube.com') || ex.videoUrl.includes('youtu.be')) && (() => {
+                                        const ytId = ex.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+                                        return ytId ? (
+                                          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="YouTube preview" className="w-full rounded-lg object-cover h-24" />
+                                        ) : null;
+                                      })()}
+                                    </div>
+
+                                    {/* Video File Upload */}
+                                    <div className="space-y-1.5">
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                                        <Video className="w-3 h-3" /> Ou anexar vídeo (MP4, MOV)
+                                      </label>
+                                      {ex.videoFileUrl ? (
+                                        <div className="flex items-center gap-2">
+                                          <video src={ex.videoFileUrl} className="w-full rounded-lg h-24 object-cover bg-black" controls />
+                                          <button
+                                            onClick={() => updateRoutineExercise(idx, 'videoFileUrl', '')}
+                                            className="text-slate-400 hover:text-red-500 shrink-0"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed border-slate-200 cursor-pointer hover:border-[#dc2626]/40 transition ${uploadingVideoIdx === idx ? 'opacity-50 pointer-events-none' : ''}`}>
+                                          <input
+                                            type="file"
+                                            accept="video/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) handleExerciseVideoUpload(idx, file);
+                                            }}
+                                          />
+                                          {uploadingVideoIdx === idx ? (
+                                            <span className="text-[10px] font-bold text-slate-400">Enviando...</span>
+                                          ) : (
+                                            <>
+                                              <Video className="w-4 h-4 text-slate-400" />
+                                              <span className="text-[10px] font-bold text-slate-400">Clique para selecionar vídeo</span>
+                                            </>
+                                          )}
+                                        </label>
+                                      )}
+                                    </div>
+
+                                    {/* Notes */}
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase">Observações</label>
+                                      <input
+                                        type="text"
+                                        value={ex.notes || ''}
+                                        onChange={(e) => updateRoutineExercise(idx, 'notes', e.target.value)}
+                                        placeholder="Ex: Foco na contração, não trave o joelho..."
+                                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626] transition"
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {routineExercises.length > 0 && (
+                                  <button
+                                    onClick={addExerciseToRoutine}
+                                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-black text-slate-400 uppercase tracking-wide hover:border-[#dc2626]/40 hover:text-[#dc2626] transition"
+                                  >
+                                    + Adicionar exercício
+                                  </button>
+                                )}
+                             </div>
+
+                             {/* Save Button */}
+                             <div className="mx-4 mb-4">
+                               <button
+                                 onClick={handleSaveAdminRoutine}
+                                 disabled={!routineName || routineName === 'NOME DA ROTINA'}
+                                 className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-[#ef4444] transition disabled:opacity-40 disabled:cursor-not-allowed"
+                               >
+                                 {editingRoutine ? 'Salvar Alterações' : 'Salvar Rotina'}
+                               </button>
+                             </div>
+                          </div>
+                       </div>
                   ) : homeSubView === 'workout_library' ? (
-                     /* WORKOUT LIBRARY VIEW */
+                     /* WORKOUT LIBRARY VIEW — FUNCTIONAL */
                      <div className="flex flex-col h-full bg-[#f4f7fa]">
                         <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
                            <div className="flex items-center gap-1.5 grayscale opacity-80 brightness-200">
@@ -1879,7 +2090,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
 
                         <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-3">
-                           <button 
+                           <button
                              onClick={() => setHomeSubView('dashboard')}
                              className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
                            >
@@ -1889,36 +2100,69 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
 
                         <div className="p-4 space-y-4 overflow-y-auto flex-1">
-                           <button 
-                             onClick={() => setHomeSubView('create_routine')}
+                           <button
+                             onClick={() => {
+                               setEditingRoutine(null);
+                               setRoutineExercises([]);
+                               setRoutineStudentIds([]);
+                               setRoutineName('');
+                               setRoutineGoal('Hipertrofia');
+                               setRoutineDifficulty('Intermediário');
+                               setRoutineNotes('');
+                               setHomeSubView('create_routine');
+                             }}
                              className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-200 hover:bg-[#ef4444] transition active:scale-95 cursor-pointer"
                            >
                              <Plus className="w-4 h-4" /> Nova Rotina
                            </button>
 
                            <div className="space-y-3">
-                              <h5 className="text-[10px] font-black uppercase text-slate-500 tracking-wider text-left pt-2">Suas Rotinas Salvas</h5>
-                              
-                              {[
-                                { id: '1', name: 'Hipertrofia A - Peito/Tríceps', goal: 'Hipertrofia', level: 'Intermediário', exercises: 6 },
-                                { id: '2', name: 'Hipertrofia B - Costas/Bíceps', goal: 'Hipertrofia', level: 'Intermediário', exercises: 7 },
-                                { id: '3', name: 'Emagrecimento Seca Barriga', goal: 'Emagrecimento', level: 'Iniciante', exercises: 5 },
-                                { id: '4', name: 'Força Bruta - Pernas', goal: 'Ganho de Força', level: 'Avançado', exercises: 6 },
-                              ].map((routine) => (
-                                <div key={routine.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-col text-left group hover:border-[#dc2626]/30 transition cursor-pointer">
-                                  <div className="flex justify-between items-start mb-2">
-                                     <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#dc2626] transition">{routine.name}</h6>
-                                     <button className="text-slate-400 hover:text-red-500 transition cursor-pointer">
-                                        <Trash2 className="w-4 h-4" />
-                                     </button>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2 mt-auto">
-                                     <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.goal}</span>
-                                     <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.level}</span>
-                                     <span className="px-2 py-1 bg-[#dc2626]/10 text-[#dc2626] text-[9px] font-black italic uppercase rounded-md ml-auto">{routine.exercises} Exer.</span>
-                                  </div>
+                              <h5 className="text-[10px] font-black uppercase text-slate-500 tracking-wider text-left pt-2">
+                                Suas Rotinas Salvas ({adminRoutines.length})
+                              </h5>
+
+                              {adminRoutines.length === 0 ? (
+                                <div className="text-center py-10 text-slate-400 text-xs font-bold">
+                                  Nenhuma rotina criada ainda.<br/>Clique em "Nova Rotina" para começar.
                                 </div>
-                              ))}
+                              ) : (
+                                adminRoutines.map((routine) => (
+                                  <div key={routine.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 text-left group hover:border-[#dc2626]/30 transition">
+                                    <div className="flex justify-between items-start mb-2">
+                                       <h6 className="text-sm font-black italic uppercase text-slate-900 leading-tight group-hover:text-[#dc2626] transition flex-1 mr-2">{routine.name}</h6>
+                                       <div className="flex gap-1 shrink-0">
+                                         <button
+                                           onClick={() => handleEditAdminRoutine(routine)}
+                                           className="p-1.5 text-slate-400 hover:text-[#dc2626] transition cursor-pointer"
+                                           title="Editar"
+                                         >
+                                           <FileText className="w-3.5 h-3.5" />
+                                         </button>
+                                         <button
+                                           onClick={() => handleDeleteAdminRoutine(routine.id)}
+                                           className="p-1.5 text-slate-400 hover:text-red-500 transition cursor-pointer"
+                                           title="Excluir"
+                                         >
+                                           <Trash2 className="w-3.5 h-3.5" />
+                                         </button>
+                                       </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                       <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.goal}</span>
+                                       <span className="px-2 py-1 bg-slate-50 text-slate-500 text-[9px] font-bold uppercase rounded-md border border-slate-100">{routine.difficulty}</span>
+                                       <span className="px-2 py-1 bg-[#dc2626]/10 text-[#dc2626] text-[9px] font-black italic uppercase rounded-md">{routine.exercises.length} Exerc.</span>
+                                    </div>
+                                    {routine.studentNames && routine.studentNames.length > 0 && (
+                                      <div className="mt-2 flex items-center gap-1 flex-wrap">
+                                        <Users className="w-3 h-3 text-slate-400" />
+                                        {routine.studentNames.map((n, i) => (
+                                          <span key={i} className="text-[9px] font-bold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">{n}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
                            </div>
                         </div>
                      </div>
