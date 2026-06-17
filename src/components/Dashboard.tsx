@@ -335,7 +335,6 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-bold text-lg dark:text-white">Resumo Semanal</h3>
-            <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-1">Total: 580kg levantados</p>
           </div>
           <div className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-500 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
             4 Treinos
