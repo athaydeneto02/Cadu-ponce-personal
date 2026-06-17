@@ -412,7 +412,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
               <div className="bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-700">
                 <div className="aspect-video bg-slate-900 rounded-2xl mb-6 flex items-center justify-center overflow-hidden border border-slate-700 relative">
                   <img 
-                    src="/src/assets/images/cadu_ponce_new_logo_1781286998796.jpg" 
+                    src="/src/assets/images/cadu_ponce_logo_new.png" 
                     className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm"
                   />
                   <div className="relative z-10 flex flex-col items-center text-white">

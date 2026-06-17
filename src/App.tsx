@@ -244,7 +244,7 @@ export default function App() {
             <div className={`rounded-2xl p-6 shadow-sm border flex items-center space-x-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
               <div className="w-16 h-16 bg-red-50 dark:bg-red-950/20 rounded-full flex items-center justify-center overflow-hidden border-2 border-red-100 dark:border-red-900/30">
                 <img 
-                  src="/src/assets/images/cadu_ponce_new_logo_1781286998796.jpg" 
+                  src="/src/assets/images/cadu_ponce_logo_new.png" 
                   className="w-full h-full object-cover"
                 />
               </div>

@@ -138,7 +138,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         </div>
         <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-slate-800 shadow-md">
           <img 
-            src="/src/assets/images/cadu_ponce_new_logo_1781286998796.jpg" 
+            src="/src/assets/images/cadu_ponce_logo_new.png" 
             alt="Cadu Ponce"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"

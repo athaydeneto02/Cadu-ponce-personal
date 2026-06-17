@@ -63,7 +63,7 @@ export default function PersonalDataForm({ user, onSave, onClose, isDark }: Pers
             <div className="relative group">
               <div className="w-32 h-32 bg-red-50 dark:bg-red-950/20 rounded-[40px] flex items-center justify-center overflow-hidden border-4 border-white dark:border-slate-900 shadow-2xl relative">
                 <img 
-                  src="/src/assets/images/cadu_ponce_new_logo_1781286998796.jpg" 
+                  src="/src/assets/images/cadu_ponce_logo_new.png" 
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">

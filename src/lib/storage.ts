@@ -95,7 +95,10 @@ export const storage = {
       .eq('id', authData.user.id)
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
     const profile = rowToUserProfile(data);
     storage.saveUser(profile); // update cache
     return profile;
