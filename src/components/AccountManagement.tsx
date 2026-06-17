@@ -388,8 +388,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }]);
   };
 
-  const updateRoutineExercise = (idx: number, field: string, value: string | number) => {
-    setRoutineExercises(prev => prev.map((ex, i) => i === idx ? { ...ex, [field]: value } : ex));
+  const updateRoutineExercise = (idx: number, fieldOrUpdates: string | Record<string, string | number>, value?: string | number) => {
+    setRoutineExercises(prev => prev.map((ex, i) => {
+      if (i !== idx) return ex;
+      if (typeof fieldOrUpdates === 'string') {
+        return { ...ex, [fieldOrUpdates]: value as string | number };
+      }
+      return { ...ex, ...fieldOrUpdates };
+    }));
   };
 
   const removeRoutineExercise = (idx: number) => {
@@ -1917,6 +1923,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <Plus className="w-3.5 h-3.5" /> Adicionar
                                   </button>
                                 </div>
+                                <datalist id="exercise-library-list">
+                                  {exercises.map(libEx => (
+                                    <option key={libEx.title} value={libEx.title} />
+                                  ))}
+                                </datalist>
 
                                 {routineExercises.length === 0 && (
                                   <div className="bg-white border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
@@ -1946,8 +1957,21 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     {/* Exercise Name */}
                                     <input
                                       type="text"
+                                      list="exercise-library-list"
                                       value={ex.name}
-                                      onChange={(e) => updateRoutineExercise(idx, 'name', e.target.value)}
+                                      onChange={(e) => {
+                                        const newName = e.target.value;
+                                        const libEx = exercises.find(lib => lib.title.toLowerCase() === newName.toLowerCase());
+                                        if (libEx) {
+                                          updateRoutineExercise(idx, {
+                                            name: newName,
+                                            videoUrl: libEx.videoUrl || '',
+                                            notes: libEx.description || ''
+                                          });
+                                        } else {
+                                          updateRoutineExercise(idx, 'name', newName);
+                                        }
+                                      }}
                                       placeholder="Nome do exercício"
                                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
                                     />
