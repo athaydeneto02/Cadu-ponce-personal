@@ -148,10 +148,21 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     weight: 65,
     height: 160,
     trainerPhone: '5511999999999',
-    role: 'student',
     status: 'active',
     modality: 'Online',
     createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
+  },
+  {
+    uid: 'student_teste_123',
+    name: 'Aluno Teste',
+    email: 'aluno.teste@caduponce.com',
+    weight: 70,
+    height: 170,
+    trainerPhone: '5511999999999',
+    role: 'student',
+    status: 'active',
+    modality: 'Online',
+    createdAt: new Date().toISOString()
   }
 ];
 
