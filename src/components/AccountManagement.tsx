@@ -234,6 +234,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [editingRoutine, setEditingRoutine] = useState<import('../types').AdminRoutine | null>(null);
   const [assigningRoutine, setAssigningRoutine] = useState<import('../types').AdminRoutine | null>(null);
   const [routineExercises, setRoutineExercises] = useState<import('../types').AdminExercise[]>([]);
+  const [selectingExerciseForIdx, setSelectingExerciseForIdx] = useState<number | null>(null);
   const [routineStudentIds, setRoutineStudentIds] = useState<string[]>([]);
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
 
@@ -1955,26 +1956,38 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     </div>
 
                                     {/* Exercise Name */}
-                                    <input
-                                      type="text"
-                                      list="exercise-library-list"
-                                      value={ex.name}
-                                      onChange={(e) => {
-                                        const newName = e.target.value;
-                                        const libEx = exercises.find(lib => lib.title.toLowerCase() === newName.toLowerCase());
-                                        if (libEx) {
-                                          updateRoutineExercise(idx, {
-                                            name: newName,
-                                            videoUrl: libEx.videoUrl || '',
-                                            notes: libEx.description || ''
-                                          });
-                                        } else {
-                                          updateRoutineExercise(idx, 'name', newName);
-                                        }
-                                      }}
-                                      placeholder="Nome do exercício"
-                                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
-                                    />
+                                    {/* Exercise Name */}
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        list="exercise-library-list"
+                                        value={ex.name}
+                                        onChange={(e) => {
+                                          const newName = e.target.value;
+                                          const libEx = exercises.find(lib => lib.title.toLowerCase() === newName.toLowerCase());
+                                          if (libEx) {
+                                            const isMp4 = libEx.videoUrl?.includes('.mp4') || libEx.videoUrl?.includes('.mov') || libEx.videoUrl?.includes('supabase.co/storage');
+                                            updateRoutineExercise(idx, {
+                                              name: newName,
+                                              videoUrl: isMp4 ? '' : (libEx.videoUrl || ''),
+                                              videoFileUrl: isMp4 ? (libEx.videoUrl || '') : '',
+                                              notes: libEx.description || ''
+                                            });
+                                          } else {
+                                            updateRoutineExercise(idx, 'name', newName);
+                                          }
+                                        }}
+                                        placeholder="Nome do exercício"
+                                        className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition"
+                                      />
+                                      <button
+                                        onClick={() => setSelectingExerciseForIdx(idx)}
+                                        className="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition shrink-0 flex items-center justify-center cursor-pointer"
+                                        title="Buscar na Biblioteca"
+                                      >
+                                        <Search className="w-4 h-4" />
+                                      </button>
+                                    </div>
 
                                     {/* Sets / Reps / Rest */}
                                     <div className="grid grid-cols-3 gap-2">
@@ -3749,6 +3762,85 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 >
                   Salvar Atribuição ({routineStudentIds.length})
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* EXERCISE LIBRARY PICKER MODAL */}
+      <AnimatePresence>
+        {selectingExerciseForIdx !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-slate-50 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-4 bg-white border-b border-slate-100 flex items-center justify-between shrink-0">
+                <h3 className="font-black italic uppercase text-slate-900 tracking-tighter">Buscar na Biblioteca</h3>
+                <button
+                  onClick={() => {
+                    setSelectingExerciseForIdx(null);
+                    setExerciseSearch('');
+                  }}
+                  className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-xl transition active:scale-95 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 shrink-0 bg-white border-b border-slate-100">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Nome do exercício..."
+                    value={exerciseSearch}
+                    onChange={(e) => setExerciseSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-3 rounded-xl bg-slate-50 border-none text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#dc2626]/20 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                {exercises
+                  .filter(e => e.title.toLowerCase().includes(exerciseSearch.toLowerCase()))
+                  .map(libEx => (
+                    <button
+                      key={libEx.title}
+                      onClick={() => {
+                        const isMp4 = libEx.videoUrl?.includes('.mp4') || libEx.videoUrl?.includes('.mov') || libEx.videoUrl?.includes('supabase.co/storage');
+                        updateRoutineExercise(selectingExerciseForIdx, {
+                          name: libEx.title,
+                          videoUrl: isMp4 ? '' : (libEx.videoUrl || ''),
+                          videoFileUrl: isMp4 ? (libEx.videoUrl || '') : '',
+                          notes: libEx.description || ''
+                        });
+                        setSelectingExerciseForIdx(null);
+                        setExerciseSearch('');
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-[#dc2626] transition text-left cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0">
+                        <img src={libEx.image} alt={libEx.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-black text-slate-900 truncate">{libEx.title}</h4>
+                        <p className="text-[10px] font-bold text-slate-500 mt-0.5">{libEx.group} • {libEx.category}</p>
+                      </div>
+                      <div className="shrink-0 flex gap-1">
+                        {libEx.videoUrl && <Video className="w-4 h-4 text-blue-500" />}
+                      </div>
+                    </button>
+                  ))}
               </div>
             </motion.div>
           </motion.div>
