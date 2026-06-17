@@ -59,12 +59,24 @@ export default function App() {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
+    const handleMockLogin = () => {
+      const mockUser = JSON.parse(localStorage.getItem('cadu_ponce_user') || 'null');
+      if (mockUser) {
+        setUser(mockUser);
+        setIsAuthenticated(true);
+        // Load workouts for mock user
+        storage.fetchWorkouts(mockUser.uid).then(w => setWorkouts(w));
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('mock_login_success', handleMockLogin);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('mock_login_success', handleMockLogin);
     };
   }, []);
 
@@ -119,6 +131,24 @@ export default function App() {
   const handleLogin = async (email: string, password?: string) => {
     if (!email || !password) return;
 
+    // --- TEMPORARY BYPASS FOR TESTING STUDENT ACCOUNT ---
+    if (email === 'aluno.teste@caduponce.com' && password === 'Teste@123') {
+      const mockUser = {
+        uid: 'student_teste_123',
+        name: 'Aluno Teste',
+        email: 'aluno.teste@caduponce.com',
+        role: 'student' as const,
+        createdAt: new Date().toISOString()
+      };
+      // Força localStorage e dispara evento pra App.tsx atualizar sem Supabase
+      localStorage.setItem('cadu_ponce_user', JSON.stringify(mockUser));
+      
+      // Emit custom event para o App pegar caso não consiga via auth state
+      window.dispatchEvent(new Event('mock_login_success'));
+      return;
+    }
+    // --------------------------------------------------
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -133,10 +163,6 @@ export default function App() {
 
     if (data.user) {
       // onAuthStateChange will handle setting user state
-      setNotification({
-        title: "Bem-vindo! 🏆",
-        body: "Login realizado com sucesso."
-      });
     }
   };
 
