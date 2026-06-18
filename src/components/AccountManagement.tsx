@@ -194,6 +194,32 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
   };
 
+  const handleAddOption = () => {
+    if (!newOptionValue.trim()) return;
+    if (editingOptionType === 'muscle') {
+      const updated = [...appMuscleGroups, newOptionValue.trim()];
+      setAppMuscleGroups(updated);
+      storage.saveMuscleGroups(updated);
+    } else {
+      const updated = [...appCategories, newOptionValue.trim()];
+      setAppCategories(updated);
+      storage.saveCategories(updated);
+    }
+    setNewOptionValue('');
+  };
+
+  const handleRemoveOption = (val: string) => {
+    if (editingOptionType === 'muscle') {
+      const updated = appMuscleGroups.filter(g => g !== val);
+      setAppMuscleGroups(updated);
+      storage.saveMuscleGroups(updated);
+    } else {
+      const updated = appCategories.filter(c => c !== val);
+      setAppCategories(updated);
+      storage.saveCategories(updated);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'home' | 'wallet' | 'menu'>('home');
   const [homeSubView, setHomeSubView] = useState<'dashboard' | 'student_list' | 'retention' | 'workout_library' | 'create_routine' | 'routine_details' | 'frequency_report' | 'exercise_library'>('dashboard');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
@@ -260,6 +286,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [expandedExerciseDetails, setExpandedExerciseDetails] = useState<number[]>([]);
   const [selectingExerciseForIdx, setSelectingExerciseForIdx] = useState<number | null>(null);
   const [routineStudentIds, setRoutineStudentIds] = useState<string[]>([]);
+  const [appMuscleGroups, setAppMuscleGroups] = useState<string[]>(() => storage.getMuscleGroups());
+  const [appCategories, setAppCategories] = useState<string[]>(() => storage.getCategories());
+  const [isEditingOptions, setIsEditingOptions] = useState(false);
+  const [editingOptionType, setEditingOptionType] = useState<'muscle' | 'category'>('muscle');
+  const [newOptionValue, setNewOptionValue] = useState('');
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
 
   // Exercise Library State
@@ -291,8 +322,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [newExName, setNewExName] = useState('');
-  const [newExGroup, setNewExGroup] = useState('Abdômen');
-  const [newExCategory, setNewExCategory] = useState('Musculação');
+  const [newExGroup, setNewExGroup] = useState(appMuscleGroups[0] || 'Abdômen');
+  const [newExCategory, setNewExCategory] = useState(appCategories[0] || 'Musculação');
   const [newExImage, setNewExImage] = useState('');
   const [newExVideo, setNewExVideo] = useState('');
   const [newExDesc, setNewExDesc] = useState('');
@@ -1427,7 +1458,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 Todos
                                                 {!selectedGroupFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
-                                             {['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'].map(grp => (
+                                             {appMuscleGroups.map(grp => (
                                                 <button 
                                                   key={grp}
                                                   onClick={() => {
@@ -1440,6 +1471,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    {selectedGroupFilter === grp && <Check className="w-3 h-3 text-[#dc2626]" />}
                                                 </button>
                                              ))}
+                                             <div className="border-t border-slate-100 mt-1">
+                                               <button
+                                                 onClick={() => {
+                                                   setEditingOptionType('muscle');
+                                                   setIsEditingOptions(true);
+                                                   setIsGroupDropdownOpen(false);
+                                                 }}
+                                                 className="w-full px-3 py-2 text-[9px] font-black italic uppercase text-slate-400 hover:text-[#dc2626] transition text-left cursor-pointer flex items-center gap-1"
+                                               >
+                                                 + Editar Grupos
+                                               </button>
+                                             </div>
                                           </div>
                                        )}
 
@@ -1456,7 +1499,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 Todas
                                                 {!selectedCategoryFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
-                                             {['Musculação', 'Funcional', 'Alongamento'].map(cat => (
+                                             {appCategories.map(cat => (
                                                 <button 
                                                   key={cat}
                                                   onClick={() => {
@@ -1469,6 +1512,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    {selectedCategoryFilter === cat && <Check className="w-3 h-3 text-[#dc2626]" />}
                                                 </button>
                                              ))}
+                                             <div className="border-t border-slate-100 mt-1">
+                                               <button
+                                                 onClick={() => {
+                                                   setEditingOptionType('category');
+                                                   setIsEditingOptions(true);
+                                                   setIsCategoryDropdownOpen(false);
+                                                 }}
+                                                 className="w-full px-3 py-2 text-[9px] font-black italic uppercase text-slate-400 hover:text-[#dc2626] transition text-left cursor-pointer flex items-center gap-1"
+                                               >
+                                                 + Editar Categorias
+                                               </button>
+                                             </div>
                                           </div>
                                        )}
                                     </div>
@@ -1701,7 +1756,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                      onChange={(e) => setNewExGroup(e.target.value)}
                                                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
                                                    >
-                                                      {['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'].map(grp => (
+                                                      {appMuscleGroups.map(grp => (
                                                          <option key={grp} value={grp}>{grp.toUpperCase()}</option>
                                                       ))}
                                                    </select>
@@ -1713,7 +1768,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                      onChange={(e) => setNewExCategory(e.target.value)}
                                                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
                                                    >
-                                                      {['Musculação', 'Funcional', 'Alongamento'].map(cat => (
+                                                      {appCategories.map(cat => (
                                                          <option key={cat} value={cat}>{cat.toUpperCase()}</option>
                                                       ))}
                                                    </select>
@@ -3954,6 +4009,75 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 >
                   Salvar Atribuição ({routineStudentIds.length})
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* OPTIONS EDITOR MODAL */}
+      <AnimatePresence>
+        {isEditingOptions && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-slate-50 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                <div>
+                  <h3 className="font-black italic uppercase text-slate-900 tracking-tighter">
+                    Editar {editingOptionType === 'muscle' ? 'Grupos Musculares' : 'Categorias'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsEditingOptions(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-xl transition active:scale-95 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-white border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newOptionValue}
+                    onChange={(e) => setNewOptionValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddOption();
+                    }}
+                    placeholder={`Adicionar ${editingOptionType === 'muscle' ? 'novo grupo' : 'nova categoria'}...`}
+                    className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
+                  />
+                  <button
+                    onClick={handleAddOption}
+                    className="bg-[#dc2626] text-white px-4 py-3 rounded-xl text-xs font-black uppercase italic tracking-wider hover:bg-[#ef4444] transition"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                {(editingOptionType === 'muscle' ? appMuscleGroups : appCategories).map((opt) => (
+                  <div key={opt} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="text-xs font-bold text-slate-700 uppercase">{opt}</span>
+                    <button
+                      onClick={() => handleRemoveOption(opt)}
+                      className="text-slate-300 hover:text-red-500 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </motion.div>
           </motion.div>

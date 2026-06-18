@@ -445,6 +445,25 @@ export const storage = {
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
   },
 
+  // ── Categories & Muscle Groups ──────────────────────────────────────────
+  getMuscleGroups: (): string[] => {
+    const data = localStorage.getItem('cadu_ponce_muscle_groups');
+    return data ? JSON.parse(data) : ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'];
+  },
+
+  saveMuscleGroups: (groups: string[]): void => {
+    localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+  },
+
+  getCategories: (): string[] => {
+    const data = localStorage.getItem('cadu_ponce_categories');
+    return data ? JSON.parse(data) : ['Musculação', 'Funcional', 'Alongamento'];
+  },
+
+  saveCategories: (categories: string[]): void => {
+    localStorage.setItem('cadu_ponce_categories', JSON.stringify(categories));
+  },
+
   uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
     const { supabase } = await import('./supabase');
     const ext = file.name.split('.').pop();
