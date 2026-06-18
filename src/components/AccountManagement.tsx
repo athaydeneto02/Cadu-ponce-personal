@@ -296,7 +296,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   // Exercise Library State
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [exerciseTab, setExerciseTab] = useState<'grupos' | 'categorias'>('grupos');
-  const [exerciseFilter, setExerciseFilter] = useState<'favoritos' | 'app' | 'mine'>('app');
+  const [exerciseFilter, setExerciseFilter] = useState<'favoritos' | 'app' | 'mine'>('mine');
 
   const [exercises, setExercises] = useState(() => {
     const saved = localStorage.getItem('cadu_ponce_exercises_v3');
