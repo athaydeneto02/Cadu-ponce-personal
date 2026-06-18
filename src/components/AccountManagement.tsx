@@ -234,6 +234,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [editingRoutine, setEditingRoutine] = useState<import('../types').AdminRoutine | null>(null);
   const [assigningRoutine, setAssigningRoutine] = useState<import('../types').AdminRoutine | null>(null);
   const [routineExercises, setRoutineExercises] = useState<import('../types').AdminExercise[]>([]);
+  const [expandedExerciseDetails, setExpandedExerciseDetails] = useState<number[]>([]);
   const [selectingExerciseForIdx, setSelectingExerciseForIdx] = useState<number | null>(null);
   const [routineStudentIds, setRoutineStudentIds] = useState<string[]>([]);
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
@@ -2024,8 +2025,33 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       </div>
                                     </div>
 
-                                    {/* Video Link */}
-                                    <div className="space-y-1.5">
+                                    {/* Link/Badge for Media/Notes */}
+                                    <div className="flex items-center justify-between pt-1">
+                                      <div className="flex gap-2">
+                                        {(ex.videoUrl || ex.videoFileUrl || ex.notes) && !expandedExerciseDetails.includes(idx) && (
+                                          <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md uppercase tracking-tight">
+                                            <Check className="w-3 h-3" /> Mídia/Obs vinculados
+                                          </div>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => setExpandedExerciseDetails(prev => 
+                                          prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+                                        )}
+                                        className="text-[9px] font-black text-slate-400 hover:text-[#dc2626] uppercase transition flex items-center gap-1 cursor-pointer"
+                                      >
+                                        {expandedExerciseDetails.includes(idx) ? (
+                                          <><ChevronUp className="w-3 h-3" /> Ocultar detalhes</>
+                                        ) : (
+                                          <><ChevronDown className="w-3 h-3" /> Ver/Editar detalhes</>
+                                        )}
+                                      </button>
+                                    </div>
+
+                                    {expandedExerciseDetails.includes(idx) && (
+                                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                                        {/* Video Link */}
+                                        <div className="space-y-1.5">
                                       <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1">
                                         <LinkIcon className="w-3 h-3" /> Link do vídeo (YouTube ou outro)
                                       </label>
@@ -2093,9 +2119,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626] transition"
                                       />
                                     </div>
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
-
                                 {routineExercises.length > 0 && (
                                   <button
                                     onClick={addExerciseToRoutine}
