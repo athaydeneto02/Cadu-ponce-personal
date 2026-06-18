@@ -254,25 +254,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         // ignore
       }
     }
-    return [
-      { title: 'Abdominal Canivete', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1571019623452-4d9cc2dbbc92?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Deite-se de barriga para cima, estenda os braços acima da cabeça. Eleve o tronco e as pernas de forma simultânea até se encontrarem.' },
-      { title: 'Abdominal Canivete Alternado', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=200', isFavorite: true, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Realize o movimento parecido com o canivete tradicional, porém subindo e tocando apenas uma perna alternadamente.' },
-      { title: 'Abdominal com Rodinha Solo com Apoio', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1544033527-b192daee1f5b?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Apoie os joelhos no solo e empurre a roda de abdominais para frente, estendendo o quadril de forma segura e contraindo o abdômen para retornar.' },
-      { title: 'Abdominal Crunches Máquina', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1518310383802-640c2de311b2?auto=format&fit=crop&q=80&w=200', isFavorite: true, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Execução do movimento de flexão do tronco em aparelho específico mantendo a carga controlada.' },
-      { title: 'Abdominal Dead Bug', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Mantenha braços apontados para o teto e joelhos em 90 graus. Estique braço direito e perna esquerda próximo ao chão e alterne de forma controlada.' },
-      { title: 'Abdominal Dead Bug Isométrico', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1599058917212-d750089bc0d8?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Mantenha a posição estática do Dead Bug por tempo determinado para focar no core profundo.' },
-      { title: 'Abdominal Dragon Fly', group: 'Abdômen', category: 'Musculação', image: 'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Exercício avançado de elevação de todo o corpo esticado a partir dos ombros segurando em um apoio firme.' },
-      { title: 'Agachamento Livre', group: 'Pernas', category: 'Musculação', image: 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Agachamento clássico com ou sem pesos com foco no quadríceps e glúteos.' },
-      { title: 'Leg Press 45º Integrado', group: 'Pernas', category: 'Musculação', image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Empurre a plataforma de leg press 45 com controle, ativando quadríceps, isquiotibiais e glúteos.' },
-      { title: 'Passada Avanço Halteres', group: 'Pernas', category: 'Musculação', image: 'https://images.unsplash.com/photo-1434608519344-49d77a699e1d?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Dê passos largos à frente flexionando joelhos até o de trás quase tocar o chão.' },
-      { title: 'Supino Reto Halteres', group: 'Peito', category: 'Musculação', image: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Empurre horizontalmente os halteres deitado no banco plano.' },
-      { title: 'Desenvolvimento Ombros', group: 'Ombros', category: 'Musculação', image: 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Empurre halteres verticalmente acima da cabeça.' },
-      { title: 'Elevação Lateral Premium', group: 'Ombros', category: 'Alongamento', image: 'https://images.unsplash.com/photo-1532384748853-8f54a8f476e2?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Elevação lateral com ombros contraídos para focar no deltoide lateral.' },
-      { title: 'Puxada Alta Pronada', group: 'Costas', category: 'Musculação', image: 'https://images.unsplash.com/photo-1598971861713-54ad16a7e72e?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Puxe a barra em direção ao peito com pegada bem aberta e ombros para trás.' },
-      { title: 'Rosca Concentrada Cabo', group: 'Braços', category: 'Musculação', image: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Isolamento de bíceps puxando com cabo na polia baixa.' },
-      { title: 'Flexão de Braço', group: 'Peito', category: 'Funcional', image: 'https://images.unsplash.com/photo-1598971639058-fab3c3109a00?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Apoio de solo clássico ativando peitoral, tríceps e estabilizadores do tronco.' },
-      { title: 'Prancha Frontal Solo', group: 'Abdômen', category: 'Funcional', image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&q=80&w=200', isFavorite: false, isCustom: false, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', description: 'Sustentação isométrica focando no transverso do abdômen e estabilizadores de coluna.' }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -769,12 +751,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   // Quick feedback templates
-  const mockFeedbacks = [
-    { name: 'Aline Rocha', time: '11:20', text: 'Bom dia Prof! Fiz o treino A hoje cedo, consegui subir a carga no agachamento búlgaro para 12kg de cada lado! 🔥', unread: true },
-    { name: 'José Soares', time: 'Ontem', text: 'A dor nas costas sumiu totalmente depois de ajustar a postura na remada curvada conforme você indicou no vídeo. Obrigado!', unread: false },
-    { name: 'Carla Pereira', time: '09:45', text: 'Mandei as novas fotos de evolução lá na aba de progresso, dá uma olhada depois por favor.', unread: true },
-    { name: 'Felippe Leitao', time: 'Há 2 dias', text: 'Preciso trocar o supino inclinado por outro exercício, meu ombro esquerdo está incomodando um pouco.', unread: false },
-  ];
+  const mockFeedbacks: any[] = [];
 
   // Quick sales link templates
   const salesLinks = [
@@ -784,12 +761,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   ];
 
   // Training updates timeline
-  const recentUpdates = [
-    { student: 'Carla Pereira', action: 'Marcou Treino Perfeito!', detail: 'Treino A - Inferiores completado em 48min.', time: 'há 10 minutos' },
-    { student: 'José Soares', action: 'Atualizou carga', detail: 'Supino Reto subiu de 60kg para 64kg (+7%).', time: 'há 1 hora' },
-    { student: 'Aline Rocha', action: 'Submeteu evolução', detail: 'Adicionou nova foto de frente e peso: 59.4 kg.', time: 'há 3 horas' },
-    { student: 'Felippe Leitao', action: 'Completou Treino B', detail: 'Foco em dorsal e bíceps executado.', time: 'há 1 dia' },
-  ];
+  const recentUpdates: any[] = [];
 
   return (
     <div className="fixed inset-0 z-[60] bg-[#0c131c] text-white overflow-y-auto font-sans flex items-center justify-center p-0 md:p-6 lg:p-10 select-none">
@@ -2512,34 +2484,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">FATURAMENTO</h3>
                   </div>
 
-                  {/* Pricing Overview metrics */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden">
-                      <span className="text-[8.5px] text-slate-500 font-bold uppercase block tracking-wider">A Receber</span>
-                      <span className="text-xl font-black text-white">R$ 2.450</span>
-                    </div>
-                    <div className="p-4 bg-emerald-600/10 border border-emerald-555/20 rounded-2xl">
-                      <span className="text-[8.5px] text-emerald-500 font-bold uppercase block tracking-wider">Pago este mês</span>
-                      <span className="text-xl font-black text-emerald-400">R$ 5.480</span>
-                    </div>
-                  </div>
-
-                  {/* Revenue Chart mock */}
-                  <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Faturamento Mensal</span>
-                    <div className="h-20 flex items-end space-x-2 pt-2">
-                      <div className="flex-1 bg-slate-825 h-[40%] rounded-t-sm" />
-                      <div className="flex-1 bg-slate-825 h-[55%] rounded-t-sm" />
-                      <div className="flex-1 bg-slate-825 h-[70%] rounded-t-sm" />
-                      <div className="flex-1 bg-red-600 h-[100%] rounded-t-sm" />
-                    </div>
-                    <div className="flex justify-between text-[8px] text-slate-500 font-black uppercase">
-                      <span>Mar</span>
-                      <span>Abr</span>
-                      <span>Mai</span>
-                      <span>Jun (Atual)</span>
-                    </div>
-                  </div>
+                  {/* Removed Mocked Revenue Overview */}
 
                   {/* Pricing subscription lists */}
                   <div className="space-y-2">
@@ -2665,7 +2610,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                const studentsInCat = users.filter(u => u.role === 'student' && (
                                  (cat.label === 'Engajado' && (u.status === 'active' || !u.status)) ||
                                  (cat.label === 'Abandono' && u.status === 'inactive') ||
-                                 (cat.label === 'Em risco' && u.name.length > 15) // Mock logic
+                                 (cat.label === 'Em risco' && u.status === 'active' && false) // To be implemented with real engagement metrics
                                )).slice(0, categoryData?.count || 0);
                                setSelectedUidsForNotify(studentsInCat.map(s => s.uid));
                             }}

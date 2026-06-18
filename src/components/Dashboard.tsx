@@ -31,29 +31,11 @@ interface DashboardProps {
   onUpdateUser?: (updated: UserProfile) => void;
 }
 
-const mockGoals: Goal[] = [
-  { id: '1', title: 'Supino Reto', currentValue: 80, targetValue: 100, unit: 'kg', category: 'strength' },
-  { id: '2', title: 'Treinos por Semana', currentValue: 4, targetValue: 5, unit: 'x', category: 'frequency' },
-];
+const mockGoals: Goal[] = [];
 
-const progressData = [
-  { name: 'Jan', load: 45 },
-  { name: 'Fev', load: 48 },
-  { name: 'Mar', load: 52 },
-  { name: 'Abr', load: 58 },
-  { name: 'Mai', load: 63 },
-  { name: 'Jun', load: 68 },
-];
+const progressData: {name: string, load: number}[] = [];
 
-const weeklyData = [
-  { day: 'S', load: 120 },
-  { day: 'T', load: 150 },
-  { day: 'Q', load: 0 },
-  { day: 'Q', load: 180 },
-  { day: 'S', load: 140 },
-  { day: 'S', load: 90 },
-  { day: 'D', load: 0 },
-];
+const weeklyData: {day: string, load: number}[] = [];
 
 export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser }: DashboardProps) {
   const currentWorkout = workouts[0]; // Suggest the first one
@@ -68,13 +50,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         // Fallback below
       }
     }
-    // Generate gorgeous mock weight evolution data for the last 4 weeks based on current weight
-    return [
-      { week: 'Semana 1', peso: Math.round((currentWeight + 1.8) * 10) / 10 },
-      { week: 'Semana 2', peso: Math.round((currentWeight + 1.1) * 10) / 10 },
-      { week: 'Semana 3', peso: Math.round((currentWeight + 0.4) * 10) / 10 },
-      { week: 'Semana 4', peso: currentWeight }
-    ];
+    // Fallback to empty array if no saved data
+    return user?.weight ? [{ week: 'Semana 1', peso: user.weight }] : [];
   });
 
   const [newWeight, setNewWeight] = useState('');

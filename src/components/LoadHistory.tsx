@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { TrendingUp, Award, Clock, ChevronDown, Activity } from 'lucide-react';
 import { Workout } from '../types';
+import { storage } from '../lib/storage';
 
 interface LoadPoint {
   date: string;
@@ -28,37 +29,6 @@ interface ExerciseProgression {
   name: string;
   history: LoadPoint[];
 }
-
-// Mocked historical data for various exercises
-const progressionData: Record<string, LoadPoint[]> = {
-  '1': [ // Supino Reto
-    { date: '01/05', load: 60 },
-    { date: '08/05', load: 64 },
-    { date: '15/05', load: 64 },
-    { date: '22/05', load: 68 },
-    { date: '29/05', load: 72 },
-    { date: '05/06', load: 76 },
-    { date: '12/06', load: 80 },
-  ],
-  '2': [ // Agachamento
-    { date: '01/05', load: 80 },
-    { date: '08/05', load: 85 },
-    { date: '15/05', load: 90 },
-    { date: '22/05', load: 90 },
-    { date: '29/05', load: 95 },
-    { date: '05/06', load: 100 },
-    { date: '12/06', load: 110 },
-  ],
-  'default': [
-    { date: '01/05', load: 20 },
-    { date: '08/05', load: 22 },
-    { date: '15/05', load: 24 },
-    { date: '22/05', load: 24 },
-    { date: '29/05', load: 26 },
-    { date: '05/06', load: 28 },
-    { date: '12/06', load: 30 },
-  ]
-};
 
 interface LoadHistoryProps {
   workouts: Workout[];
@@ -80,11 +50,19 @@ export default function LoadHistory({ workouts }: LoadHistoryProps) {
   const [selectedExercise, setSelectedExercise] = useState(allExercises[0]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const currentHistory = progressionData[selectedExercise?.id] || progressionData['default'];
-  const maxLoad = Math.max(...currentHistory.map(h => h.load));
-  const latestLoad = currentHistory[currentHistory.length - 1].load;
-  const initialLoad = currentHistory[0].load;
-  const progressionPercent = ((latestLoad - initialLoad) / initialLoad * 100).toFixed(1);
+  const currentHistory = useMemo(() => {
+    if (!selectedExercise) return [];
+    const entries = storage.getProgress().filter(p => p.exerciseName === selectedExercise.name);
+    return entries.map(e => ({
+      date: new Date(e.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      load: e.load
+    })).reverse();
+  }, [selectedExercise]);
+
+  const maxLoad = currentHistory.length > 0 ? Math.max(...currentHistory.map(h => h.load)) : 0;
+  const latestLoad = currentHistory.length > 0 ? currentHistory[currentHistory.length - 1].load : 0;
+  const initialLoad = currentHistory.length > 0 ? currentHistory[0].load : 0;
+  const progressionPercent = initialLoad > 0 ? ((latestLoad - initialLoad) / initialLoad * 100).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-6">

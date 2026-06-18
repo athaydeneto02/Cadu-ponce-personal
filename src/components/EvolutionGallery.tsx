@@ -10,22 +10,7 @@ import { storage } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 
-const MOCK_PHOTOS: EvolutionPhoto[] = [
-  {
-    id: 'p1',
-    studentId: 'user123',
-    photoURL: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=800&q=80',
-    date: '2026-05-12T10:00:00Z',
-    notes: 'Início do projeto'
-  },
-  {
-    id: 'p2',
-    studentId: 'user123',
-    photoURL: 'https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=800&q=80',
-    date: '2026-06-12T10:00:00Z',
-    notes: 'Após 1 mês de consultoria'
-  }
-];
+const MOCK_PHOTOS: EvolutionPhoto[] = [];
 
 export default function EvolutionGallery() {
   const [photos, setPhotos] = useState<EvolutionPhoto[]>([]);
