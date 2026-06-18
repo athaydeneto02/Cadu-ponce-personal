@@ -312,33 +312,45 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+  // Load admin data from dedicated Supabase tables on mount
   useEffect(() => {
-    storage.fetchAdminData().then(data => {
-        if(data) {
-          if(data.exercises) setExercises(data.exercises);
-          if(data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
-          if(data.categories) setAppCategories(data.categories);
-        }
-        setIsDataLoaded(true);
-    });
+    Promise.all([
+      storage.fetchAdminRoutines(),
+      storage.fetchCustomExercises(),
+      storage.fetchMuscleGroups(),
+      storage.fetchCategories(),
+    ]).then(([routines, customExercises, muscleGroups, categories]) => {
+      if (routines && routines.length > 0) setAdminRoutines(routines);
+      if (customExercises && customExercises.length > 0) setExercises(customExercises);
+      if (muscleGroups && muscleGroups.length > 0) setAppMuscleGroups(muscleGroups);
+      if (categories && categories.length > 0) setAppCategories(categories);
+      setIsDataLoaded(true);
+    }).catch(() => setIsDataLoaded(true));
   }, []);
 
   useEffect(() => {
     if (!isDataLoaded) return;
-    storage.saveMuscleGroups(appMuscleGroups);
-    storage.syncAdminData();
+    storage.saveMuscleGroups(appMuscleGroups as string[]);
   }, [appMuscleGroups, isDataLoaded]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
-    storage.saveCategories(appCategories);
-    storage.syncAdminData();
+    storage.saveCategories(appCategories as string[]);
   }, [appCategories, isDataLoaded]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
+    // Sync custom exercises to Supabase: save only newly added/modified ones
+    // (bulk save - iterate and upsert each)
+    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const cachedList = cached ? JSON.parse(cached) : [];
+    exercises.forEach((ex: any) => {
+      const was = cachedList.find((c: any) => c.id === ex.id);
+      if (!was || JSON.stringify(was) !== JSON.stringify(ex)) {
+        storage.saveCustomExercise(ex);
+      }
+    });
     localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
-    storage.syncAdminData();
   }, [exercises, isDataLoaded]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
@@ -383,7 +395,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setNewWorkoutNotes('');
   };
 
-  const handleSaveAdminRoutine = () => {
+  const handleSaveAdminRoutine = async () => {
     if (!routineName || routineName === 'NOME DA ROTINA') return;
     const studentNames = routineStudentIds.map(id => {
       const s = users.find(u => u.uid === id);
@@ -400,7 +412,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       exercises: routineExercises,
       createdAt: editingRoutine?.createdAt || new Date().toISOString(),
     };
-    storage.saveAdminRoutine(routine);
+    await storage.saveAdminRoutine(routine);
     setAdminRoutines(storage.getAdminRoutines());
 
     // Automatically create Workouts for assigned students
@@ -432,7 +444,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setHomeSubView('workout_library');
   };
 
-  const handleSaveRoutineAssignment = () => {
+  const handleSaveRoutineAssignment = async () => {
     if (!assigningRoutine) return;
     const studentNames = routineStudentIds.map(id => {
       const s = users.find(u => u.uid === id);
@@ -443,11 +455,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       studentIds: routineStudentIds,
       studentNames,
     };
-    storage.saveAdminRoutine(updatedRoutine);
+    await storage.saveAdminRoutine(updatedRoutine);
     setAdminRoutines(storage.getAdminRoutines());
 
     // Create a Workout for each student so it shows up on their end
-    routineStudentIds.forEach(async (studentId) => {
+    for (const studentId of routineStudentIds) {
       const newWorkout: import('../types').Workout = {
         id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         studentId,
@@ -459,21 +471,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         })),
         createdAt: new Date().toISOString()
       };
-      
       try {
         await storage.saveWorkout(newWorkout);
       } catch (err) {
         console.error('Failed to assign workout to student:', err);
       }
-    });
+    }
 
     setAssigningRoutine(null);
     setRoutineStudentIds([]);
     alert('Treino atribuído com sucesso!');
   };
 
-  const handleDeleteAdminRoutine = (id: string) => {
-    storage.deleteAdminRoutine(id);
+  const handleDeleteAdminRoutine = async (id: string) => {
+    await storage.deleteAdminRoutine(id);
     setAdminRoutines(storage.getAdminRoutines());
   };
 
@@ -564,19 +575,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     storage.saveUsersList(merged);
     setUsers(merged);
 
-    // Sync admin specific data (custom exercises, routines, categories) from Supabase metadata
-    const currentUser = storage.getUser();
-    if (currentUser && currentUser.role === 'admin') {
-      storage.fetchAdminData().then((data) => {
-        if (data) {
-          if (data.routines) setAdminRoutines(data.routines);
-          if (data.exercises) setExercises(data.exercises);
-          if (data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
-          if (data.categories) setAppCategories(data.categories);
-        }
-      });
-    }
-
     // Asynchronously fetch from Supabase to get users registered from the main app login
     storage.fetchUsersList().then((supabaseUsers) => {
       if (supabaseUsers && supabaseUsers.length > 0) {
@@ -590,7 +588,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               newUsers[idx] = { ...newUsers[idx], ...su };
             }
           });
-          // Apply DEFAULT_STUDENTS overrides again just in case
           DEFAULT_STUDENTS.forEach(def => {
             const idx = newUsers.findIndex(u => u.name.toLowerCase() === def.name.toLowerCase() || u.email.toLowerCase() === def.email.toLowerCase());
             if (idx === -1) {
@@ -604,8 +601,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               };
             }
           });
-          // We don't need to save to local storage here because fetchUsersList already did that internally,
-          // but we do it anyway to ensure our DEFAULT_STUDENTS overrides are cached correctly.
           storage.saveUsersList(newUsers);
           return newUsers;
         });

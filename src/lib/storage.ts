@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * storage.ts — Supabase-backed data layer.
- * All functions are async and communicate with Supabase DB / Storage.
- * A localStorage fallback is kept for offline resilience (read-only cache).
+ * All admin data (routines, custom exercises, categories, muscle groups)
+ * is stored directly in Supabase tables — not in localStorage metadata hacks.
+ * localStorage is used only as a fast read-cache for the current session.
  */
 
 import { supabase } from './supabase';
-import { Workout, ProgressEntry, EvolutionPhoto, UserProfile } from '../types';
+import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise } from '../types';
 
 // ---------------------------------------------------------------------------
-// Local-storage cache keys (used as offline fallback – read only)
+// Local-storage cache keys (session cache only — NOT the source of truth)
 // ---------------------------------------------------------------------------
 const CACHE_KEYS = {
   USER: 'cadu_ponce_user',
@@ -21,10 +22,9 @@ const CACHE_KEYS = {
 };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Row mappers
 // ---------------------------------------------------------------------------
 
-/** Maps a Supabase `profiles` row → app UserProfile */
 function rowToUserProfile(row: Record<string, unknown>): UserProfile {
   return {
     uid: row.id as string,
@@ -42,7 +42,6 @@ function rowToUserProfile(row: Record<string, unknown>): UserProfile {
   };
 }
 
-/** Maps a Supabase `workouts` row (with joined `exercises`) → app Workout */
 function rowToWorkout(row: Record<string, unknown>): Workout {
   const exercises = ((row.exercises as Record<string, unknown>[]) ?? [])
     .sort((a, b) => ((a.sort_order as number) ?? 0) - ((b.sort_order as number) ?? 0))
@@ -66,8 +65,35 @@ function rowToWorkout(row: Record<string, unknown>): Workout {
   };
 }
 
+function rowToAdminExercise(row: Record<string, unknown>): AdminExercise {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sets: (row.sets as number) ?? 3,
+    reps: (row.reps as string) ?? '10',
+    rest: (row.rest as string) ?? '60s',
+    notes: (row.notes as string) ?? undefined,
+    videoUrl: (row.video_url as string) ?? undefined,
+    videoFileUrl: (row.video_file_url as string) ?? undefined,
+  };
+}
+
+function rowToAdminRoutine(row: Record<string, unknown>, exercises: AdminExercise[] = []): AdminRoutine {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    goal: (row.goal as string) ?? '',
+    difficulty: (row.difficulty as string) ?? '',
+    notes: (row.notes as string) ?? undefined,
+    studentIds: (row.student_ids as string[]) ?? [],
+    studentNames: (row.student_names as string[]) ?? [],
+    exercises,
+    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+  };
+}
+
 // ---------------------------------------------------------------------------
-// Auth helpers (kept for compatibility with App.tsx)
+// Storage API
 // ---------------------------------------------------------------------------
 
 export const storage = {
@@ -95,62 +121,38 @@ export const storage = {
       .eq('id', authData.user.id)
       .single();
 
-    if (error || !data) {
-      console.error('Error fetching profile:', error);
-      return null;
-    }
+    if (error || !data) return null;
     const profile = rowToUserProfile(data);
-    storage.saveUser(profile); // update cache
+    storage.saveUser(profile);
     return profile;
   },
 
-  /** Fetches all profiles from Supabase (admin only). Use this for fresh data. */
+  /** Fetches all profiles from Supabase (admin use). */
   fetchUsersList: async (): Promise<UserProfile[]> => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data) return [];
-    const supabaseUsers = data.map(rowToUserProfile);
-    
-    // Merge with local cache so we don't lose users created locally without a password
-    const localData = localStorage.getItem('cadu_ponce_all_users');
-    const localUsers: UserProfile[] = localData ? JSON.parse(localData) : [];
-    
-    const mergedUsers = [...localUsers];
-    supabaseUsers.forEach(su => {
-      const idx = mergedUsers.findIndex(u => u.uid === su.uid || (u.email && su.email && u.email.toLowerCase() === su.email.toLowerCase()));
-      if (idx === -1) {
-        mergedUsers.push(su);
-      } else {
-        // Supabase is source of truth for these users
-        mergedUsers[idx] = { ...mergedUsers[idx], ...su };
-      }
-    });
-
-    // Update local cache
-    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(mergedUsers));
-    return mergedUsers;
+    if (error || !data) {
+      const cached = localStorage.getItem('cadu_ponce_all_users');
+      return cached ? JSON.parse(cached) : [];
+    }
+    const users = data.map(rowToUserProfile);
+    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+    return users;
   },
 
-  /** @deprecated – kept for legacy callers. Use getUsersList() (async) instead. */
-  getUsersListSync: (): UserProfile[] => {
-    // Return from local cache — callers should migrate to async getUsersList()
+  /** Returns cached users list (sync). */
+  getUsersList: (): UserProfile[] => {
     const data = localStorage.getItem('cadu_ponce_all_users');
     return data ? JSON.parse(data) : [];
   },
 
-  /** @legacy Alias so AccountManagement.tsx sync calls keep working via local cache. */
-  getUsersList: (() => {
-    // Return a dual-mode function: when called synchronously returns cache,
-    // but also has async access. We implement this as a plain sync function
-    // that returns the local cache. For full Supabase data, use fetchUsersList().
-    return (): UserProfile[] => {
-      const data = localStorage.getItem('cadu_ponce_all_users');
-      return data ? JSON.parse(data) : [];
-    };
-  })(),
+  /** Saves users list to local cache. */
+  saveUsersList: (users: UserProfile[]): void => {
+    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+  },
 
   /** Updates a user profile in Supabase. */
   updateProfile: async (user: UserProfile): Promise<void> => {
@@ -170,17 +172,24 @@ export const storage = {
       .eq('id', user.uid);
 
     if (error) throw error;
-    storage.saveUser(user); // keep cache in sync
+    storage.saveUser(user);
   },
 
-  /** Creates a new student account via Supabase Auth + inserts profile row. */
+  /** Deletes a profile from Supabase. */
+  deleteProfile: async (userId: string): Promise<void> => {
+    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    if (error) throw error;
+    const users = storage.getUsersList().filter(u => u.uid !== userId);
+    storage.saveUsersList(users);
+  },
+
+  /** Creates a new student account via Supabase Auth. */
   createStudentAccount: async (
     email: string,
     password: string,
     name: string,
     extraData?: Partial<UserProfile>
   ): Promise<UserProfile> => {
-    // Sign up via Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -191,8 +200,6 @@ export const storage = {
     if (error) throw error;
     if (!data.user) throw new Error('Usuário não criado');
 
-    // The handle_new_user trigger creates the profile row automatically.
-    // We just need to enrich it with extra data if provided.
     if (extraData && Object.keys(extraData).length > 0) {
       await supabase.from('profiles').update({
         weight: extraData.weight ?? null,
@@ -215,34 +222,28 @@ export const storage = {
 
   // ── Workouts ─────────────────────────────────────────────────────────────
 
-  /** Returns cached workouts (sync fallback). */
   getWorkouts: (): Workout[] => {
     const data = localStorage.getItem(CACHE_KEYS.WORKOUTS);
     return data ? JSON.parse(data) : [];
   },
 
-  /** Fetches workouts for a student from Supabase. */
   fetchWorkouts: async (studentId?: string): Promise<Workout[]> => {
     let query = supabase
       .from('workouts')
       .select('*, exercises(*)')
       .order('created_at', { ascending: false });
 
-    if (studentId) {
-      query = query.eq('student_id', studentId);
-    }
+    if (studentId) query = query.eq('student_id', studentId);
 
     const { data, error } = await query;
-    if (error || !data) return storage.getWorkouts(); // offline fallback
+    if (error || !data) return storage.getWorkouts();
 
     const workouts = data.map(rowToWorkout);
     localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
     return workouts;
   },
 
-  /** Creates or replaces a workout (and its exercises) in Supabase. */
   saveWorkout: async (workout: Workout): Promise<void> => {
-    // Upsert workout row
     const { error: wError } = await supabase.from('workouts').upsert({
       id: workout.id,
       name: workout.name,
@@ -251,7 +252,6 @@ export const storage = {
     });
     if (wError) throw wError;
 
-    // Delete old exercises and re-insert
     await supabase.from('exercises').delete().eq('workout_id', workout.id);
 
     if (workout.exercises.length > 0) {
@@ -271,7 +271,13 @@ export const storage = {
     }
   },
 
-  /** Deletes a workout and its exercises. */
+  saveWorkouts: (workouts: Workout[]): void => {
+    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
+    workouts.forEach(async (w) => {
+      try { await storage.saveWorkout(w); } catch { /* silent */ }
+    });
+  },
+
   deleteWorkout: async (workoutId: string): Promise<void> => {
     const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
     if (error) throw error;
@@ -279,13 +285,11 @@ export const storage = {
 
   // ── Progress ──────────────────────────────────────────────────────────────
 
-  /** Returns cached progress entries. */
   getProgress: (): ProgressEntry[] => {
     const data = localStorage.getItem(CACHE_KEYS.PROGRESS);
     return data ? JSON.parse(data) : [];
   },
 
-  /** Fetches progress entries from Supabase for a student. */
   fetchProgress: async (studentId: string): Promise<ProgressEntry[]> => {
     const { data, error } = await supabase
       .from('progress_entries')
@@ -309,7 +313,6 @@ export const storage = {
     return entries;
   },
 
-  /** Inserts a new progress entry. */
   saveProgress: async (entry: ProgressEntry): Promise<void> => {
     const { error } = await supabase.from('progress_entries').insert({
       id: entry.id,
@@ -321,21 +324,17 @@ export const storage = {
       date: entry.date,
     });
     if (error) throw error;
-
-    // Also update cache
     const all = storage.getProgress();
     localStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
   },
 
   // ── Evolution Photos ──────────────────────────────────────────────────────
 
-  /** Returns cached photos. */
   getPhotos: (): EvolutionPhoto[] => {
     const data = localStorage.getItem(CACHE_KEYS.PHOTOS);
     return data ? JSON.parse(data) : [];
   },
 
-  /** Fetches evolution photos from Supabase for a student. */
   fetchPhotos: async (studentId: string): Promise<EvolutionPhoto[]> => {
     const { data, error } = await supabase
       .from('evolution_photos')
@@ -357,10 +356,6 @@ export const storage = {
     return photos;
   },
 
-  /**
-   * Uploads a photo file to Supabase Storage and inserts a record.
-   * Returns the public URL of the uploaded photo.
-   */
   savePhoto: async (photo: EvolutionPhoto, file?: File): Promise<string> => {
     let photoURL = photo.photoURL;
 
@@ -369,12 +364,8 @@ export const storage = {
       const { error: uploadError } = await supabase.storage
         .from('evolution-photos')
         .upload(filePath, file, { upsert: true });
-
       if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('evolution-photos')
-        .getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from('evolution-photos').getPublicUrl(filePath);
       photoURL = urlData.publicUrl;
     }
 
@@ -387,142 +378,215 @@ export const storage = {
     });
     if (error) throw error;
 
-    // Update cache
     const all = storage.getPhotos();
     const updated = { ...photo, photoURL };
     localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([updated, ...all]));
     return photoURL;
   },
 
-  /** Deletes a photo from Storage and from DB. */
   deletePhoto: async (photoId: string): Promise<void> => {
-    const { error } = await supabase
-      .from('evolution_photos')
-      .delete()
-      .eq('id', photoId);
+    const { error } = await supabase.from('evolution_photos').delete().eq('id', photoId);
     if (error) throw error;
   },
 
-  // ── Legacy compatibility shims (used by AccountManagement.tsx) ─────────
-  // These write to localStorage cache AND sync to Supabase asynchronously.
+  // ── Admin Routines (Fichas por Treino) ────────────────────────────────────
+  // Stored in dedicated `admin_routines` + `admin_exercises` Supabase tables.
 
-  /** @legacy Saves users list to local cache and upserts to Supabase in background. */
-  saveUsersList: (users: UserProfile[]): void => {
-    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
-    // Sync changed profiles to Supabase in background (best-effort)
-    users.forEach(async (u) => {
-      try {
-        await storage.updateProfile(u);
-      } catch {
-        // Ignore individual profile update errors silently
-      }
-    });
-  },
-
-  /** @legacy Saves workouts array to local cache and upserts each to Supabase in background. */
-  saveWorkouts: (workouts: Workout[]): void => {
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
-    // Sync to Supabase in background (best-effort)
-    workouts.forEach(async (w) => {
-      try {
-        await storage.saveWorkout(w);
-      } catch {
-        // Ignore errors silently
-      }
-    });
-  },
-
-  // ── Admin Routines ──────────────────────────────────────────────────────
   ADMIN_ROUTINES_KEY: 'cadu_ponce_admin_routines',
 
-  getAdminRoutines: (): import('../types').AdminRoutine[] => {
+  /** Fetches all admin routines with their exercises from Supabase. */
+  fetchAdminRoutines: async (): Promise<AdminRoutine[]> => {
+    const { data: routineRows, error: rErr } = await supabase
+      .from('admin_routines')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (rErr || !routineRows) {
+      console.warn('fetchAdminRoutines fallback to local:', rErr?.message);
+      const cached = localStorage.getItem('cadu_ponce_admin_routines');
+      return cached ? JSON.parse(cached) : [];
+    }
+
+    const routineIds = routineRows.map(r => r.id as string);
+    const exercisesByRoutine: Record<string, AdminExercise[]> = {};
+
+    if (routineIds.length > 0) {
+      const { data: exRows } = await supabase
+        .from('admin_exercises')
+        .select('*')
+        .in('routine_id', routineIds)
+        .order('sort_order', { ascending: true });
+
+      if (exRows) {
+        exRows.forEach(row => {
+          const rid = row.routine_id as string;
+          if (!exercisesByRoutine[rid]) exercisesByRoutine[rid] = [];
+          exercisesByRoutine[rid].push(rowToAdminExercise(row));
+        });
+      }
+    }
+
+    const routines = routineRows.map(row =>
+      rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? [])
+    );
+
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
+    return routines;
+  },
+
+  /** Returns cached routines (sync, used while async fetch is in-flight). */
+  getAdminRoutines: (): AdminRoutine[] => {
     const data = localStorage.getItem('cadu_ponce_admin_routines');
     return data ? JSON.parse(data) : [];
   },
 
-  saveAdminRoutines: (routines: import('../types').AdminRoutine[]): void => {
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
-    storage.syncAdminData();
-  },
+  /** Upserts a single routine (and its exercises) to Supabase. */
+  saveAdminRoutine: async (routine: AdminRoutine): Promise<void> => {
+    const { error: rErr } = await supabase.from('admin_routines').upsert({
+      id: routine.id,
+      name: routine.name,
+      goal: routine.goal ?? '',
+      difficulty: routine.difficulty ?? '',
+      notes: routine.notes ?? null,
+      student_ids: routine.studentIds ?? [],
+      student_names: routine.studentNames ?? [],
+    });
 
-  saveAdminRoutine: (routine: import('../types').AdminRoutine): void => {
-    try {
-      const all = storage.getAdminRoutines();
-      const idx = all.findIndex(r => r.id === routine.id);
-      if (idx >= 0) all[idx] = routine;
-      else all.unshift(routine);
-      localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
-      storage.syncAdminData();
-    } catch (e) {
-      console.error('Failed to save admin routine to localStorage', e);
+    if (rErr) {
+      console.error('saveAdminRoutine error:', rErr.message);
+    } else {
+      // Replace exercises
+      await supabase.from('admin_exercises').delete().eq('routine_id', routine.id);
+      if (routine.exercises && routine.exercises.length > 0) {
+        const rows = routine.exercises.map((e, idx) => ({
+          id: e.id || `aex_${Date.now()}_${idx}`,
+          routine_id: routine.id,
+          name: e.name,
+          sets: e.sets,
+          reps: e.reps,
+          rest: e.rest ?? '60s',
+          notes: e.notes ?? null,
+          video_url: e.videoUrl ?? null,
+          video_file_url: e.videoFileUrl ?? null,
+          sort_order: idx,
+        }));
+        await supabase.from('admin_exercises').insert(rows);
+      }
     }
+
+    // Always update local cache
+    const all = storage.getAdminRoutines();
+    const idx = all.findIndex(r => r.id === routine.id);
+    if (idx >= 0) all[idx] = routine; else all.unshift(routine);
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
   },
 
-  deleteAdminRoutine: (id: string): void => {
+  saveAdminRoutines: (routines: AdminRoutine[]): void => {
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
+    routines.forEach(async (r) => {
+      try { await storage.saveAdminRoutine(r); } catch { /* silent */ }
+    });
+  },
+
+  /** Deletes a routine (and its exercises cascade) from Supabase. */
+  deleteAdminRoutine: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('admin_routines').delete().eq('id', id);
+    if (error) console.error('deleteAdminRoutine error:', error.message);
     const all = storage.getAdminRoutines().filter(r => r.id !== id);
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
-    storage.syncAdminData();
   },
 
-  syncAdminData: async (): Promise<void> => {
-    const user = storage.getUser();
-    if (user && user.role === 'admin') {
-      try {
-        const metadata = user.metadata || {};
-        metadata.adminRoutines = storage.getAdminRoutines();
-        metadata.exercises = JSON.parse(localStorage.getItem('cadu_ponce_exercises_v3') || '[]');
-        metadata.muscleGroups = JSON.parse(localStorage.getItem('cadu_ponce_muscle_groups') || '[]');
-        metadata.categories = JSON.parse(localStorage.getItem('cadu_ponce_categories') || '[]');
-        await storage.updateProfile({ ...user, metadata });
-      } catch (err) {
-        console.error('Failed to sync admin data to Supabase', err);
-      }
+  // ── Custom Exercises (Biblioteca de Exercícios) ───────────────────────────
+
+  /** Fetches custom exercises from Supabase. */
+  fetchCustomExercises: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('custom_exercises')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+      return cached ? JSON.parse(cached) : [];
     }
+
+    const exercises = data.map(row => ({
+      id: row.id,
+      title: row.title,
+      group: row.group,
+      category: row.category,
+      videoUrl: row.video_url ?? undefined,
+      videoFileUrl: row.video_file_url ?? undefined,
+    }));
+
+    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
+    return exercises;
   },
 
-  fetchAdminData: async (): Promise<{ routines?: import('../types').AdminRoutine[], exercises?: any[], muscleGroups?: string[], categories?: string[] } | null> => {
-    const user = storage.getUser();
-    if (user && user.role === 'admin') {
-      try {
-        const { supabase } = await import('./supabase');
-        const { data, error } = await supabase.from('profiles').select('metadata').eq('id', user.uid).single();
-        if (error) throw error;
-        if (data && data.metadata) {
-          const md = data.metadata as any;
-          if (md.adminRoutines) {
-            localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(md.adminRoutines));
-          }
-          if (md.exercises) {
-            localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(md.exercises));
-          }
-          if (md.muscleGroups) {
-            localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(md.muscleGroups));
-          }
-          if (md.categories) {
-            localStorage.setItem('cadu_ponce_categories', JSON.stringify(md.categories));
-          }
-          return {
-            routines: md.adminRoutines,
-            exercises: md.exercises,
-            muscleGroups: md.muscleGroups,
-            categories: md.categories
-          };
-        }
-      } catch (err) {
-        console.error('Failed to fetch admin data from Supabase', err);
-      }
-    }
-    return null;
+  /** Upserts a custom exercise to Supabase. */
+  saveCustomExercise: async (exercise: any): Promise<void> => {
+    const { error } = await supabase.from('custom_exercises').upsert({
+      id: exercise.id,
+      title: exercise.title,
+      group: exercise.group,
+      category: exercise.category,
+      video_url: exercise.videoUrl ?? null,
+      video_file_url: exercise.videoFileUrl ?? null,
+    });
+    if (error) console.error('saveCustomExercise error:', error.message);
+
+    // Always update local cache
+    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const all: any[] = cached ? JSON.parse(cached) : [];
+    const idx = all.findIndex((e: any) => e.id === exercise.id);
+    if (idx >= 0) all[idx] = exercise; else all.unshift(exercise);
+    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(all));
   },
 
-  // ── Categories & Muscle Groups ──────────────────────────────────────────
+  /** Deletes a custom exercise from Supabase. */
+  deleteCustomExercise: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
+    if (error) console.error('deleteCustomExercise error:', error.message);
+    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const all: any[] = cached ? JSON.parse(cached) : [];
+    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)));
+  },
+
+  // ── Muscle Groups & Categories ────────────────────────────────────────────
+
+  fetchMuscleGroups: async (): Promise<string[]> => {
+    const { data, error } = await supabase
+      .from('muscle_groups')
+      .select('name')
+      .order('id', { ascending: true });
+
+    if (error || !data || data.length === 0) return storage.getMuscleGroups();
+    const groups = data.map(r => r.name as string);
+    localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+    return groups;
+  },
+
   getMuscleGroups: (): string[] => {
     const data = localStorage.getItem('cadu_ponce_muscle_groups');
     return data ? JSON.parse(data) : ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'];
   },
 
-  saveMuscleGroups: (groups: string[]): void => {
+  saveMuscleGroups: async (groups: string[]): Promise<void> => {
     localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+    await supabase.from('muscle_groups').delete().neq('id', 0);
+    if (groups.length > 0) await supabase.from('muscle_groups').insert(groups.map(name => ({ name })));
+  },
+
+  fetchCategories: async (): Promise<string[]> => {
+    const { data, error } = await supabase
+      .from('exercise_categories')
+      .select('name')
+      .order('id', { ascending: true });
+
+    if (error || !data || data.length === 0) return storage.getCategories();
+    const cats = data.map(r => r.name as string);
+    localStorage.setItem('cadu_ponce_categories', JSON.stringify(cats));
+    return cats;
   },
 
   getCategories: (): string[] => {
@@ -530,12 +594,13 @@ export const storage = {
     return data ? JSON.parse(data) : ['Musculação', 'Funcional', 'Alongamento'];
   },
 
-  saveCategories: (categories: string[]): void => {
+  saveCategories: async (categories: string[]): Promise<void> => {
     localStorage.setItem('cadu_ponce_categories', JSON.stringify(categories));
+    await supabase.from('exercise_categories').delete().neq('id', 0);
+    if (categories.length > 0) await supabase.from('exercise_categories').insert(categories.map(name => ({ name })));
   },
 
   uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
-    const { supabase } = await import('./supabase');
     const ext = file.name.split('.').pop();
     const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from('exercise-videos').upload(path, file, { upsert: true });
@@ -543,4 +608,11 @@ export const storage = {
     const { data: urlData } = supabase.storage.from('exercise-videos').getPublicUrl(path);
     return urlData.publicUrl;
   },
+
+  // ── Legacy shims (kept for backward compat) ───────────────────────────────
+  getUsersListSync: (): UserProfile[] => storage.getUsersList(),
+  /** @deprecated no-op — data now goes directly to dedicated tables */
+  syncAdminData: async (): Promise<void> => { /* no-op */ },
+  /** @deprecated no-op shim */
+  fetchAdminData: async (): Promise<null> => null,
 };
