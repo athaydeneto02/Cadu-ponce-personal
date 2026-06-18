@@ -143,31 +143,10 @@ export default function AcquireConsulting({ onCancel, onSuccess }: AcquireConsul
       });
       onSuccess(newUser);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro ao criar conta';
-      // If email already exists, just sign in
-      if (message.includes('already registered')) {
-        const registeredUser: UserProfile = {
-          uid: 'user_' + Date.now(),
-          name,
-          email,
-          role: 'student',
-          trainerPhone: '5511999999999',
-          createdAt: new Date().toISOString(),
-        };
-        onSuccess(registeredUser);
-      } else {
-        // Re-surface the error as notification
-        console.error('Supabase signUp error:', message);
-        const registeredUser: UserProfile = {
-          uid: 'user_' + Date.now(),
-          name,
-          email,
-          role: 'student',
-          trainerPhone: '5511999999999',
-          createdAt: new Date().toISOString(),
-        };
-        onSuccess(registeredUser);
-      }
+      const message = err instanceof Error ? err.message : 'Erro ao criar conta no Supabase';
+      console.error('Supabase signUp error:', message);
+      alert('Erro ao criar conta no banco: ' + message);
+      setIsLoading(false);
     }
   };
 
