@@ -322,6 +322,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     };
     storage.saveAdminRoutine(routine);
     setAdminRoutines(storage.getAdminRoutines());
+
+    // Automatically create Workouts for assigned students
+    if (routineStudentIds.length > 0) {
+      routineStudentIds.forEach(async (studentId) => {
+        const newWorkout: import('../types').Workout = {
+          id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          studentId,
+          name: routine.name,
+          description: routine.notes || routine.goal,
+          exercises: routine.exercises.map((ex, idx) => ({
+            ...ex,
+            id: `ex_${Date.now()}_${idx}`
+          })),
+          createdAt: new Date().toISOString()
+        };
+        try {
+          await storage.saveWorkout(newWorkout);
+        } catch (err) {
+          console.error('Failed to assign workout to student:', err);
+        }
+      });
+    }
     setEditingRoutine(null);
     setRoutineExercises([]);
     setRoutineStudentIds([]);
@@ -2013,7 +2035,30 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   </select>
                                 </div>
 
-                                {/* Assign to Students REMOVED FROM HERE */}
+                                {/* Assign to Students */}
+                                <div className="space-y-2 text-left">
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Atribuir a Alunos (Opcional)</label>
+                                  <div className="max-h-32 overflow-y-auto border border-slate-100 rounded-lg p-2 space-y-1 bg-slate-50">
+                                    {users.filter(u => u.role === 'student').length === 0 ? (
+                                      <p className="text-[9px] font-bold text-slate-400 p-2">Nenhum aluno cadastrado.</p>
+                                    ) : (
+                                      users.filter(u => u.role === 'student').map(student => (
+                                        <label key={student.uid} className="flex items-center gap-2 p-1.5 hover:bg-slate-100 rounded cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={routineStudentIds.includes(student.uid)}
+                                            onChange={(e) => {
+                                              if (e.target.checked) setRoutineStudentIds(prev => [...prev, student.uid]);
+                                              else setRoutineStudentIds(prev => prev.filter(id => id !== student.uid));
+                                            }}
+                                            className="w-3 h-3 text-[#dc2626] rounded border-slate-300"
+                                          />
+                                          <span className="text-[10px] font-bold text-slate-700">{student.name}</span>
+                                        </label>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
 
                                 {/* General notes */}
                                 <div className="space-y-1.5 text-left">

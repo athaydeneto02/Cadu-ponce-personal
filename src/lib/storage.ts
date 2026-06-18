@@ -429,11 +429,15 @@ export const storage = {
   },
 
   saveAdminRoutine: (routine: import('../types').AdminRoutine): void => {
-    const all = storage.getAdminRoutines();
-    const idx = all.findIndex(r => r.id === routine.id);
-    if (idx >= 0) all[idx] = routine;
-    else all.unshift(routine);
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+    try {
+      const all = storage.getAdminRoutines();
+      const idx = all.findIndex(r => r.id === routine.id);
+      if (idx >= 0) all[idx] = routine;
+      else all.unshift(routine);
+      localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+    } catch (e) {
+      console.error('Failed to save admin routine to localStorage', e);
+    }
   },
 
   deleteAdminRoutine: (id: string): void => {
