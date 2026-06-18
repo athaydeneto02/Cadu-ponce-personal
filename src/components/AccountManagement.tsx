@@ -418,6 +418,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     // Automatically create Workouts for assigned students
     if (routineStudentIds.length > 0) {
       routineStudentIds.forEach(async (studentId) => {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
+        if (!isUUID) {
+          console.warn(`Skipping assignment for legacy student ID: ${studentId}`);
+          return;
+        }
+
         const newWorkout: import('../types').Workout = {
           id: crypto.randomUUID(),
           studentId,
@@ -460,7 +466,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setAdminRoutines(storage.getAdminRoutines());
 
     // Create a Workout for each student so it shows up on their end
+    let successCount = 0;
     for (const studentId of routineStudentIds) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
+      if (!isUUID) {
+        alert(`O aluno com ID "${studentId}" é um usuário antigo/fantasma. A ficha foi ignorada para ele.`);
+        continue;
+      }
+
       const newWorkout: import('../types').Workout = {
         id: crypto.randomUUID(),
         studentId,
@@ -474,11 +487,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       };
       try {
         await storage.saveWorkout(newWorkout);
-        alert('Treino atribuído com sucesso ao Supabase!');
+        successCount++;
       } catch (err: any) {
         console.error('Failed to assign workout to student:', err);
         alert('Erro ao atribuir treino ao aluno: ' + JSON.stringify(err));
       }
+    }
+    
+    if (successCount > 0) {
+      alert(`Treino atribuído com sucesso a ${successCount} aluno(s) no Supabase!`);
     }
 
     setAssigningRoutine(null);
