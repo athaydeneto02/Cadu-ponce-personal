@@ -13,6 +13,7 @@ import {
   Wallet, 
   Search, 
   Plus, 
+  Edit3,
   Phone, 
   ArrowLeft, 
   Check, 
