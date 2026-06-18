@@ -310,28 +310,36 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     return [];
   });
 
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
   useEffect(() => {
     storage.fetchAdminData().then(data => {
-        if(data.exercises) setExercises(data.exercises);
-        if(data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
-        if(data.categories) setAppCategories(data.categories);
+        if(data) {
+          if(data.exercises) setExercises(data.exercises);
+          if(data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
+          if(data.categories) setAppCategories(data.categories);
+        }
+        setIsDataLoaded(true);
     });
   }, []);
 
   useEffect(() => {
+    if (!isDataLoaded) return;
     storage.saveMuscleGroups(appMuscleGroups);
     storage.syncAdminData();
-  }, [appMuscleGroups]);
+  }, [appMuscleGroups, isDataLoaded]);
 
   useEffect(() => {
+    if (!isDataLoaded) return;
     storage.saveCategories(appCategories);
     storage.syncAdminData();
-  }, [appCategories]);
+  }, [appCategories, isDataLoaded]);
 
   useEffect(() => {
+    if (!isDataLoaded) return;
     localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
     storage.syncAdminData();
-  }, [exercises]);
+  }, [exercises, isDataLoaded]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
