@@ -983,7 +983,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
                                    <Dumbbell className="w-4 h-4" />
                                 </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Biblioteca de treinos</span>
+                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Ficha por Treino</span>
                              </button>
                              <button 
                                onClick={() => setHomeSubView('frequency_report')}
@@ -2324,7 +2324,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                            >
                              <ChevronLeft className="w-3.5 h-3.5" /> Voltar
                            </button>
-                           <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Biblioteca de Treinos</h4>
+                           <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Ficha por Treino</h4>
                         </div>
 
                         <div className="p-4 space-y-4 overflow-y-auto flex-1">
