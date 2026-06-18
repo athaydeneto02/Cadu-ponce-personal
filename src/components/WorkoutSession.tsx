@@ -25,10 +25,11 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const [userNotes, setUserNotes] = useState<Record<string, string>>({});
   const [rpe, setRpe] = useState<number>(0);
   const [hoverRpe, setHoverRpe] = useState<number>(0);
-  const [loads, setLoads] = useState<Record<string, number>>(() => {
-    const initial: Record<string, number> = {};
+  const [loads, setLoads] = useState<Record<string, number[]>>(() => {
+    const initial: Record<string, number[]> = {};
     workout.exercises.forEach(e => {
-      initial[e.id] = e.currentLoad || 0;
+      const setsCount = parseInt(e.sets) || 1;
+      initial[e.id] = Array(setsCount).fill(e.currentLoad || 0);
     });
     return initial;
   });
@@ -242,7 +243,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         id: Math.random().toString(36).substr(2, 9),
         studentId: workout.studentId,
         exerciseName: currentExercise.name,
-        load: loads[currentExercise.id],
+        load: Math.max(...(loads[currentExercise.id] || [0])),
         reps: parseInt(currentExercise.reps) || 0,
         notes: userNotes[currentExercise.id],
         date: new Date().toISOString(),
@@ -251,12 +252,25 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
     setCompletedExercises(newSet);
   };
 
-  const updateLoad = (id: string, value: number) => {
-    setLoads(prev => ({ ...prev, [id]: Math.max(0, value) }));
+  const updateLoad = (id: string, setIndex: number, value: number) => {
+    setLoads(prev => {
+      const arr = [...(prev[id] || [])];
+      arr[setIndex] = Math.max(0, value);
+      return { ...prev, [id]: arr };
+    });
   };
 
   if (isFinished) {
-    const totalLoad = Object.values(loads).reduce((a: number, b: number) => a + b, 0);
+    let totalLoad = 0;
+    workout.exercises.forEach(ex => {
+      const exLoads = loads[ex.id] || [];
+      const setsCount = parseInt(ex.sets) || 1;
+      const setsDone = getCheckedSetsForExercise(ex.id, setsCount).filter(c => c).length;
+      const reps = parseInt(ex.reps) || 1;
+      for (let i = 0; i < setsDone; i++) {
+        totalLoad += (exLoads[i] || 0) * reps;
+      }
+    });
     return (
       <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col items-center justify-center p-8 overflow-hidden">
         <motion.div 
@@ -491,7 +505,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
                             
                             <div className="flex items-center space-x-3">
                               <span className="text-xs font-semibold text-slate-400 font-mono">
-                                {loads[currentExercise.id]} kg × {currentExercise.reps}
+                                {loads[currentExercise.id]?.[idx] ?? 0} kg × {currentExercise.reps}
                               </span>
                               <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
                                 isChecked 
@@ -510,27 +524,41 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
               })()}
 
               {/* Load Control */}
-              <div className="bg-slate-800 rounded-3xl p-8 shadow-sm border border-slate-700">
-                <label className="block text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-center">Carga atual (kg)</label>
-                <div className="flex items-center justify-between max-w-[280px] mx-auto">
-                  <button 
-                    onClick={() => updateLoad(currentExercise.id, loads[currentExercise.id] - 2)}
-                    className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
-                  >
-                    -
-                  </button>
-                  <div className="text-center group">
-                    <span className="text-5xl font-black text-white italic tracking-tighter group-active:scale-110 transition-transform inline-block">{loads[currentExercise.id]}</span>
-                    <span className="block text-red-600 text-xs font-black uppercase mt-1">kg</span>
+              {(() => {
+                const setsCount = parseInt(currentExercise.sets) || 1;
+                const checks = getCheckedSetsForExercise(currentExercise.id, setsCount);
+                const activeSetIndex = checks.findIndex(c => !c);
+                const targetSetIndex = activeSetIndex === -1 ? setsCount - 1 : activeSetIndex;
+                const currentSetLoad = loads[currentExercise.id]?.[targetSetIndex] ?? 0;
+
+                return (
+                  <div className="bg-slate-800 rounded-3xl p-8 shadow-sm border border-slate-700 mt-6">
+                    <label className="block text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-center">
+                      Carga - Série {targetSetIndex + 1} (kg)
+                    </label>
+                    <div className="flex items-center justify-between max-w-[280px] mx-auto">
+                      <button 
+                        onClick={() => updateLoad(currentExercise.id, targetSetIndex, currentSetLoad - 2)}
+                        className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
+                      >
+                        -
+                      </button>
+                      <div className="text-center group">
+                        <span className="text-5xl font-black text-white italic tracking-tighter group-active:scale-110 transition-transform inline-block">
+                          {currentSetLoad}
+                        </span>
+                        <span className="block text-red-600 text-xs font-black uppercase mt-1">kg</span>
+                      </div>
+                      <button 
+                        onClick={() => updateLoad(currentExercise.id, targetSetIndex, currentSetLoad + 2)}
+                        className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => updateLoad(currentExercise.id, loads[currentExercise.id] + 2)}
-                    className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Notes Field */}
               <div className="bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-700">
