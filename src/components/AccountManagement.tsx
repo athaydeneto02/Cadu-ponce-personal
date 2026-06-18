@@ -1220,6 +1220,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               ));
                            };
 
+                           const handleDeleteExercise = (title, e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Tem certeza que deseja excluir o exercício "${title}"?`)) {
+                                 setExercises(prev => prev.filter(ex => ex.title !== title));
+                              }
+                           };
+
                            const handleAddExerciseSubmit = (e) => {
                               e.preventDefault();
                               if (!newExName.trim()) return;
@@ -1507,6 +1514,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                            >
                                                               <div className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-amber-50 border-amber-300 text-amber-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}>
                                                                  <Star className={`w-3.5 h-3.5 ${ex.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                                                              </div>
+                                                           </button>
+                                                           <button 
+                                                             onClick={(evt) => handleDeleteExercise(ex.title, evt)}
+                                                             className="pr-2 cursor-pointer focus:outline-none shrink-0"
+                                                             title="Excluir exercício"
+                                                           >
+                                                              <div className="w-7 h-7 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center transition-all text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-200">
+                                                                 <Trash2 className="w-3.5 h-3.5" />
                                                               </div>
                                                            </button>
                                                          </div>
