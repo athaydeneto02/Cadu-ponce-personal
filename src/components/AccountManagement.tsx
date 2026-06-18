@@ -431,8 +431,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         };
         try {
           await storage.saveWorkout(newWorkout);
-        } catch (err) {
+        } catch (err: any) {
           console.error('Failed to assign workout to student:', err);
+          alert('Erro ao atribuir treino ao aluno: ' + JSON.stringify(err));
         }
       });
     }
@@ -473,8 +474,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       };
       try {
         await storage.saveWorkout(newWorkout);
-      } catch (err) {
+        alert('Treino atribuído com sucesso ao Supabase!');
+      } catch (err: any) {
         console.error('Failed to assign workout to student:', err);
+        alert('Erro ao atribuir treino ao aluno: ' + JSON.stringify(err));
       }
     }
 
@@ -765,48 +768,44 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setUsers(storage.getUsersList());
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName || !formEmail) return;
 
-    const newUser: UserProfile = {
-      uid: 'user_' + Date.now(),
-      name: formName,
-      email: formEmail,
-      trainerPhone: formPhone || '5511999999999',
-      role: formRole,
-      password: formPassword || '123456',
-      status: 'active',
-      modality: formModality,
-      createdAt: new Date().toISOString(),
-      // Custom metadata based on image fields
-      metadata: {
-        group: formGroup,
-        birthDate: formBirthDate,
-        gender: formGender,
-        sendAccessInfo: formSendAccessInfo === 'Sim',
-        sendAnamnesis: formSendAnamnesis,
-        blockDefaulters: formBlockDefaulters
-      }
-    };
+    try {
+      const newUser = await storage.adminCreateUser(
+        formEmail,
+        formName,
+        {
+          role: formRole as 'student' | 'admin',
+          password: formPassword || '123456',
+          status: 'active',
+          modality: formModality as 'Presencial' | 'Online',
+          trainerPhone: formPhone || '5511999999999',
+          metadata: {
+            group: formGroup,
+            birthDate: formBirthDate,
+            gender: formGender,
+            sendAccessInfo: formSendAccessInfo === 'Sim',
+            sendAnamnesis: formSendAnamnesis,
+            blockDefaulters: formBlockDefaulters
+          }
+        }
+      );
 
-    const updated = [newUser, ...users];
-    storage.saveUsersList(updated);
-    setUsers(updated);
-    setIsAddingUser(false);
-    
-    // Clear forms
-    setFormName('');
-    setFormEmail('');
-    setFormPassword('');
-    setFormRole('student');
-    setFormPhone('');
-    setFormGroup('');
-    setFormBirthDate('');
-    setFormGender('');
-    setFormSendAccessInfo('Sim');
-    setFormSendAnamnesis('');
-    setFormBlockDefaulters('');
+      setUsers([newUser, ...users]);
+      setIsAddingUser(false);
+      
+      // Reset form
+      setFormName('');
+      setFormEmail('');
+      setFormPhone('');
+      setFormPassword('');
+      alert('Aluno criado com sucesso no Supabase!');
+    } catch (err: any) {
+      console.error('Error creating user:', err);
+      alert('Erro ao criar aluno: ' + err.message);
+    }
   };
 
   const handleUpdateStudentStatus = (uid: string, newStatus: 'active' | 'inactive' | 'excluded') => {

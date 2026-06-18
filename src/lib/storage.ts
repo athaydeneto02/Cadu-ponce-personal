@@ -210,13 +210,60 @@ export const storage = {
       }).eq('id', data.user.id);
     }
 
+    return storage.fetchProfile(data.user.id) as Promise<UserProfile>;
+  },
+
+  adminCreateUser: async (
+    email: string,
+    name: string,
+    extraData?: Partial<UserProfile>
+  ): Promise<UserProfile> => {
+    // Create a temporary client that DOES NOT persist the session,
+    // so the Admin doesn't get logged out when creating a student!
+    const { createClient } = await import('@supabase/supabase-js');
+    const tempClient = createClient(
+      import.meta.env.VITE_SUPABASE_URL,
+      import.meta.env.VITE_SUPABASE_ANON_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+
+    const password = extraData?.password || '123456';
+    const { data, error } = await tempClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name, role: extraData?.role ?? 'student' },
+      },
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error('Usuário não criado. Verifique se o e-mail já existe.');
+
+    // Wait a brief moment for the Supabase trigger to create the profile row
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Update the newly created profile with the extra data
+    if (extraData) {
+      await supabase.from('profiles').update({
+        weight: extraData.weight ?? null,
+        height: extraData.height ?? null,
+        trainer_phone: extraData.trainerPhone ?? null,
+        modality: extraData.modality ?? null,
+        status: extraData.status ?? 'active',
+        metadata: extraData.metadata ?? {},
+      }).eq('id', data.user.id);
+    }
+
     return {
       uid: data.user.id,
       name,
       email,
-      role: (extraData?.role as 'admin' | 'student') ?? 'student',
+      role: extraData?.role ?? 'student',
+      status: extraData?.status ?? 'active',
+      trainerPhone: extraData?.trainerPhone,
+      modality: extraData?.modality,
       createdAt: new Date().toISOString(),
-      ...extraData,
+      metadata: extraData?.metadata ?? {}
     };
   },
 
