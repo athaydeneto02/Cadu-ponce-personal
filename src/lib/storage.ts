@@ -442,6 +442,7 @@ export const storage = {
 
   saveAdminRoutines: (routines: import('../types').AdminRoutine[]): void => {
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
+    storage.syncAdminData();
   },
 
   saveAdminRoutine: (routine: import('../types').AdminRoutine): void => {
@@ -451,6 +452,7 @@ export const storage = {
       if (idx >= 0) all[idx] = routine;
       else all.unshift(routine);
       localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+      storage.syncAdminData();
     } catch (e) {
       console.error('Failed to save admin routine to localStorage', e);
     }
@@ -459,6 +461,58 @@ export const storage = {
   deleteAdminRoutine: (id: string): void => {
     const all = storage.getAdminRoutines().filter(r => r.id !== id);
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+    storage.syncAdminData();
+  },
+
+  syncAdminData: async (): Promise<void> => {
+    const user = storage.getUser();
+    if (user && user.role === 'admin') {
+      try {
+        const metadata = user.metadata || {};
+        metadata.adminRoutines = storage.getAdminRoutines();
+        metadata.exercises = JSON.parse(localStorage.getItem('cadu_ponce_exercises_v3') || '[]');
+        metadata.muscleGroups = JSON.parse(localStorage.getItem('cadu_ponce_muscle_groups') || '[]');
+        metadata.categories = JSON.parse(localStorage.getItem('cadu_ponce_categories') || '[]');
+        await storage.updateProfile({ ...user, metadata });
+      } catch (err) {
+        console.error('Failed to sync admin data to Supabase', err);
+      }
+    }
+  },
+
+  fetchAdminData: async (): Promise<{ routines?: import('../types').AdminRoutine[], exercises?: any[], muscleGroups?: string[], categories?: string[] } | null> => {
+    const user = storage.getUser();
+    if (user && user.role === 'admin') {
+      try {
+        const { supabase } = await import('./supabase');
+        const { data, error } = await supabase.from('profiles').select('metadata').eq('id', user.uid).single();
+        if (error) throw error;
+        if (data && data.metadata) {
+          const md = data.metadata as any;
+          if (md.adminRoutines) {
+            localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(md.adminRoutines));
+          }
+          if (md.exercises) {
+            localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(md.exercises));
+          }
+          if (md.muscleGroups) {
+            localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(md.muscleGroups));
+          }
+          if (md.categories) {
+            localStorage.setItem('cadu_ponce_categories', JSON.stringify(md.categories));
+          }
+          return {
+            routines: md.adminRoutines,
+            exercises: md.exercises,
+            muscleGroups: md.muscleGroups,
+            categories: md.categories
+          };
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin data from Supabase', err);
+      }
+    }
+    return null;
   },
 
   // ── Categories & Muscle Groups ──────────────────────────────────────────

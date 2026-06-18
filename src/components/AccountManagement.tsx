@@ -311,7 +311,26 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   });
 
   useEffect(() => {
+    storage.fetchAdminData().then(data => {
+        if(data.exercises) setExercises(data.exercises);
+        if(data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
+        if(data.categories) setAppCategories(data.categories);
+    });
+  }, []);
+
+  useEffect(() => {
+    storage.saveMuscleGroups(appMuscleGroups);
+    storage.syncAdminData();
+  }, [appMuscleGroups]);
+
+  useEffect(() => {
+    storage.saveCategories(appCategories);
+    storage.syncAdminData();
+  }, [appCategories]);
+
+  useEffect(() => {
     localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
+    storage.syncAdminData();
   }, [exercises]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
@@ -536,6 +555,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
     storage.saveUsersList(merged);
     setUsers(merged);
+
+    // Sync admin specific data (custom exercises, routines, categories) from Supabase metadata
+    const currentUser = storage.getUser();
+    if (currentUser && currentUser.role === 'admin') {
+      storage.fetchAdminData().then((data) => {
+        if (data) {
+          if (data.routines) setAdminRoutines(data.routines);
+          if (data.exercises) setExercises(data.exercises);
+          if (data.muscleGroups) setAppMuscleGroups(data.muscleGroups);
+          if (data.categories) setAppCategories(data.categories);
+        }
+      });
+    }
 
     // Asynchronously fetch from Supabase to get users registered from the main app login
     storage.fetchUsersList().then((supabaseUsers) => {
