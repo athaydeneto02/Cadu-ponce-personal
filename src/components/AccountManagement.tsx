@@ -282,6 +282,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [editingExerciseOriginalTitle, setEditingExerciseOriginalTitle] = useState<string | null>(null);
 
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [newExName, setNewExName] = useState('');
@@ -1229,13 +1230,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  group: newExGroup,
                                  category: newExCategory,
                                  image: valImg,
-                                 isFavorite: false,
+                                 isFavorite: editingExerciseOriginalTitle ? exercises.find(ex => ex.title === editingExerciseOriginalTitle)?.isFavorite || false : false,
                                  isCustom: true,
                                  videoUrl: valVid,
                                  description: valDesc
                               };
 
-                              setExercises(prev => [newExObj, ...prev]);
+                              if (editingExerciseOriginalTitle) {
+                                setExercises(prev => prev.map(ex => ex.title === editingExerciseOriginalTitle ? newExObj : ex));
+                                setEditingExerciseOriginalTitle(null);
+                              } else {
+                                setExercises(prev => [newExObj, ...prev]);
+                              }
                               setIsCreatingExercise(false);
 
                               // reset
@@ -1243,8 +1249,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               setNewExImage('');
                               setNewExVideo('');
                               setNewExDesc('');
-
-
                            };
 
                            return (
@@ -1475,14 +1479,34 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                                </span>
                                                             </div>
                                                          </div>
-                                                         <button 
-                                                           onClick={(evt) => handleToggleFavorite(ex.title, evt)}
-                                                           className="pr-2 cursor-pointer focus:outline-none shrink-0"
-                                                         >
-                                                            <div className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-amber-50 border-amber-300 text-amber-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}>
-                                                               <Star className={`w-3.5 h-3.5 ${ex.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
-                                                            </div>
-                                                         </button>
+                                                         <div className="flex items-center">
+                                                              <button 
+                                                                onClick={(evt) => {
+                                                                  evt.stopPropagation();
+                                                                  setEditingExerciseOriginalTitle(ex.title);
+                                                                  setNewExName(ex.title);
+                                                                  setNewExGroup(ex.group);
+                                                                  setNewExCategory(ex.category);
+                                                                  setNewExImage(ex.image);
+                                                                  setNewExVideo(ex.videoUrl || '');
+                                                                  setNewExDesc(ex.description || '');
+                                                                  setIsCreatingExercise(true);
+                                                                }}
+                                                                className="pr-2 cursor-pointer focus:outline-none shrink-0"
+                                                              >
+                                                                 <div className="w-7 h-7 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center transition-all text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                                 </div>
+                                                              </button>
+                                                           <button 
+                                                             onClick={(evt) => handleToggleFavorite(ex.title, evt)}
+                                                             className="pr-2 cursor-pointer focus:outline-none shrink-0"
+                                                           >
+                                                              <div className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-amber-50 border-amber-300 text-amber-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}>
+                                                                 <Star className={`w-3.5 h-3.5 ${ex.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                                                              </div>
+                                                           </button>
+                                                         </div>
                                                       </div>
                                                    ))}
                                                 </div>
@@ -1578,18 +1602,25 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                          animate={{ y: 0, opacity: 1 }}
                                          className="bg-white rounded-2xl p-5 space-y-4 max-h-[95%] overflow-y-auto flex flex-col text-left text-slate-900"
                                        >
-                                          <div className="flex justify-between items-start text-left">
-                                             <div>
-                                                <span className="text-[8px] font-black italic tracking-widest text-[#dc2626] uppercase">Novo elemento</span>
-                                                <h3 className="text-md font-black italic uppercase text-slate-900 leading-none">Criar Exercício</h3>
-                                             </div>
-                                             <button 
-                                               onClick={() => setIsCreatingExercise(false)}
-                                               className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
-                                             >
-                                                <X className="w-4 h-4" />
-                                             </button>
-                                          </div>
+                                          <div className="flex justify-between items-center text-left mb-6">
+                                              <h3 className="text-xl font-black italic uppercase text-slate-900 tracking-tight leading-none">
+                                                {editingExerciseOriginalTitle ? 'Editar Exercício' : 'Novo Exercício'}
+                                              </h3>
+                                              <button 
+                                                onClick={() => {
+                                                  setIsCreatingExercise(false);
+                                                  setEditingExerciseOriginalTitle(null);
+                                                  // reset
+                                                  setNewExName('');
+                                                  setNewExImage('');
+                                                  setNewExVideo('');
+                                                  setNewExDesc('');
+                                                }}
+                                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                                              >
+                                                 <X className="w-4 h-4" />
+                                              </button>
+                                           </div>
 
                                           <form onSubmit={handleAddExerciseSubmit} className="space-y-4 text-left">
                                              <div>
