@@ -172,6 +172,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
+  const handleDeleteStudent = async (uid: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
+      const student = users.find(u => u.uid === uid);
+      if (student) {
+        const updatedStudent = { ...student, status: 'excluded' as const };
+        
+        try {
+          // Update local state immediately for better UX
+          setUsers(users.map(u => u.uid === uid ? updatedStudent : u));
+          
+          // Actually persist
+          await storage.updateProfile(updatedStudent);
+        } catch (err) {
+          console.error("Failed to exclude student", err);
+          alert('Erro ao excluir aluno. Tente novamente.');
+          // Revert if failed
+          setUsers(users);
+        }
+      }
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'home' | 'wallet' | 'menu'>('home');
   const [homeSubView, setHomeSubView] = useState<'dashboard' | 'student_list' | 'retention' | 'workout_library' | 'create_routine' | 'routine_details' | 'frequency_report' | 'exercise_library'>('dashboard');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
@@ -2503,6 +2525,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                          >
                                             <MessageSquare className="w-6 h-6 fill-current opacity-80" />
                                          </a>
+                                         {student.status !== 'excluded' && (
+                                           <button
+                                             onClick={() => handleDeleteStudent(student.uid)}
+                                             className="text-slate-300 hover:text-red-500 transition ml-2 cursor-pointer"
+                                             title="Excluir aluno"
+                                           >
+                                             <Trash2 className="w-5 h-5" />
+                                           </button>
+                                         )}
                                       </div>
                                    ))
                                 )}
