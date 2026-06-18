@@ -419,13 +419,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     if (routineStudentIds.length > 0) {
       routineStudentIds.forEach(async (studentId) => {
         const newWorkout: import('../types').Workout = {
-          id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: crypto.randomUUID(),
           studentId,
           name: routine.name,
           description: routine.notes || routine.goal,
           exercises: routine.exercises.map((ex, idx) => ({
             ...ex,
-            id: `ex_${Date.now()}_${idx}`
+            id: crypto.randomUUID()
           })),
           createdAt: new Date().toISOString()
         };
@@ -461,13 +461,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     // Create a Workout for each student so it shows up on their end
     for (const studentId of routineStudentIds) {
       const newWorkout: import('../types').Workout = {
-        id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: crypto.randomUUID(),
         studentId,
         name: assigningRoutine.name,
         description: assigningRoutine.notes || assigningRoutine.goal,
         exercises: assigningRoutine.exercises.map((ex, idx) => ({
           ...ex,
-          id: `ex_${Date.now()}_${idx}`
+          id: crypto.randomUUID()
         })),
         createdAt: new Date().toISOString()
       };
