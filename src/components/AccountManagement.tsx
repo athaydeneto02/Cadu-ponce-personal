@@ -361,8 +361,31 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     };
     storage.saveAdminRoutine(updatedRoutine);
     setAdminRoutines(storage.getAdminRoutines());
+
+    // Create a Workout for each student so it shows up on their end
+    routineStudentIds.forEach(async (studentId) => {
+      const newWorkout: import('../types').Workout = {
+        id: `workout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        studentId,
+        name: assigningRoutine.name,
+        description: assigningRoutine.notes || assigningRoutine.goal,
+        exercises: assigningRoutine.exercises.map((ex, idx) => ({
+          ...ex,
+          id: `ex_${Date.now()}_${idx}`
+        })),
+        createdAt: new Date().toISOString()
+      };
+      
+      try {
+        await storage.saveWorkout(newWorkout);
+      } catch (err) {
+        console.error('Failed to assign workout to student:', err);
+      }
+    });
+
     setAssigningRoutine(null);
     setRoutineStudentIds([]);
+    alert('Treino atribuído com sucesso!');
   };
 
   const handleDeleteAdminRoutine = (id: string) => {
