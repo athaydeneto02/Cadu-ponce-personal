@@ -70,7 +70,7 @@ interface AccountManagementProps {
 // Ensure initial list has the students in the screenshot
 const DEFAULT_STUDENTS: UserProfile[] = [
   {
-    uid: 'student_aline',
+    uid: '11111111-1111-1111-1111-111111111111',
     name: 'Aline Rocha',
     email: 'aline.rocha@gmail.com',
     weight: 59,
@@ -83,7 +83,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_carla',
+    uid: '22222222-2222-2222-2222-222222222222',
     name: 'Carla Pereira',
     email: 'carla.pereira@gmail.com',
     weight: 65,
@@ -95,7 +95,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_jose',
+    uid: '33333333-3333-3333-3333-333333333333',
     name: 'José Soares',
     email: 'jose.soares@gmail.com',
     weight: 85,
@@ -108,7 +108,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_athayde_neto',
+    uid: '44444444-4444-4444-4444-444444444444',
     name: 'ATHAYDE FELIPPE LEITAO NETO',
     email: 'athaydefelippeleitao@gmail.com',
     weight: 85,
@@ -120,7 +120,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_carolina_santos',
+    uid: '55555555-5555-5555-5555-555555555555',
     name: 'Carolina Santos',
     email: 'carol.santos@email.com',
     weight: 62,
@@ -132,7 +132,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_joao_pereira',
+    uid: '66666666-6666-6666-6666-666666666666',
     name: 'João Pereira',
     email: 'joao.p@email.com',
     weight: 92,
@@ -144,7 +144,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_sonia_maria',
+    uid: '77777777-7777-7777-7777-777777777777',
     name: 'Sônia Maria',
     email: 'sonia.m@email.com',
     weight: 65,
@@ -155,7 +155,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
   },
   {
-    uid: 'student_teste_123',
+    uid: '88888888-8888-8888-8888-888888888888',
     name: 'Aluno Teste',
     email: 'aluno.teste@caduponce.com',
     weight: 70,

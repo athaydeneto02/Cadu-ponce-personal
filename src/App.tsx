@@ -134,7 +134,7 @@ export default function App() {
     // --- TEMPORARY BYPASS FOR TESTING STUDENT ACCOUNT ---
     if (email === 'aluno.teste@caduponce.com' && password === 'Teste@123') {
       const mockUser = {
-        uid: 'student_teste_123',
+        uid: '88888888-8888-8888-8888-888888888888',
         name: 'Aluno Teste',
         email: 'aluno.teste@caduponce.com',
         role: 'student' as const,
