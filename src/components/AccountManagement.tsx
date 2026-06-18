@@ -1321,6 +1321,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 setEditingExerciseOriginalTitle(null);
                               } else {
                                 setExercises(prev => [newExObj, ...prev]);
+                                // Auto switch to "Seus exercícios" tab so the new exercise is visible immediately
+                                setExerciseFilter('mine');
+                                setSelectedGroupFilter(null);
+                                setSelectedCategoryFilter(null);
+                                setExerciseSearch('');
                               }
                               setIsCreatingExercise(false);
 
