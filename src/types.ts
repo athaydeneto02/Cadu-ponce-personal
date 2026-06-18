@@ -34,6 +34,7 @@ export interface Exercise {
   rest: string;
   notes?: string;
   currentLoad?: number;
+  prescribedLoads?: number[];
 }
 
 export interface Workout {
@@ -82,6 +83,7 @@ export interface AdminExercise {
   notes?: string;
   videoUrl?: string;      // YouTube link or any URL
   videoFileUrl?: string;  // Supabase Storage public URL
+  prescribedLoads?: number[];
 }
 
 export interface AdminRoutine {

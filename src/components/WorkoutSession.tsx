@@ -29,7 +29,15 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
     const initial: Record<string, number[]> = {};
     workout.exercises.forEach(e => {
       const setsCount = parseInt(e.sets) || 1;
-      initial[e.id] = Array(setsCount).fill(e.currentLoad || 0);
+      const defaultLoads = Array(setsCount).fill(e.currentLoad || 0);
+      if (e.prescribedLoads && e.prescribedLoads.length > 0) {
+        for (let i = 0; i < setsCount; i++) {
+          if (e.prescribedLoads[i] !== undefined && e.prescribedLoads[i] !== 0) {
+            defaultLoads[i] = e.prescribedLoads[i];
+          }
+        }
+      }
+      initial[e.id] = defaultLoads;
     });
     return initial;
   });

@@ -529,14 +529,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       notes: '',
       videoUrl: '',
       videoFileUrl: '',
+      prescribedLoads: [],
     }]);
   };
 
-  const updateRoutineExercise = (idx: number, fieldOrUpdates: string | Record<string, string | number>, value?: string | number) => {
+  const updateRoutineExercise = (idx: number, fieldOrUpdates: string | Record<string, any>, value?: any) => {
     setRoutineExercises(prev => prev.map((ex, i) => {
       if (i !== idx) return ex;
       if (typeof fieldOrUpdates === 'string') {
-        return { ...ex, [fieldOrUpdates]: value as string | number };
+        return { ...ex, [fieldOrUpdates]: value };
       }
       return { ...ex, ...fieldOrUpdates };
     }));
@@ -2329,6 +2330,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           placeholder="60s"
                                           className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition text-center"
                                         />
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Prescribed Loads */}
+                                    <div className="space-y-1 mt-2">
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase">Cargas por Série (kg) - Opcional</label>
+                                      <div className="flex gap-2 overflow-x-auto pb-1">
+                                        {Array.from({ length: ex.sets || 1 }).map((_, setIdx) => (
+                                          <div key={setIdx} className="flex-1 min-w-[60px]">
+                                            <input
+                                              type="number"
+                                              value={ex.prescribedLoads?.[setIdx] || ''}
+                                              onChange={(e) => {
+                                                const newLoads = [...(ex.prescribedLoads || Array(ex.sets).fill(0))];
+                                                newLoads[setIdx] = parseInt(e.target.value) || 0;
+                                                updateRoutineExercise(idx, 'prescribedLoads', newLoads);
+                                              }}
+                                              placeholder={`S${setIdx + 1}`}
+                                              className="w-full px-2 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-800 outline-none focus:border-[#dc2626] transition text-center"
+                                            />
+                                          </div>
+                                        ))}
                                       </div>
                                     </div>
 
