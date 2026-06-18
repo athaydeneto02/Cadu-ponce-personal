@@ -573,58 +573,37 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [formRole, setFormRole] = useState<'student' | 'admin'>('student');
   const [formPassword, setFormPassword] = useState('');
 
-  // Load and merge users & load workouts
+  // Load and clean users & load workouts
   useEffect(() => {
     setWorkouts(storage.getWorkouts());
     const list = storage.getUsersList();
-    const merged = [...list];
-    DEFAULT_STUDENTS.forEach(def => {
-      const idx = merged.findIndex(u => u.name.toLowerCase() === def.name.toLowerCase() || u.email.toLowerCase() === def.email.toLowerCase());
-      if (idx === -1) {
-        merged.push(def);
-      } else {
-        merged[idx] = {
-          ...merged[idx],
-          status: merged[idx].status || def.status,
-          modality: merged[idx].modality || def.modality,
-          photoURL: merged[idx].photoURL || def.photoURL
-        };
-      }
-    });
+    
+    // Filter out legacy and dummy students
+    const isRealUUID = (id: string) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+      // Filter out the repeating fake UUIDs (like 44444444-4444-...)
+      if (/^(\d)\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$/.test(id)) return false;
+      return true;
+    };
 
-    storage.saveUsersList(merged);
-    setUsers(merged);
+    const realUsers = list.filter(u => isRealUUID(u.uid));
+    
+    storage.saveUsersList(realUsers);
+    setUsers(realUsers);
 
-    // Asynchronously fetch from Supabase to get users registered from the main app login
+    // Asynchronously fetch from Supabase to get real users
     storage.fetchUsersList().then((supabaseUsers) => {
       if (supabaseUsers && supabaseUsers.length > 0) {
-        setUsers(prev => {
-          const newUsers = [...prev];
-          supabaseUsers.forEach(su => {
-            const idx = newUsers.findIndex(u => u.uid === su.uid || (u.email && su.email && u.email.toLowerCase() === su.email.toLowerCase()));
-            if (idx === -1) {
-              newUsers.push(su);
-            } else {
-              newUsers[idx] = { ...newUsers[idx], ...su };
-            }
-          });
-          DEFAULT_STUDENTS.forEach(def => {
-            const idx = newUsers.findIndex(u => u.name.toLowerCase() === def.name.toLowerCase() || u.email.toLowerCase() === def.email.toLowerCase());
-            if (idx === -1) {
-              newUsers.push(def);
-            } else {
-              newUsers[idx] = {
-                ...newUsers[idx],
-                status: newUsers[idx].status || def.status,
-                modality: newUsers[idx].modality || def.modality,
-                photoURL: newUsers[idx].photoURL || def.photoURL
-              };
-            }
-          });
-          storage.saveUsersList(newUsers);
-          return newUsers;
-        });
+        const validUsers = supabaseUsers.filter(u => isRealUUID(u.uid));
+        setUsers(validUsers);
+        storage.saveUsersList(validUsers);
+      } else {
+        // If Supabase is empty, force empty state to override any lingering cache
+        setUsers([]);
+        storage.saveUsersList([]);
       }
+    }).catch(err => {
+      console.error('Error fetching data for admin:', err);
     });
   }, []);
 
