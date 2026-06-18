@@ -112,10 +112,26 @@ export const storage = {
       .order('created_at', { ascending: false });
 
     if (error || !data) return [];
-    const users = data.map(rowToUserProfile);
+    const supabaseUsers = data.map(rowToUserProfile);
+    
+    // Merge with local cache so we don't lose users created locally without a password
+    const localData = localStorage.getItem('cadu_ponce_all_users');
+    const localUsers: UserProfile[] = localData ? JSON.parse(localData) : [];
+    
+    const mergedUsers = [...localUsers];
+    supabaseUsers.forEach(su => {
+      const idx = mergedUsers.findIndex(u => u.uid === su.uid || (u.email && su.email && u.email.toLowerCase() === su.email.toLowerCase()));
+      if (idx === -1) {
+        mergedUsers.push(su);
+      } else {
+        // Supabase is source of truth for these users
+        mergedUsers[idx] = { ...mergedUsers[idx], ...su };
+      }
+    });
+
     // Update local cache
-    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
-    return users;
+    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(mergedUsers));
+    return mergedUsers;
   },
 
   /** @deprecated – kept for legacy callers. Use getUsersList() (async) instead. */

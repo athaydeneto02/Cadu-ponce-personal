@@ -536,6 +536,41 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
     storage.saveUsersList(merged);
     setUsers(merged);
+
+    // Asynchronously fetch from Supabase to get users registered from the main app login
+    storage.fetchUsersList().then((supabaseUsers) => {
+      if (supabaseUsers && supabaseUsers.length > 0) {
+        setUsers(prev => {
+          const newUsers = [...prev];
+          supabaseUsers.forEach(su => {
+            const idx = newUsers.findIndex(u => u.uid === su.uid || (u.email && su.email && u.email.toLowerCase() === su.email.toLowerCase()));
+            if (idx === -1) {
+              newUsers.push(su);
+            } else {
+              newUsers[idx] = { ...newUsers[idx], ...su };
+            }
+          });
+          // Apply DEFAULT_STUDENTS overrides again just in case
+          DEFAULT_STUDENTS.forEach(def => {
+            const idx = newUsers.findIndex(u => u.name.toLowerCase() === def.name.toLowerCase() || u.email.toLowerCase() === def.email.toLowerCase());
+            if (idx === -1) {
+              newUsers.push(def);
+            } else {
+              newUsers[idx] = {
+                ...newUsers[idx],
+                status: newUsers[idx].status || def.status,
+                modality: newUsers[idx].modality || def.modality,
+                photoURL: newUsers[idx].photoURL || def.photoURL
+              };
+            }
+          });
+          // We don't need to save to local storage here because fetchUsersList already did that internally,
+          // but we do it anyway to ensure our DEFAULT_STUDENTS overrides are cached correctly.
+          storage.saveUsersList(newUsers);
+          return newUsers;
+        });
+      }
+    });
   }, []);
 
   // Selected Student Form synchronization
