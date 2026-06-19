@@ -543,12 +543,56 @@ export const storage = {
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
   },
 
+  // --- AGENDA EVENTS ---
+  fetchAgendaEvents: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('agenda_events')
+      .select('*');
+      
+    if (error || !data) {
+      const cached = localStorage.getItem('cp_agenda_events');
+      return cached ? JSON.parse(cached) : [];
+    }
+    
+    const events = data.map(row => ({
+      id: row.id,
+      studentId: row.student_id,
+      studentName: row.student_name,
+      title: row.title,
+      date: row.date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      type: row.type,
+      notes: row.notes,
+      createdAt: row.created_at
+    }));
+    
+    localStorage.setItem('cp_agenda_events', JSON.stringify(events));
+    return events;
+  },
+
   getAgendaEvents: (): any[] => {
     const data = localStorage.getItem('cp_agenda_events');
     return data ? JSON.parse(data) : [];
   },
 
-  saveAgendaEvent: (event: any): void => {
+  saveAgendaEvent: async (event: any): Promise<void> => {
+    const { error } = await supabase.from('agenda_events').upsert({
+      id: event.id,
+      student_id: event.studentId || null,
+      student_name: event.studentName || null,
+      title: event.title,
+      date: event.date,
+      start_time: event.startTime,
+      end_time: event.endTime,
+      type: event.type,
+      notes: event.notes || null,
+      created_at: event.createdAt
+    });
+    
+    if (error) console.error('saveAgendaEvent error:', error.message);
+
+    // Update local cache
     const events = storage.getAgendaEvents();
     const existingIdx = events.findIndex((e: any) => e.id === event.id);
     if (existingIdx >= 0) {
@@ -559,7 +603,10 @@ export const storage = {
     localStorage.setItem('cp_agenda_events', JSON.stringify(events));
   },
 
-  deleteAgendaEvent: (id: string): void => {
+  deleteAgendaEvent: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('agenda_events').delete().eq('id', id);
+    if (error) console.error('deleteAgendaEvent error:', error.message);
+    
     const events = storage.getAgendaEvents();
     const newEvents = events.filter((e: any) => e.id !== id);
     localStorage.setItem('cp_agenda_events', JSON.stringify(newEvents));
@@ -586,6 +633,9 @@ export const storage = {
       category: row.category,
       videoUrl: row.video_url ?? undefined,
       videoFileUrl: row.video_file_url ?? undefined,
+      isCustom: true,
+      image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200', // Default image since it's not in DB
+      description: 'Exercício personalizado adicionado pelo treinador.', // Default description
     }));
 
     localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));

@@ -320,7 +320,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       storage.fetchCustomExercises(),
       storage.fetchMuscleGroups(),
       storage.fetchCategories(),
-    ]).then(([routines, customExercises, muscleGroups, categories]) => {
+      storage.fetchAgendaEvents(),
+    ]).then(([routines, customExercises, muscleGroups, categories, agendaEvents]) => {
       if (routines && routines.length > 0) setAdminRoutines(routines);
       if (customExercises && customExercises.length > 0) setExercises(customExercises);
       if (muscleGroups && muscleGroups.length > 0) setAppMuscleGroups(muscleGroups);
