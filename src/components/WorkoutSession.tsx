@@ -531,42 +531,6 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
                 );
               })()}
 
-              {/* Load Control */}
-              {(() => {
-                const setsCount = parseInt(currentExercise.sets) || 1;
-                const checks = getCheckedSetsForExercise(currentExercise.id, setsCount);
-                const activeSetIndex = checks.findIndex(c => !c);
-                const targetSetIndex = activeSetIndex === -1 ? setsCount - 1 : activeSetIndex;
-                const currentSetLoad = loads[currentExercise.id]?.[targetSetIndex] ?? 0;
-
-                return (
-                  <div className="bg-slate-800 rounded-3xl p-8 shadow-sm border border-slate-700 mt-6">
-                    <label className="block text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-center">
-                      Carga - Série {targetSetIndex + 1} (kg)
-                    </label>
-                    <div className="flex items-center justify-between max-w-[280px] mx-auto">
-                      <button 
-                        onClick={() => updateLoad(currentExercise.id, targetSetIndex, currentSetLoad - 2)}
-                        className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
-                      >
-                        -
-                      </button>
-                      <div className="text-center group">
-                        <span className="text-5xl font-black text-white italic tracking-tighter group-active:scale-110 transition-transform inline-block">
-                          {currentSetLoad}
-                        </span>
-                        <span className="block text-red-600 text-xs font-black uppercase mt-1">kg</span>
-                      </div>
-                      <button 
-                        onClick={() => updateLoad(currentExercise.id, targetSetIndex, currentSetLoad + 2)}
-                        className="w-16 h-16 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center text-2xl font-bold text-white active:scale-90 transition-transform"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* Notes Field */}
               <div className="bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-700">
