@@ -97,3 +97,17 @@ export interface AdminRoutine {
   exercises: AdminExercise[];
   createdAt: string;
 }
+
+export interface AgendaEvent {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  type: 'presential' | 'online' | 'other';
+  notes?: string;
+  createdAt: string;
+}
+

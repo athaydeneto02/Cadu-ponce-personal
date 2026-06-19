@@ -543,6 +543,28 @@ export const storage = {
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
   },
 
+  getAgendaEvents: (): any[] => {
+    const data = localStorage.getItem('cp_agenda_events');
+    return data ? JSON.parse(data) : [];
+  },
+
+  saveAgendaEvent: (event: any): void => {
+    const events = storage.getAgendaEvents();
+    const existingIdx = events.findIndex((e: any) => e.id === event.id);
+    if (existingIdx >= 0) {
+      events[existingIdx] = event;
+    } else {
+      events.push(event);
+    }
+    localStorage.setItem('cp_agenda_events', JSON.stringify(events));
+  },
+
+  deleteAgendaEvent: (id: string): void => {
+    const events = storage.getAgendaEvents();
+    const newEvents = events.filter((e: any) => e.id !== id);
+    localStorage.setItem('cp_agenda_events', JSON.stringify(newEvents));
+  },
+
   // ── Custom Exercises (Biblioteca de Exercícios) ───────────────────────────
 
   /** Fetches custom exercises from Supabase. */

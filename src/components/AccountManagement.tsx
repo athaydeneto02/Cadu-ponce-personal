@@ -58,6 +58,7 @@ import {
   Eye,
   ArrowUpDown
 } from 'lucide-react';
+import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
 import { storage } from '../lib/storage';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
@@ -221,7 +222,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const [activeTab, setActiveTab] = useState<'home' | 'wallet' | 'menu'>('home');
-  const [homeSubView, setHomeSubView] = useState<'dashboard' | 'student_list' | 'retention' | 'workout_library' | 'create_routine' | 'routine_details' | 'frequency_report' | 'exercise_library'>('dashboard');
+  const [homeSubView, setHomeSubView] = useState<'dashboard' | 'student_list' | 'retention' | 'workout_library' | 'create_routine' | 'routine_details' | 'frequency_report' | 'exercise_library' | 'agenda'>('dashboard');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // Workouts and dynamic detailed states
@@ -1105,6 +1106,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Treinos</span>
                              </button>
                              <button 
+                               onClick={() => setHomeSubView('agenda')}
+                               className="flex flex-col items-center justify-center p-4 bg-white rounded-xl shadow-sm border border-slate-100 gap-3 hover:border-[#dc2626]/30 transition group cursor-pointer"
+                             >
+                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
+                                   <Calendar className="w-4 h-4" />
+                                </div>
+                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Agenda</span>
+                             </button>
+                             <button 
                                onClick={() => setHomeSubView('frequency_report')}
                                className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
@@ -1125,6 +1135,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
                           </div>
                        </div>
+                    ) : homeSubView === 'agenda' ? (
+                       <AdminAgenda onBack={() => setHomeSubView('dashboard')} />
                     ) : homeSubView === 'retention' ? (
                        /* RETENTION VIEW (New Image Request) */
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
