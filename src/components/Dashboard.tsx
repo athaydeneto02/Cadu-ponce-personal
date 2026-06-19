@@ -6,9 +6,27 @@
 import React, { useState } from 'react';
 import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus } from 'lucide-react';
 import { Workout, UserProfile, Goal } from '../types';
+import { supabase } from '../lib/supabase';
 import LoadHistory from './LoadHistory';
 import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
+
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BF4mz4GPAGZdcZi7EbNc1hHyI0bx_4npqhd0RV3aoHqSOpn9rjqpXUtA2SkNCPth1zgawRHMgFcVRmng0aVJQjQ';
+
+function urlB64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 import { 
   XAxis, 
   YAxis, 
@@ -73,6 +91,46 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       });
     }
   }, [user?.weight, user?.uid]);
+
+  // Request Push Notification permission and subscribe
+  React.useEffect(() => {
+    async function subscribeToPush() {
+      if (!user?.uid || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return; // Push not supported or no user
+      }
+
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY)
+          });
+        }
+
+        // Save subscription to Supabase
+        const { error } = await supabase.from('push_subscriptions').insert({
+          user_id: user.uid,
+          subscription: subscription.toJSON()
+        });
+        
+        // Error will trigger if user tries to save exact same subscription again? 
+        // We could use an upsert, but let's just ignore duplicate errors for simplicity
+        if (error && error.code !== '23505') { 
+           console.error('Error saving subscription:', error);
+        }
+      } catch (err) {
+        console.error('Push subscription failed:', err);
+      }
+    }
+
+    subscribeToPush();
+  }, [user?.uid]);
 
   const handleAddWeight = (e: React.FormEvent) => {
     e.preventDefault();

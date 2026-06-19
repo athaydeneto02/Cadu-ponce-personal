@@ -2943,14 +2943,34 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                          disabled={selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) || isSending}
                          onClick={() => {
                             if (notifyStep === 'students') setNotifyStep('message');
-                            else {
+                             } else {
                                setIsSending(true);
-                               setTimeout(() => {
-                                  setIsSending(false);
-                                  setSendComplete(true);
-                                  setTimeout(() => setIsNotifyingByCategory(false), 2000);
-                               }, 1500);
-                            }
+                               fetch('/api/send-notification', {
+                                 method: 'POST',
+                                 headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify({
+                                   userIds: selectedUidsForNotify,
+                                   title: 'Cadu Ponce Consultoria',
+                                   body: notifyMessage
+                                 })
+                               }).then(res => res.json())
+                                 .then(() => {
+                                   setIsSending(false);
+                                   setSendComplete(true);
+                                   setTimeout(() => {
+                                      setIsNotifyingByCategory(false);
+                                      setSendComplete(false);
+                                      setNotifyMessage('');
+                                      setNotifyStep('category');
+                                   }, 2000);
+                                 })
+                                 .catch(err => {
+                                   console.error('Error sending notification:', err);
+                                   setIsSending(false);
+                                   setSendComplete(true);
+                                   setTimeout(() => setIsNotifyingByCategory(false), 2000);
+                                 });
+                             }
                          }}
                          className={`w-full py-4 rounded-xl font-black italic uppercase text-xs tracking-widest shadow-lg transition flex items-center justify-center gap-2 ${selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) ? 'bg-slate-200 text-slate-400 shadow-none' : 'bg-[#dc2626] text-white shadow-red-200 hocus:bg-red-600'}`}
                        >

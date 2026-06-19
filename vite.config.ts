@@ -27,6 +27,9 @@ export default defineConfig(() => {
               purpose: 'any maskable'
             }
           ]
+        },
+        workbox: {
+          importScripts: ['/push-sw.js']
         }
       })
     ],
