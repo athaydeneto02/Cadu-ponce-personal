@@ -250,6 +250,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
+  const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [frequency, setFrequency] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [editWeight, setEditWeight] = useState('');
   const [editHeight, setEditHeight] = useState('');
@@ -3595,50 +3596,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       {/* CATEGORY: FINANCE (POSIÇÃO FINANCEIRA) */}
                       <div className="overflow-hidden">
                         <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'financeiro' ? null : 'financeiro')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
+                          onClick={() => setShowFinanceModal(true)}
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition border-b border-slate-100"
                         >
                           <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
                             <Wallet className="w-5 h-5" />
                           </div>
                           <div className="flex-1">
                             <span className="block text-sm font-bold text-slate-800">Posição Financeira</span>
-                            <span className={`block text-[11px] font-semibold ${editPaymentStatus === 'pago' ? 'text-emerald-500' : 'text-amber-500'}`}>
-                              {editPaymentStatus === 'pago' ? 'Ativo - Pago e Em Dia' : 'Pendente de Lançamento'}
+                            <span className={`block text-[11px] font-semibold text-slate-500`}>
+                              Gerenciar faturas e pagamentos
                             </span>
                           </div>
-                          {expandedCategory === 'financeiro' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
+                          <ChevronRight className="w-5 h-5 text-slate-400" />
                         </button>
-                        
-                        {expandedCategory === 'financeiro' && (
-                          <div className="px-5 pb-5 pt-2 space-y-4">
-                            <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                              <div>
-                                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Serviço Cadastrado</span>
-                                <span className="text-sm font-bold text-slate-800 uppercase inline-block mt-0.5">Consultoria Mensal • {selectedStudent.modality}</span>
-                              </div>
-                              <span className="font-mono text-sm font-bold text-slate-800">R$ 150,00</span>
-                            </div>
-                            
-                            <div className="flex gap-2">
-                              {/* Toggle payment status */}
-                              <button
-                                onClick={handleTogglePayment}
-                                className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl border cursor-pointer transition duration-200 shadow-sm ${
-                                  editPaymentStatus === 'pago'
-                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                                    : 'bg-amber-50 border-amber-200 text-amber-600'
-                                }`}
-                              >
-                                {editPaymentStatus === 'pago' ? '✓ Pago (Clique para Alterar)' : '⚠ Pendente (Clique para Lançar Pago)'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       {/* CATEGORY: STUDENT PROGRESS (PROGRESSO DO ALUNO) */}
@@ -3911,6 +3882,94 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <button className="text-[#3182ce] text-sm font-medium hover:underline">
                     Ver ano completo
                   </button>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FINANCE MODAL */}
+      <AnimatePresence>
+        {showFinanceModal && (
+          <div className="fixed inset-0 z-[150] bg-[#f4f7f9] flex flex-col items-center justify-start overflow-y-auto">
+            <div className="w-full max-w-xl flex flex-col min-h-screen relative">
+              {/* Header */}
+              <div className="px-6 pt-6 pb-24 shrink-0 relative bg-[#22354a]">
+                 <div className="flex items-center gap-4 mb-4">
+                  <button onClick={() => setShowFinanceModal(false)} className="text-white flex items-center gap-1 font-bold text-[10px] uppercase tracking-wider opacity-80 hover:opacity-100">
+                    <ChevronLeft className="w-4 h-4" /> Voltar
+                  </button>
+                </div>
+                <h2 className="text-white text-lg font-black uppercase tracking-tight">
+                  {selectedStudent?.name}
+                </h2>
+              </div>
+
+              {/* Finance Cards */}
+              <motion.div 
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 50, opacity: 0 }}
+                className="flex-1 relative -mt-16 mx-4 mb-8"
+              >
+                {/* 3 Summary Cards */}
+                <div className="flex gap-3 overflow-x-auto pb-4 snap-x scrollbar-none">
+                  {/* Card 1 */}
+                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
+                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Recebido no período</p>
+                    <p className="text-xl font-black text-[#10b981]">R$ 0,00</p>
+                  </div>
+                  {/* Card 2 */}
+                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
+                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Em aberto no período</p>
+                    <p className="text-xl font-black text-[#f43f5e]">R$ 0,00</p>
+                  </div>
+                  {/* Card 3 */}
+                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
+                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Recebido em 2026</p>
+                    <p className="text-xl font-black text-[#10b981]">R$ 0,00</p>
+                  </div>
+                </div>
+
+                {/* Date Filter */}
+                <div className="text-center mt-2 mb-6 relative group">
+                   <div className="inline-block relative">
+                     {/* Tooltip mockup */}
+                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white text-slate-600 text-[11px] px-3 py-2 rounded shadow-md border border-slate-100 whitespace-nowrap z-10 hidden group-hover:block">
+                        Clique aqui para alterar o período
+                        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
+                     </div>
+                     <button className="text-[#0070d2] text-sm font-medium cursor-pointer">
+                        01/06/2026 - 30/06/2026
+                     </button>
+                   </div>
+                </div>
+
+                {/* Main Content Area */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 min-h-[400px]">
+                  {/* Tabs */}
+                  <div className="flex flex-wrap gap-2 mb-8">
+                    <button className="flex-1 py-2.5 bg-[#0070d2] text-white text-xs font-medium rounded-md whitespace-nowrap">
+                      Faturas Abertas
+                    </button>
+                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
+                      Faturas Pagas
+                    </button>
+                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
+                      Faturas Vencidas
+                    </button>
+                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
+                      Planos
+                    </button>
+                  </div>
+
+                  {/* Add Invoice Button */}
+                  <div className="flex justify-end">
+                    <button className="bg-[#22354a] text-white px-5 py-2.5 rounded-md text-xs font-bold flex items-center gap-1 hover:bg-[#152332] transition">
+                      + Fatura
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             </div>
