@@ -59,7 +59,8 @@ import {
   ArrowUpDown,
   Archive,
   Activity,
-  ClipboardCheck
+  ClipboardCheck,
+  Info
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -3773,41 +3774,70 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {selectedDetailTab === 'opcoes' && (
                   <div className="space-y-4 pt-1">
                     
-                    {/* Send report link over WhatsApp */}
-                    <a
-                      href={`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!%20Acesse%20e%20baixe%20seus%20treinos%20para%20as%20atividades%20dessa%20semana.`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-4 text-center rounded-2xl flex items-center justify-center gap-2.5 uppercase tracking-wide text-xs shadow-md transition"
-                    >
-                      <Phone className="w-4 h-4 fill-current stroke-[2]" /> Enviar Notificação de Treino
-                    </a>
-                    
-                    <button
-                      onClick={handleToggleModality}
-                      className="w-full py-3.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-slate-600 font-bold rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                    >
-                      Alternar Modalidade ({selectedStudent.modality || 'Presencial'} ↔ {selectedStudent.modality === 'Presencial' ? 'Online' : 'Presencial'})
-                    </button>
+                    {/* Option List Card */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                      <a
+                        href={`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                          <MessageSquare className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">Conversar</span>
+                      </a>
+                      
+                      <button
+                        onClick={() => {
+                          const link = `https://cadu-ponce-personal.vercel.app/login?email=${selectedStudent.email}`;
+                          navigator.clipboard.writeText(link);
+                          setCopiedLink(selectedStudent.uid);
+                          setTimeout(() => setCopiedLink(null), 2000);
+                        }}
+                        className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer text-left"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                          <Info className="w-5 h-5 text-[#3182ce]" />
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">
+                          {copiedLink === selectedStudent.uid ? 'Copiado!' : 'Informações de login'}
+                        </span>
+                      </button>
 
-                    <button
-                      onClick={() => {
-                        const link = `https://cadu-ponce-personal.vercel.app/login?email=${selectedStudent.email}`;
-                        navigator.clipboard.writeText(link);
-                        setCopiedLink(selectedStudent.uid);
-                        setTimeout(() => setCopiedLink(null), 2000);
-                      }}
-                      className="w-full py-3.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-slate-600 font-bold rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                    >
-                      {copiedLink === selectedStudent.uid ? '✓ Link de Acesso Copiado!' : 'Copiar Link de Login Direto'}
-                    </button>
+                      <button
+                        className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer text-left opacity-70"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                          <Bell className="w-5 h-5 text-[#3182ce]" />
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">Preferências de notificações</span>
+                      </button>
 
-                    <div className="pt-6 mt-6">
+                      <button
+                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition cursor-pointer text-left opacity-70"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                          <Edit3 className="w-5 h-5 text-[#3182ce]" />
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">Editar informações do aluno</span>
+                      </button>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="space-y-3 pt-2">
+                      <button
+                        onClick={handleToggleModality}
+                        className="w-full py-3.5 bg-white border border-[#3182ce] text-[#3182ce] font-medium rounded-lg text-sm transition hover:bg-blue-50 cursor-pointer"
+                      >
+                        Inativar aluno
+                      </button>
+                      
                       <button
                         onClick={() => handleDeleteUser(selectedStudent.uid)}
-                        className="w-full py-4 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white font-bold rounded-2xl text-xs uppercase tracking-wider transition duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        className="w-full py-3.5 bg-white border border-red-500 text-red-500 font-medium rounded-lg text-sm transition hover:bg-red-50 cursor-pointer"
                       >
-                        <Trash2 className="w-4 h-4" /> Excluir permanentemente o Aluno
+                        Excluir aluno
                       </button>
                     </div>
 
