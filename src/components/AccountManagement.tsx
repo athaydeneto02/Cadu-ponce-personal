@@ -56,7 +56,10 @@ import {
   Accessibility,
   MoreVertical,
   Eye,
-  ArrowUpDown
+  ArrowUpDown,
+  Archive,
+  Activity,
+  ClipboardCheck
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -3305,108 +3308,90 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       {/* OVERLAY 1: STUDENT DETAILS & COACH ACTIONS MODAL */}
       <AnimatePresence>
         {selectedStudent && (
-          <div className="fixed inset-0 z-[100] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] bg-[#f4f7fa] flex flex-col md:p-6 overflow-hidden">
             <motion.div 
-              initial={{ scale: 0.93, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.93, opacity: 0 }}
-              className="w-full max-w-lg rounded-[32px] bg-slate-900 border border-slate-800 shadow-2xl relative text-left overflow-hidden max-h-[85vh] flex flex-col"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="w-full h-full flex flex-col max-w-lg mx-auto bg-[#f4f7fa] md:rounded-3xl md:shadow-2xl overflow-hidden relative text-left"
             >
-              {/* Modal Top Header (Back navigation style) */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-850 shrink-0">
-                <button 
-                  onClick={() => setSelectedStudent(null)}
-                  className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white transition"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Voltar
-                </button>
-                <span className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-950/35 border border-red-900/40 px-3 py-1 rounded-full">
-                  Painel de Controle do Aluno
-                </span>
-              </div>
-
-              {/* Scrollable Container */}
-              <div className="flex-1 overflow-y-auto p-6 scrollbar-none space-y-6">
-                
-                {/* Student Avatar and Metadata */}
-                <div className="flex items-start justify-between">
+              {/* NEW HEADER */}
+              <div className="bg-[#1c2e40] pt-6 flex flex-col shrink-0">
+                <div className="px-6 pb-6">
+                  <button 
+                    onClick={() => setSelectedStudent(null)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white/80 hover:text-white transition mb-6 uppercase tracking-wider cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Voltar
+                  </button>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-red-650/10 text-red-500 border border-red-550/20 rounded-full flex items-center justify-center font-black text-2xl uppercase select-none">
+                    <div className="w-16 h-16 bg-white/10 text-white rounded-full flex items-center justify-center font-black text-2xl uppercase select-none shrink-0 border-2 border-white/20">
                       {selectedStudent.name.substring(0, 2)}
                     </div>
                     <div>
-                      <h3 className="text-xl font-black italic uppercase tracking-tighter text-white leading-tight mb-1">{selectedStudent.name}</h3>
-                      <button 
-                        onClick={handleToggleModality}
-                        className="text-[10px] bg-slate-800 hover:bg-slate-750 text-slate-300 font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-md border border-slate-700/60 transition inline-flex items-center gap-1 cursor-pointer"
-                        title="Clique para alternar modalidade"
-                      >
-                        ⚡ {selectedStudent.modality || 'Presencial'}
-                      </button>
+                      <h3 className="text-xl font-black text-white uppercase tracking-wider leading-tight mb-1">{selectedStudent.name}</h3>
+                      <p className="text-sm text-slate-300 font-semibold">{selectedStudent.modality || 'Presencial'}</p>
                     </div>
-                  </div>
-                  
-                  {/* Status Indicator Badge */}
-                  <div className="text-right">
-                    <span className="inline-flex items-center gap-1.5 text-[9.5px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Ativo
-                    </span>
-                    <span className="block text-[8px] text-slate-500 font-extrabold uppercase tracking-wide mt-1">Desde {new Date(selectedStudent.createdAt).toLocaleDateString('pt-BR')}</span>
                   </div>
                 </div>
 
-                {/* Sub Navigation Tabs */}
-                <div className="flex gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-850">
+                {/* TABS attached to header */}
+                <div className="flex px-4 gap-2">
                   <button
                     onClick={() => setSelectedDetailTab('inicio')}
-                    className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition duration-300 ${
+                    className={`flex-1 py-3 text-sm font-bold uppercase tracking-widest rounded-t-xl transition duration-300 cursor-pointer ${
                       selectedDetailTab === 'inicio' 
-                        ? 'bg-slate-850 text-white shadow-md border border-slate-750/50' 
-                        : 'text-slate-500 hover:text-slate-300'
+                        ? 'bg-[#f4f7fa] text-slate-800' 
+                        : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white shadow-inner'
                     }`}
                   >
                     Início
                   </button>
                   <button
                     onClick={() => setSelectedDetailTab('opcoes')}
-                    className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition duration-300 ${
+                    className={`flex-1 py-3 text-sm font-bold uppercase tracking-widest rounded-t-xl transition duration-300 cursor-pointer ${
                       selectedDetailTab === 'opcoes' 
-                        ? 'bg-slate-850 text-white shadow-md border border-slate-750/50' 
-                        : 'text-slate-500 hover:text-slate-300'
+                        ? 'bg-[#f4f7fa] text-slate-800' 
+                        : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white shadow-inner'
                     }`}
                   >
                     Opções
                   </button>
                 </div>
+              </div>
 
+              {/* Scrollable Container */}
+              <div className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none space-y-4">
+                
                 {/* TABCONTENT: INITIAL (INÍCIO) */}
                 {selectedDetailTab === 'inicio' && (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     
                     {/* Weekly Frequency Section */}
-                    <div className="bg-slate-950/40 p-5 rounded-2xl border border-slate-850/60">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Frequência de Treinos</h4>
-                        <span className="text-[9px] font-bold text-slate-500">Tocar para alternar presença</span>
-                      </div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-5 text-center">Frequência de Treinos</h4>
                       
-                      <div className="grid grid-cols-7 gap-1.5">
+                      <div className="flex justify-between items-center">
                         {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, idx) => {
                           const isActive = frequency[idx];
-                          const dayNames = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
                           return (
                             <button
                               key={idx}
                               onClick={() => handleToggleDay(idx)}
-                              className={`aspect-square flex flex-col items-center justify-center rounded-xl font-black text-xs transition duration-200 cursor-pointer ${
-                                isActive 
-                                  ? 'bg-red-650 text-white shadow-lg shadow-red-950/15 border border-red-500/30' 
-                                  : 'bg-slate-950 hover:bg-slate-850 text-slate-500 hover:text-slate-300 border border-slate-850'
-                              }`}
-                              title={dayNames[idx]}
+                              className="flex flex-col items-center gap-2 cursor-pointer group"
                             >
-                              <span>{day}</span>
-                              {isActive && <span className="w-1 h-1 bg-white rounded-full mt-0.5" />}
+                              <div className={`w-8 h-8 rounded-full border-[2px] flex items-center justify-center transition-colors ${
+                                isActive 
+                                  ? 'border-[#3182ce] bg-white' 
+                                  : 'border-slate-300 bg-white'
+                              }`}>
+                                {isActive ? (
+                                  <div className="w-2.5 h-2.5 bg-[#3182ce] rounded-full" />
+                                ) : (
+                                  <X className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400 transition" strokeWidth={3} />
+                                )}
+                              </div>
+                              <span className="text-[10px] font-black text-slate-500 uppercase">{day}</span>
                             </button>
                           );
                         })}
@@ -3414,34 +3399,32 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </div>
 
                     {/* Expanding Categories List */}
-                    <div className="space-y-3">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
                       
                       {/* CATEGORY: WORKOUTS (TREINOS) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'treinos' ? null : 'treinos')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <Dumbbell className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Treinos Sincronizados</span>
-                              <span className="block text-[10px] text-slate-500 font-bold">
-                                {workouts.filter(w => w.studentId === selectedStudent.uid).length} Fichas Ativas
-                              </span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <Dumbbell className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Treinos Sincronizados</span>
+                            <span className="block text-[11px] font-semibold text-slate-500">
+                              {workouts.filter(w => w.studentId === selectedStudent.uid).length} Fichas Ativas
+                            </span>
                           </div>
                           {expandedCategory === 'treinos' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'treinos' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-4">
+                          <div className="px-5 pb-5 pt-2 space-y-4">
                             {/* Workout list */}
                             {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
                               <div className="text-center py-6 text-slate-500 text-xs font-semibold">
@@ -3449,28 +3432,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <div className="flex flex-col gap-2 max-w-xs mx-auto">
                                   <button
                                     onClick={() => handleAddWorkout('inferiores')}
-                                    className="bg-red-650 hover:bg-red-600 text-white font-black py-2.5 px-4 rounded-xl text-[10px] uppercase tracking-wider transition cursor-pointer"
+                                    className="bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-bold py-2.5 px-4 rounded-xl text-[11px] uppercase tracking-wider transition cursor-pointer shadow-sm"
                                   >
                                     ⚡ Inicializar Treino Inferiores
                                   </button>
                                   <button
                                     onClick={() => handleAddWorkout('superiores')}
-                                    className="bg-slate-800 hover:bg-slate-750 text-white font-black py-2.5 px-4 rounded-xl text-[10px] uppercase tracking-wider transition cursor-pointer"
+                                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 px-4 rounded-xl text-[11px] uppercase tracking-wider transition cursor-pointer shadow-sm"
                                   >
                                     ⚡ Inicializar Treino Superiores
                                   </button>
                                 </div>
                               </div>
                             ) : (
-                              <div className="space-y-3.5">
+                              <div className="space-y-3">
                                 {workouts.filter(w => w.studentId === selectedStudent.uid).map((w) => (
-                                  <div key={w.id} className="p-4 bg-slate-900/60 rounded-xl border border-slate-800 flex items-start justify-between gap-3">
+                                  <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <h5 className="font-extrabold text-xs text-white uppercase italic tracking-tight">{w.name}</h5>
-                                      {w.description && <p className="text-[10px] text-slate-450 mt-1">{w.description}</p>}
+                                      <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
+                                      {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
                                       
                                       {/* Quick exercises preview indicator */}
-                                      <span className="inline-block text-[9px] bg-slate-800 text-slate-350 px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
+                                      <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
                                         {w.exercises?.length || 0} exercícios
                                       </span>
                                     </div>
@@ -3481,7 +3464,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           e.stopPropagation();
                                           generateWorkoutPDF(w, selectedStudent.name);
                                         }}
-                                        className="p-2.5 bg-red-650/15 hover:bg-red-650 text-red-500 hover:text-white rounded-xl transition duration-200 active:scale-90 cursor-pointer animate-pulse"
+                                        className="p-2.5 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-xl transition duration-200 active:scale-90 cursor-pointer"
                                         title="Baixar Treino em PDF"
                                       >
                                         <Download className="w-4 h-4" />
@@ -3490,7 +3473,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       {/* DELETE INDIVIDUAL WORKOUT */}
                                       <button
                                         onClick={() => handleDeleteWorkout(w.id)}
-                                        className="p-2.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-500 rounded-xl transition duration-200 cursor-pointer"
+                                        className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200 cursor-pointer"
                                         title="Excluir ficha"
                                       >
                                         <Trash2 className="w-4 h-4" />
@@ -3500,24 +3483,24 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 ))}
 
                                 {/* Add training presets panel */}
-                                <div className="pt-3 border-t border-dashed border-slate-800">
-                                  <span className="block text-[8px] text-slate-500 font-extrabold uppercase tracking-widest mb-2 text-center">Prescrever Novo Treino</span>
-                                  <div className="grid grid-cols-3 gap-1.5">
+                                <div className="pt-4 mt-2 border-t border-dashed border-slate-200">
+                                  <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-3 text-center">Prescrever Novo Treino</span>
+                                  <div className="grid grid-cols-3 gap-2">
                                     <button
                                       onClick={() => handleAddWorkout('inferiores')}
-                                      className="py-2 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:border-slate-700 text-[10px] font-black uppercase text-slate-300 rounded-xl transition cursor-pointer text-center"
+                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
                                     >
                                       + Inferiores
                                     </button>
                                     <button
                                       onClick={() => handleAddWorkout('superiores')}
-                                      className="py-2 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:border-slate-700 text-[10px] font-black uppercase text-slate-300 rounded-xl transition cursor-pointer text-center"
+                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
                                     >
                                       + Superiores
                                     </button>
                                     <button
                                       onClick={() => handleAddWorkout('cardio')}
-                                      className="py-2 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:border-slate-700 text-[10px] font-black uppercase text-slate-300 rounded-xl transition cursor-pointer text-center"
+                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
                                     >
                                       + Core/Cardio
                                     </button>
@@ -3530,60 +3513,58 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </div>
 
                       {/* CATEGORY: ASSESSMENTS (AVALIAÇÕES) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'avaliacoes' ? null : 'avaliacoes')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <Award className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Avaliações Físicas</span>
-                              <span className="block text-[10px] text-slate-500 font-bold">
-                                {selectedStudent.weight || '--'} kg • {selectedStudent.height || '--'} cm
-                              </span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <ClipboardCheck className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Avaliações Físicas</span>
+                            <span className="block text-[11px] font-semibold text-slate-500">
+                              {selectedStudent.weight || '--'} kg • {selectedStudent.height || '--'} cm
+                            </span>
                           </div>
                           {expandedCategory === 'avaliacoes' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'avaliacoes' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-4">
+                          <div className="px-5 pb-5 pt-2 space-y-4">
                             <div className="grid grid-cols-3 gap-3">
                               <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Peso (kg)</label>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Peso (kg)</label>
                                 <input 
                                   type="number"
                                   step="0.1"
                                   value={editWeight}
                                   onChange={(e) => setEditWeight(e.target.value)}
-                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-bold text-xs outline-none text-white focus:border-red-600"
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
                                   placeholder="59"
                                 />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Altura (cm)</label>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Altura (cm)</label>
                                 <input 
                                   type="number"
                                   value={editHeight}
                                   onChange={(e) => setEditHeight(e.target.value)}
-                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-bold text-xs outline-none text-white focus:border-red-600"
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
                                   placeholder="164"
                                 />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Gordura % (BF)</label>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Gordura (BF)</label>
                                 <input 
                                   type="text"
                                   value={editBF}
                                   onChange={(e) => setEditBF(e.target.value)}
-                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-bold text-xs outline-none text-white focus:border-red-600"
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
                                   placeholder="18.5%"
                                 />
                               </div>
@@ -3591,10 +3572,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                             <button
                               onClick={handleSaveAssessment}
-                              className={`w-full py-2.5 rounded-xl font-extrabold text-[10px] uppercase tracking-wider transition cursor-pointer ${
+                              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-sm ${
                                 saveSuccess 
-                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950/10' 
-                                  : 'bg-red-600 hover:bg-red-500 text-white italic shadow-lg shadow-red-950/10'
+                                  ? 'bg-emerald-500 text-white' 
+                                  : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white'
                               }`}
                             >
                               {saveSuccess ? '✓ Atualizado com Sucesso!' : 'Salvar Dados da Avaliação'}
@@ -3604,47 +3585,45 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </div>
 
                       {/* CATEGORY: FINANCE (POSIÇÃO FINANCEIRA) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'financeiro' ? null : 'financeiro')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <Wallet className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Posição Financeira</span>
-                              <span className={`block text-[10px] font-extrabold uppercase tracking-wide ${editPaymentStatus === 'pago' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {editPaymentStatus === 'pago' ? 'Ativo - Pago e Em Dia' : 'Pendente de Lançamento'}
-                              </span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <Wallet className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Posição Financeira</span>
+                            <span className={`block text-[11px] font-semibold ${editPaymentStatus === 'pago' ? 'text-emerald-500' : 'text-amber-500'}`}>
+                              {editPaymentStatus === 'pago' ? 'Ativo - Pago e Em Dia' : 'Pendente de Lançamento'}
+                            </span>
                           </div>
                           {expandedCategory === 'financeiro' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'financeiro' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-4">
-                            <div className="flex items-center justify-between p-3.5 bg-slate-900 rounded-xl border border-slate-800">
+                          <div className="px-5 pb-5 pt-2 space-y-4">
+                            <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm">
                               <div>
-                                <span className="block text-[8px] text-slate-500 font-extrabold uppercase tracking-wider">Serviço Cadastrado</span>
-                                <span className="text-xs font-black text-white uppercase inline-block mt-0.5">Consultoria Mensal • {selectedStudent.modality}</span>
+                                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Serviço Cadastrado</span>
+                                <span className="text-sm font-bold text-slate-800 uppercase inline-block mt-0.5">Consultoria Mensal • {selectedStudent.modality}</span>
                               </div>
-                              <span className="font-mono text-xs font-black text-white">R$ 150,00</span>
+                              <span className="font-mono text-sm font-bold text-slate-800">R$ 150,00</span>
                             </div>
                             
                             <div className="flex gap-2">
                               {/* Toggle payment status */}
                               <button
                                 onClick={handleTogglePayment}
-                                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-wider rounded-xl border cursor-pointer transition duration-200 ${
+                                className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl border cursor-pointer transition duration-200 shadow-sm ${
                                   editPaymentStatus === 'pago'
-                                    ? 'bg-emerald-950/25 border-emerald-900/40 text-emerald-400 shadow-lg shadow-emerald-950/5'
-                                    : 'bg-amber-950/25 border-amber-900/40 text-amber-400 shadow-lg shadow-amber-950/5'
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                                    : 'bg-amber-50 border-amber-200 text-amber-600'
                                 }`}
                               >
                                 {editPaymentStatus === 'pago' ? '✓ Pago (Clique para Alterar)' : '⚠ Pendente (Clique para Lançar Pago)'}
@@ -3655,93 +3634,89 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </div>
 
                       {/* CATEGORY: STUDENT PROGRESS (PROGRESSO DO ALUNO) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'progresso' ? null : 'progresso')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <TrendingUp className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Progresso do Aluno</span>
-                              <span className="block text-[10px] text-slate-500 font-bold">Resumo de cargas de repetição</span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <Activity className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Progresso do Aluno</span>
+                            <span className="block text-[11px] font-semibold text-slate-500">Resumo de cargas de repetição</span>
                           </div>
                           {expandedCategory === 'progresso' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'progresso' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-3.5">
-                            <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                              <span className="block text-[8px] text-slate-500 font-black uppercase tracking-widest mb-1.5">Evolução Fiel de Carga</span>
-                              <div className="space-y-2 text-xs font-bold text-slate-350">
-                                <div className="flex justify-between border-b border-slate-800 pb-1.5">
-                                  <span className="text-white">Supino Reto</span>
-                                  <span className="text-red-500 font-black font-mono">60 kg → 64 kg 🔥</span>
+                          <div className="px-5 pb-5 pt-2 space-y-3.5">
+                            <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
+                              <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Evolução Fiel de Carga</span>
+                              <div className="space-y-2 text-sm font-semibold text-slate-700">
+                                <div className="flex justify-between border-b border-slate-100 pb-2">
+                                  <span>Supino Reto</span>
+                                  <span className="text-[#3182ce] font-bold font-mono">60 kg → 64 kg 🔥</span>
                                 </div>
-                                <div className="flex justify-between border-b border-slate-800 pb-1.5">
-                                  <span className="text-white">Agachamento Búlgaro</span>
-                                  <span className="text-red-500 font-black font-mono">10 kg → 12 kg 🔥</span>
+                                <div className="flex justify-between border-b border-slate-100 pb-2">
+                                  <span>Agachamento Búlgaro</span>
+                                  <span className="text-[#3182ce] font-bold font-mono">10 kg → 12 kg 🔥</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="text-white">Puxada Aberta</span>
-                                  <span className="text-slate-400 font-mono">55 kg (estável)</span>
+                                  <span>Puxada Aberta</span>
+                                  <span className="text-slate-500 font-mono">55 kg (estável)</span>
                                 </div>
                               </div>
                             </div>
                             
-                            <p className="text-[10px] text-slate-500 text-center font-bold">Visite a aba de Fotos de Evolução do aluno no Feed para revisões visuais.</p>
+                            <p className="text-[10px] text-slate-400 text-center font-bold">Visite a aba de Fotos de Evolução do aluno no Feed para revisões visuais.</p>
                           </div>
                         )}
                       </div>
 
                       {/* CATEGORY: EXTRA ROUTINES (TREINOS EXTRAS) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'extras' ? null : 'extras')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <Sparkles className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Treinos Extras & Cardio</span>
-                              <span className="block text-[10px] text-slate-500 font-bold">Orientações extras prescritas</span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Treinos Extras & Cardio</span>
+                            <span className="block text-[11px] font-semibold text-slate-500">Orientações extras prescritas</span>
                           </div>
                           {expandedCategory === 'extras' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'extras' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-3.5 text-xs">
+                          <div className="px-5 pb-5 pt-2 space-y-3.5 text-sm">
                             <div className="space-y-1.5">
-                              <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Recomendações Auxiliares (Cardio, Mobilidade...)</label>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recomendações Auxiliares (Cardio, Mobilidade...)</label>
                               <textarea
                                 value={extraPrescription}
                                 onChange={(e) => setExtraPrescription(e.target.value)}
                                 rows={2}
-                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl font-semibold text-xs outline-none text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/25 resize-none placeholder:text-slate-600"
+                                className="w-full p-3 bg-white border border-slate-200 rounded-xl font-semibold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 resize-none placeholder:text-slate-400"
                                 placeholder="Insira aqui as prescrições de cardio ou mobilidade... Ex: 30 minutos de hit corrida 3x na semana."
                               />
                             </div>
 
                             <button
                               onClick={handleSavePrescription}
-                              className={`w-full py-2.5 rounded-xl font-extrabold text-[10px] uppercase tracking-wider transition cursor-pointer ${
+                              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-sm ${
                                 prescSuccess 
-                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/10' 
-                                  : 'bg-red-600 hover:bg-red-500 text-white italic shadow-lg shadow-red-950/10'
+                                  ? 'bg-emerald-500 text-white' 
+                                  : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white'
                               }`}
                             >
                               {prescSuccess ? '✓ Prescrição Salva!' : 'Salvar Recomendações'}
@@ -3751,42 +3726,40 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </div>
 
                       {/* CATEGORY: FILES (ARQUIVOS) */}
-                      <div className="border border-slate-850 bg-slate-950/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-hidden">
                         <button
                           onClick={() => setExpandedCategory(expandedCategory === 'arquivos' ? null : 'arquivos')}
-                          className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-850/20 transition"
+                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-red-650/15 border border-red-900/35 rounded-xl text-red-500">
-                              <Download className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <span className="block text-xs font-black uppercase tracking-wider text-white">Arquivos Exportáveis</span>
-                              <span className="block text-[10px] text-slate-500 font-bold">Formulários e Fichas offline do aluno</span>
-                            </div>
+                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
+                            <Archive className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <span className="block text-sm font-bold text-slate-800">Arquivos Exportáveis</span>
+                            <span className="block text-[11px] font-semibold text-slate-500">Formulários e Fichas offline do aluno</span>
                           </div>
                           {expandedCategory === 'arquivos' ? (
-                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
                           )}
                         </button>
                         
                         {expandedCategory === 'arquivos' && (
-                          <div className="px-5 pb-5 border-t border-slate-850 bg-slate-950/30 p-4 space-y-2.5">
+                          <div className="px-5 pb-5 pt-2 space-y-2.5">
                             {workouts.filter(w => w.studentId === selectedStudent.uid).map((workout) => (
                               <button
                                 key={workout.id}
                                 onClick={() => generateWorkoutPDF(workout, selectedStudent.name)}
-                                className="w-full p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl flex items-center justify-between font-bold text-xs text-white transition group cursor-pointer"
+                                className="w-full p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between font-bold text-sm text-slate-700 transition group cursor-pointer shadow-sm"
                               >
-                                <span className="group-hover:text-red-500 transition">{workout.name}.pdf</span>
-                                <Download className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                                <span className="group-hover:text-[#3182ce] transition">{workout.name}.pdf</span>
+                                <Download className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce]" />
                               </button>
                             ))}
                             
                             {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 && (
-                              <p className="text-[10px] text-slate-500 font-semibold text-center italic py-2">Sem arquivos de PDFs geráveis disponíveis para esse aluno. Crie uma ficha na categoria "Treinos" acima primeiro!</p>
+                              <p className="text-xs text-slate-500 font-semibold text-center italic py-2">Sem arquivos de PDFs geráveis disponíveis para esse aluno. Crie uma ficha na categoria "Treinos" acima primeiro!</p>
                             )}
                           </div>
                         )}
@@ -3805,14 +3778,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       href={`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!%20Acesse%20e%20baixe%20seus%20treinos%20para%20as%20atividades%20dessa%20semana.`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-emerald-650 hover:bg-emerald-600 text-white font-black py-4 text-center rounded-2xl flex items-center justify-center gap-2.5 uppercase tracking-wide text-xs"
+                      className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-4 text-center rounded-2xl flex items-center justify-center gap-2.5 uppercase tracking-wide text-xs shadow-md transition"
                     >
                       <Phone className="w-4 h-4 fill-current stroke-[2]" /> Enviar Notificação de Treino
                     </a>
                     
                     <button
                       onClick={handleToggleModality}
-                      className="w-full py-3.5 bg-slate-950 border border-slate-850 hover:border-slate-800 text-slate-300 font-black rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-slate-600 font-bold rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                     >
                       Alternar Modalidade ({selectedStudent.modality || 'Presencial'} ↔ {selectedStudent.modality === 'Presencial' ? 'Online' : 'Presencial'})
                     </button>
@@ -3824,15 +3797,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         setCopiedLink(selectedStudent.uid);
                         setTimeout(() => setCopiedLink(null), 2000);
                       }}
-                      className="w-full py-3.5 bg-slate-950 border border-slate-850 hover:border-slate-800 text-slate-300 font-black rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-slate-600 font-bold rounded-2xl text-xs uppercase tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                     >
                       {copiedLink === selectedStudent.uid ? '✓ Link de Acesso Copiado!' : 'Copiar Link de Login Direto'}
                     </button>
 
-                    <div className="pt-6 border-t border-dashed border-slate-800 mt-6">
+                    <div className="pt-6 mt-6">
                       <button
                         onClick={() => handleDeleteUser(selectedStudent.uid)}
-                        className="w-full py-4 bg-red-650/10 hover:bg-red-650 text-red-500 hover:text-white font-black rounded-2xl text-xs uppercase tracking-wider transition duration-300 flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full py-4 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white font-bold rounded-2xl text-xs uppercase tracking-wider transition duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                       >
                         <Trash2 className="w-4 h-4" /> Excluir permanentemente o Aluno
                       </button>
