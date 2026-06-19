@@ -249,6 +249,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [frequency, setFrequency] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [editWeight, setEditWeight] = useState('');
   const [editHeight, setEditHeight] = useState('');
@@ -3369,16 +3370,22 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <div className="space-y-4">
                     
                     {/* Weekly Frequency Section */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div 
+                      onClick={() => setShowFrequencyCalendar(true)}
+                      className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm cursor-pointer hover:border-[#3182ce] transition"
+                    >
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-5 text-center">Frequência de Treinos</h4>
                       
                       <div className="flex justify-between items-center">
                         {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, idx) => {
                           const isActive = frequency[idx];
                           return (
-                            <button
+                            <div
                               key={idx}
-                              onClick={() => handleToggleDay(idx)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleDay(idx);
+                              }}
                               className="flex flex-col items-center gap-2 cursor-pointer group"
                             >
                               <div className={`w-8 h-8 rounded-full border-[2px] flex items-center justify-center transition-colors ${
@@ -3393,7 +3400,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 )}
                               </div>
                               <span className="text-[10px] font-black text-slate-500 uppercase">{day}</span>
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -3846,6 +3853,67 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
               </div>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FREQUENCY CALENDAR MODAL */}
+      <AnimatePresence>
+        {showFrequencyCalendar && (
+          <div className="fixed inset-0 z-[150] bg-[#22354a] flex flex-col items-center justify-start overflow-y-auto">
+            <div className="w-full max-w-xl flex flex-col min-h-screen relative">
+              {/* Header */}
+              <div className="px-6 pt-8 pb-20 shrink-0 text-center relative">
+                <h2 className="text-white text-xl font-bold">
+                  Frequência de Treinos
+                </h2>
+              </div>
+
+              {/* Calendar Card */}
+              <motion.div 
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 50, opacity: 0 }}
+                className="flex-1 bg-white rounded-xl shadow-xl p-6 relative -mt-14 mx-4 mb-8"
+              >
+                {/* < Anterior and Date */}
+                <div className="flex justify-between items-start mb-8">
+                  <button 
+                    onClick={() => setShowFrequencyCalendar(false)} 
+                    className="text-[#3182ce] flex items-center gap-1 font-medium text-sm"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Anterior
+                  </button>
+                  <div className="text-center absolute left-1/2 -translate-x-1/2">
+                    <h3 className="font-bold text-lg text-slate-800 tracking-tight">2026</h3>
+                    <p className="text-slate-700 text-sm capitalize">{format(new Date(), 'MMMM', { locale: ptBR })}</p>
+                  </div>
+                  <div className="w-20" />
+                </div>
+
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-y-6 text-center mt-12">
+                  {['Seg.', 'Ter.', 'Qua.', 'Qui.', 'Sex.', 'Sáb.', 'Dom.'].map(d => (
+                    <div key={d} className="text-sm font-medium text-slate-800">{d}</div>
+                  ))}
+                  {/* Empty spaces if month doesn't start on Monday. Hardcoded for image demo (starts on Monday) */}
+                  {Array.from({ length: 30 }).map((_, i) => (
+                    <div key={i} className="flex justify-center">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold bg-[#f1f5f9] text-slate-700">
+                        {i + 1}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ver ano completo */}
+                <div className="mt-12 text-right pr-2">
+                  <button className="text-[#3182ce] text-sm font-medium hover:underline">
+                    Ver ano completo
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           </div>
         )}
       </AnimatePresence>
