@@ -1384,6 +1384,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               const valDesc = newExDesc.trim() || 'Exercício personalizado adicionado pelo treinador Cadu Ponce.';
 
                               const newExObj = {
+                                 id: editingExerciseOriginalTitle 
+                                      ? exercises.find(ex => ex.title === editingExerciseOriginalTitle)?.id || crypto.randomUUID()
+                                      : crypto.randomUUID(),
                                  title: newExName.trim(),
                                  group: newExGroup,
                                  category: newExCategory,
