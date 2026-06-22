@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -60,7 +62,9 @@ import {
   Archive,
   Image as ImageIcon,
   CheckCircle2,
-  Activity
+  Activity,
+  ClipboardCheck,
+  Info
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
