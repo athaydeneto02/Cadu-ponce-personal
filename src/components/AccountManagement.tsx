@@ -298,6 +298,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [isEditingOptions, setIsEditingOptions] = useState(false);
   const [editingOptionType, setEditingOptionType] = useState<'muscle' | 'category'>('muscle');
   const [newOptionValue, setNewOptionValue] = useState('');
+  const [showOptionInput, setShowOptionInput] = useState(false);
+  const [optionSearchQuery, setOptionSearchQuery] = useState('');
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
 
   // Exercise Library State
@@ -4278,67 +4280,100 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       <AnimatePresence>
         {isEditingOptions && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed inset-0 z-[100] bg-[#f4f7fa] flex flex-col"
           >
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-slate-50 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
-            >
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-                <div>
-                  <h3 className="font-black italic uppercase text-slate-900 tracking-tighter">
-                    Editar {editingOptionType === 'muscle' ? 'Grupos Musculares' : 'Categorias'}
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setIsEditingOptions(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-xl transition active:scale-95 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            {/* Header */}
+            <div className="bg-[#0c1622] px-4 pt-6 pb-6 flex flex-col items-start gap-4 shrink-0">
+               <button 
+                 onClick={() => setIsEditingOptions(false)}
+                 className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer text-left"
+               >
+                 <ChevronLeft className="w-3.5 h-3.5 inline inline-block" /> Voltar
+               </button>
+               <h4 className="text-white text-xl font-black tracking-tighter text-left leading-none">
+                 {editingOptionType === 'muscle' ? 'Grupos' : 'Categorias'}
+               </h4>
+            </div>
 
-              <div className="p-4 bg-white border-b border-slate-100 shrink-0">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newOptionValue}
-                    onChange={(e) => setNewOptionValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleAddOption();
-                    }}
-                    placeholder={`Adicionar ${editingOptionType === 'muscle' ? 'novo grupo' : 'nova categoria'}...`}
-                    className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
-                  />
-                  <button
-                    onClick={handleAddOption}
-                    className="bg-[#dc2626] text-white px-4 py-3 rounded-xl text-xs font-black uppercase italic tracking-wider hover:bg-[#ef4444] transition"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 overflow-y-auto flex-1 space-y-2">
-                {(editingOptionType === 'muscle' ? appMuscleGroups : appCategories).map((opt) => (
-                  <div key={opt} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <span className="text-xs font-bold text-slate-700 uppercase">{opt}</span>
-                    <button
-                      onClick={() => handleRemoveOption(opt)}
-                      className="text-slate-300 hover:text-red-500 transition cursor-pointer"
+            {/* Body Card */}
+            <div className="flex-1 bg-white mt-4 mx-4 rounded-t-lg shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
+               <div className="p-4 space-y-4 shrink-0 bg-white">
+                  {/* Create Button */}
+                  {!showOptionInput ? (
+                    <button 
+                      onClick={() => setShowOptionInput(true)}
+                      className="w-full py-4 bg-white border border-[#dc2626] rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                       + Criar {editingOptionType === 'muscle' ? 'grupo muscular' : 'categoria'}
                     </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newOptionValue}
+                        onChange={(e) => setNewOptionValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleAddOption();
+                            setShowOptionInput(false);
+                          }
+                        }}
+                        placeholder={`Nome ${editingOptionType === 'muscle' ? 'do grupo' : 'da categoria'}...`}
+                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
+                      />
+                      <button
+                        onClick={() => {
+                          handleAddOption();
+                          setShowOptionInput(false);
+                        }}
+                        className="bg-[#dc2626] text-white px-4 py-3 rounded-lg text-xs font-black uppercase tracking-wider hover:bg-red-600 transition cursor-pointer"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowOptionInput(false);
+                          setNewOptionValue('');
+                        }}
+                        className="text-slate-400 p-3 hover:text-slate-600 transition cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Search Input */}
+                  <input 
+                     type="text"
+                     value={optionSearchQuery}
+                     onChange={(e) => setOptionSearchQuery(e.target.value)}
+                     placeholder={`Buscar ${editingOptionType === 'muscle' ? 'grupos' : 'categorias'}...`}
+                     className="w-full bg-slate-50 border border-slate-200 rounded-lg py-3 px-4 text-sm text-slate-600 outline-none focus:border-slate-300 transition"
+                  />
+               </div>
+               
+               {/* List */}
+               <div className="flex-1 overflow-y-auto px-4 pb-4 bg-white text-left">
+                  <div className="space-y-0">
+                    {(editingOptionType === 'muscle' ? appMuscleGroups : appCategories)
+                      .filter(opt => opt.toLowerCase().includes(optionSearchQuery.toLowerCase()))
+                      .map((opt) => (
+                      <div key={opt} className="flex items-center justify-between py-4 border-b border-slate-100 last:border-0 group">
+                        <span className="text-[14px] font-bold text-slate-800">{opt}</span>
+                        <button
+                          onClick={() => handleRemoveOption(opt)}
+                          className="text-slate-200 hover:text-red-500 transition cursor-pointer opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </motion.div>
+               </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
