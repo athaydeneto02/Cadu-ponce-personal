@@ -2943,7 +2943,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                          disabled={selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) || isSending}
                          onClick={() => {
                             if (notifyStep === 'students') setNotifyStep('message');
-                             } else {
+                            else {
                                setIsSending(true);
                                fetch('/api/send-notification', {
                                  method: 'POST',
