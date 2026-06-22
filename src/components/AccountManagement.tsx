@@ -58,9 +58,9 @@ import {
   Eye,
   ArrowUpDown,
   Archive,
-  Activity,
-  ClipboardCheck,
-  Info
+  Image as ImageIcon,
+  CheckCircle2,
+  Activity
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -301,6 +301,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [showOptionInput, setShowOptionInput] = useState(false);
   const [optionSearchQuery, setOptionSearchQuery] = useState('');
   const [uploadingVideoIdx, setUploadingVideoIdx] = useState<number | null>(null);
+  const [routineLibraryTab, setRoutineLibraryTab] = useState<'strength' | 'aerobic'>('strength');
 
   // Exercise Library State
   const [exerciseSearch, setExerciseSearch] = useState('');
@@ -2502,27 +2503,36 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   ) : homeSubView === 'workout_library' ? (
                      /* WORKOUT LIBRARY VIEW — FUNCTIONAL */
                      <div className="flex flex-col h-full bg-[#f4f7fa]">
-                        <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
-                           <div className="flex items-center gap-1.5 grayscale opacity-80 brightness-200">
-                              <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
-                                 <div className="w-1 h-3 bg-white" />
-                              </div>
-                              <span className="text-sm font-black tracking-tighter text-white">CADU PONCE</span>
-                           </div>
-                        </div>
-
-                        <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-3">
+                        <div className="bg-[#0c1622] p-4 pt-6 flex flex-col items-start gap-4 shrink-0">
                            <button
                              onClick={() => setHomeSubView('dashboard')}
-                             className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
+                             className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer text-left"
                            >
-                             <ChevronLeft className="w-3.5 h-3.5" /> Voltar
+                             <ChevronLeft className="w-3.5 h-3.5 inline inline-block" /> Voltar
                            </button>
-                           <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Treinos</h4>
+                           <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Biblioteca de treinos</h4>
+                        </div>
+
+                        {/* Tabs */}
+                        <div className="flex bg-[#0c1622] px-0 shrink-0">
+                           <button 
+                             onClick={() => setRoutineLibraryTab('strength')}
+                             className={`flex-1 py-3 text-xs font-bold transition cursor-pointer ${routineLibraryTab === 'strength' ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg' : 'bg-transparent text-white/70 hover:text-white'}`}
+                           >
+                             Rotinas de Treino
+                           </button>
+                           <button 
+                             onClick={() => setRoutineLibraryTab('aerobic')}
+                             className={`flex-1 py-3 text-xs font-bold transition cursor-pointer ${routineLibraryTab === 'aerobic' ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg' : 'bg-transparent text-white/70 hover:text-white'}`}
+                           >
+                             Aeróbico
+                           </button>
                         </div>
 
                         <div className="p-4 space-y-4 overflow-y-auto flex-1">
-                           <button
+                           {routineLibraryTab === 'strength' ? (
+                             <>
+                               <button
                              onClick={() => {
                                setEditingRoutine(null);
                                setRoutineExercises([]);
@@ -2596,6 +2606,41 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 ))
                               )}
                            </div>
+                        </>
+                           ) : (
+                             /* Aerobic Empty State */
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-8 items-center text-center mt-2">
+                               <div className="w-20 h-20 bg-[#dc2626]/10 rounded-full flex items-center justify-center mb-6">
+                                 <Activity className="w-10 h-10 text-[#dc2626]" />
+                               </div>
+                               <h5 className="text-xl font-black text-slate-900 mb-6">Treinos Aeróbicos</h5>
+                               
+                               <ul className="text-xs font-bold text-slate-600 space-y-3 mb-8 text-left w-full px-2">
+                                 <li className="flex items-center gap-3">
+                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
+                                   <span>Crie treinos para reutilizar no futuro</span>
+                                 </li>
+                                 <li className="flex items-center gap-3">
+                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
+                                   <span>Organize seus treinos em pastas</span>
+                                 </li>
+                                 <li className="flex items-center gap-3">
+                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
+                                   <span>Clone treinos para um ou mais alunos</span>
+                                 </li>
+                               </ul>
+                               
+                               <button 
+                                 onClick={() => {
+                                    // Optional: Add logic for aerobic routines later
+                                    alert('Criação de treinos aeróbicos em breve!');
+                                 }}
+                                 className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest hover:bg-red-600 transition cursor-pointer shadow-lg shadow-red-200 active:scale-95"
+                               >
+                                 Comece agora
+                               </button>
+                             </div>
+                           )}
                         </div>
                      </div>
                   ) : (
@@ -2651,7 +2696,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   onClick={() => setStatusFilter('excluded')}
                                   className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                 >
-                                   Excluídos
+                                   Excluídos: {excludedStudents.length}
                                 </button>
                              </div>
 
