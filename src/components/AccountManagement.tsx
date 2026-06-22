@@ -64,7 +64,8 @@ import {
   CheckCircle2,
   Activity,
   ClipboardCheck,
-  Info
+  Info,
+  SlidersHorizontal
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -192,6 +193,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [selectedGroupForView, setSelectedGroupForView] = useState<string | null>(null);
+  const [updatesSubView, setUpdatesSubView] = useState<'grid' | 'link_cadastro'>('grid');
+  const [linkCadastroTab, setLinkCadastroTab] = useState<'link' | 'contatos'>('link');
+  const [linkCadastroSearch, setLinkCadastroSearch] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -3530,12 +3535,17 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {activePanel === 'updates' ? (
                   <div className="bg-[#0c1622] px-5 pt-6 pb-4 flex flex-col gap-1 shrink-0">
                     <button
-                      onClick={() => setActivePanel(null)}
+                      onClick={() => {
+                        if (updatesSubView === 'link_cadastro') { setUpdatesSubView('grid'); setLinkCadastroTab('link'); }
+                        else setActivePanel(null);
+                      }}
                       className="text-white/80 text-[11px] font-bold flex items-center gap-1 mb-1 cursor-pointer"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" /> Voltar
                     </button>
-                    <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Atualizações</h4>
+                    <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">
+                      {updatesSubView === 'link_cadastro' ? 'Link de Cadastro' : 'Atualizações'}
+                    </h4>
                   </div>
                 ) : (
                   <div className="flex justify-between items-center px-6 py-5 border-b border-slate-900">
@@ -3626,26 +3636,29 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </div>
                   )}
 
-                  {/* PANEL 3: Updates category grid */}
+                  {/* PANEL 3: Updates category grid or sub-view */}
                   {activePanel === 'updates' && (
+                    <>
+                    {updatesSubView === 'grid' && (
                     <div className="space-y-5">
                       <div className="bg-white rounded-xl overflow-hidden">
                         <div className="grid grid-cols-3">
                           {[
-                            { label: 'Treinos', emoji: '🏋️', badge: 0 },
-                            { label: 'Avaliação física', emoji: '📋', badge: 0 },
-                            { label: 'Aeróbico', emoji: '🏃', badge: 0 },
-                            { label: 'Faturas', emoji: '📄', badge: 0 },
-                            { label: 'Planos Recorrentes', emoji: '💲', badge: 0 },
-                            { label: 'Página de vendas', emoji: '🌐', badge: 0 },
-                            { label: 'Link de cadastro', emoji: '🔗', badge: 1 },
-                            { label: 'Avaliação Online', emoji: '📝', badge: 0 },
-                            { label: 'Anamneses', emoji: '📋', badge: 0 },
-                            { label: 'Progresso do aluno', emoji: '✅', badge: 0 },
-                            { label: 'Aniversários', emoji: '🎂', badge: 0 },
+                            { label: 'Treinos', emoji: '🏋️', badge: 0, key: '' },
+                            { label: 'Avaliação física', emoji: '📋', badge: 0, key: '' },
+                            { label: 'Aeróbico', emoji: '🏃', badge: 0, key: '' },
+                            { label: 'Faturas', emoji: '📄', badge: 0, key: '' },
+                            { label: 'Planos Recorrentes', emoji: '💲', badge: 0, key: '' },
+                            { label: 'Página de vendas', emoji: '🌐', badge: 0, key: '' },
+                            { label: 'Link de cadastro', emoji: '🔗', badge: 1, key: 'link_cadastro' },
+                            { label: 'Avaliação Online', emoji: '📝', badge: 0, key: '' },
+                            { label: 'Anamneses', emoji: '📋', badge: 0, key: '' },
+                            { label: 'Progresso do aluno', emoji: '✅', badge: 0, key: '' },
+                            { label: 'Aniversários', emoji: '🎂', badge: 0, key: '' },
                           ].map((item, idx) => (
                             <button
                               key={item.label}
+                              onClick={() => { if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); } }}
                               className={`flex flex-col items-center justify-center py-5 px-2 hover:bg-slate-50 transition cursor-pointer relative ${
                                 idx % 3 !== 2 ? 'border-r border-slate-100' : ''
                               } ${
@@ -3673,6 +3686,141 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         Marcar todas como lidas
                       </button>
                     </div>
+                    )}
+
+                    {/* ── LINK DE CADASTRO SUB-VIEW ── */}
+                    {updatesSubView === 'link_cadastro' && (() => {
+                      const trainerProfile = JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}');
+                      const registrationLink = `https://client.mfitpersonal.com.br/out/signup-link/${trainerProfile.uid || 'Njk2NDk4'}`;
+                      const contactsFromLink = users.filter(u => u.role === 'student');
+                      const filteredContacts = contactsFromLink.filter(u =>
+                        linkCadastroSearch === '' ||
+                        u.name.toLowerCase().includes(linkCadastroSearch.toLowerCase()) ||
+                        (u.email || '').toLowerCase().includes(linkCadastroSearch.toLowerCase())
+                      );
+                      return (
+                        <div className="space-y-4">
+                          {/* Tabs */}
+                          <div className="flex bg-white rounded-t-xl overflow-hidden border border-slate-200">
+                            <button
+                              onClick={() => setLinkCadastroTab('link')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
+                                linkCadastroTab === 'link' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              Link
+                            </button>
+                            <button
+                              onClick={() => setLinkCadastroTab('contatos')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
+                                linkCadastroTab === 'contatos' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              Contatos
+                            </button>
+                          </div>
+
+                          {linkCadastroTab === 'link' && (
+                            <div className="bg-white rounded-b-xl border border-t-0 border-slate-200 p-6 flex flex-col items-center gap-5">
+                              {/* Icon */}
+                              <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
+                                🔗
+                              </div>
+
+                              <div className="text-center space-y-3">
+                                <h3 className="text-slate-900 font-black text-lg">Link de cadastro</h3>
+                                <div className="space-y-1">
+                                  <p className="text-slate-700 text-sm font-bold">Utilize esse link para:</p>
+                                  <p className="text-[#3182ce] text-sm">Facilitar o cadastro de novos alunos no app</p>
+                                  <p className="text-[#3182ce] text-sm">Deixar o link na sua bio para captar pessoas interessadas no seu trabalho e entrar em contato depois</p>
+                                </div>
+                              </div>
+
+                              {/* Link box */}
+                              <div className="w-full bg-slate-100 rounded-lg p-4">
+                                <p className="text-slate-600 text-xs text-center break-all">{registrationLink}</p>
+                              </div>
+
+                              {/* Buttons */}
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(registrationLink);
+                                  setLinkCopied(true);
+                                  setTimeout(() => setLinkCopied(false), 2000);
+                                }}
+                                className="w-full py-3.5 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer flex items-center justify-center gap-2"
+                              >
+                                {linkCopied ? <>✓ Link copiado!</> : 'Copiar link'}
+                              </button>
+
+                              <a
+                                href={`https://wa.me/?text=${encodeURIComponent('Cadastre-se no meu app de treinos! ' + registrationLink)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-3.5 bg-[#25d366] hover:bg-green-500 text-white font-bold rounded-lg text-sm transition cursor-pointer flex items-center justify-center gap-2"
+                              >
+                                📱 Enviar pelo WhatsApp
+                              </a>
+                            </div>
+                          )}
+
+                          {linkCadastroTab === 'contatos' && (
+                            <div className="bg-white rounded-b-xl border border-t-0 border-slate-200 p-5 flex flex-col gap-4">
+                              {/* Icon + title */}
+                              <div className="flex flex-col items-center gap-3">
+                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
+                                  👥
+                                </div>
+                                <h3 className="text-slate-900 font-black text-lg">Contatos</h3>
+                                <p className="text-slate-500 text-xs text-center leading-relaxed">
+                                  Todos os contatos que se cadastrarem a partir do <span className="text-[#3182ce]">seu link</span> ficarão nesta lista, você pode <span className="text-[#3182ce]">transformá-los em alunos</span> ou <span className="text-[#3182ce]">excluí-los</span>.
+                                </p>
+                              </div>
+
+                              {/* Search */}
+                              <div className="flex gap-2">
+                                <div className="flex-1 flex items-center border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Pesquise por nome, email ou telefone"
+                                    value={linkCadastroSearch}
+                                    onChange={(e) => setLinkCadastroSearch(e.target.value)}
+                                    className="flex-1 text-xs outline-none text-slate-700"
+                                  />
+                                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                                </div>
+                                <button className="w-10 h-10 border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                                  <SlidersHorizontal className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Contact list */}
+                              <div className="space-y-2 pb-10">
+                                {filteredContacts.length === 0 ? (
+                                  <div className="py-8 text-center text-slate-400 text-xs font-bold">Nenhum contato encontrado</div>
+                                ) : filteredContacts.map(contact => (
+                                  <div key={contact.uid} className="flex items-center justify-between py-3 border-b border-slate-100">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                                        {contact.photoURL ? <img src={contact.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-900">{contact.name}</p>
+                                        <p className="text-[10px] text-slate-400">{contact.email}</p>
+                                      </div>
+                                    </div>
+                                    <button className="text-[#3182ce] text-[10px] font-bold border border-[#3182ce] px-2 py-1 rounded cursor-pointer hover:bg-blue-50 transition">
+                                      Ver
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    </>
                   )}
 
                   {/* PANEL 4: Wallet Panel details */}
