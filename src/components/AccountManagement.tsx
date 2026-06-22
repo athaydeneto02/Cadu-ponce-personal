@@ -180,6 +180,15 @@ const DEFAULT_STUDENTS: UserProfile[] = [
 export default function AccountManagement({ onClose, isDark }: AccountManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [studentTab, setStudentTab] = useState<'alunos' | 'grupos'>('alunos');
+  const [studentGroupSearch, setStudentGroupSearch] = useState('');
+  const [studentGroups, setStudentGroups] = useState<string[]>(() => {
+    const saved = localStorage.getItem('cadu_ponce_student_groups');
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e){}
+    }
+    return ['Online', 'Presencial'];
+  });
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -2667,98 +2676,145 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <button className="flex-1 py-3 text-sm font-bold bg-[#dc2626] text-white">Grupos</button>
                           </div>
 
-                          <div className="p-4 space-y-4">
-                             {/* Search and Filters */}
-                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
-                                <input 
-                                  type="text" 
-                                  value={searchTerm}
-                                  onChange={(e) => setSearchTerm(e.target.value)}
-                                  placeholder="Pesquise por nome, email ou telefone"
-                                  className="flex-1 px-4 py-3 text-xs font-bold text-slate-900 outline-none"
-                                />
-                                <div className="p-3 border-l border-slate-100 flex items-center justify-center text-slate-400">
-                                   <Search className="w-4 h-4" />
-                                </div>
-                             </div>
+                          <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                             {studentTab === 'alunos' ? (
+                               <>
+                                 {/* Search and Filters */}
+                                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
+                                    <input 
+                                      type="text" 
+                                      value={searchTerm}
+                                      onChange={(e) => setSearchTerm(e.target.value)}
+                                      placeholder="Pesquise por nome, email ou telefone"
+                                      className="flex-1 px-4 py-3 text-xs font-bold text-slate-900 outline-none"
+                                    />
+                                    <div className="p-3 border-l border-slate-100 flex items-center justify-center text-slate-400">
+                                       <Search className="w-4 h-4" />
+                                    </div>
+                                 </div>
 
-                             {/* Pill Filters */}
-                             <div className="flex items-center justify-center gap-2">
-                                <button 
-                                  onClick={() => setStatusFilter('active')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'active' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
-                                >
-                                   Ativos: {activeStudents.length}
-                                </button>
-                                <button 
-                                  onClick={() => setStatusFilter('inactive')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'inactive' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
-                                >
-                                   Inativos: {inactiveStudents.length}
-                                </button>
-                                <button 
-                                  onClick={() => setStatusFilter('excluded')}
-                                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
-                                >
-                                   Excluídos: {excludedStudents.length}
-                                </button>
-                             </div>
+                                 {/* Pill Filters */}
+                                 <div className="flex items-center justify-center gap-2">
+                                    <button 
+                                      onClick={() => setStatusFilter('active')}
+                                      className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'active' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                    >
+                                       Ativos: {activeStudents.length}
+                                    </button>
+                                    <button 
+                                      onClick={() => setStatusFilter('inactive')}
+                                      className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'inactive' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                    >
+                                       Inativos: {inactiveStudents.length}
+                                    </button>
+                                    <button 
+                                      onClick={() => setStatusFilter('excluded')}
+                                      className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
+                                    >
+                                       Excluídos: {excludedStudents.length}
+                                    </button>
+                                 </div>
 
-                             {/* Add Student link */}
-                             <button 
-                               onClick={() => setIsAddingUser(true)}
-                               className="flex items-center justify-center gap-2 text-[#dc2626] text-xs font-bold w-full py-2 hover:opacity-80 transition"
-                             >
-                                <UserCheck className="w-4 h-4" />
-                                <span>Adicionar aluno</span>
-                             </button>
+                                 {/* Add Student link */}
+                                 <button 
+                                   onClick={() => setIsAddingUser(true)}
+                                   className="flex items-center justify-center gap-2 text-[#dc2626] text-xs font-bold w-full py-2 hover:opacity-80 transition"
+                                 >
+                                    <UserCheck className="w-4 h-4" />
+                                    <span>Adicionar aluno</span>
+                                 </button>
 
-                             {/* Student List items */}
-                             <div className="space-y-3 pb-20">
-                                {filteredStudents.length === 0 ? (
-                                   <div className="py-10 text-center text-slate-400 text-xs font-bold">Nenhum aluno encontrado</div>
-                                ) : (
-                                   filteredStudents.map((student) => (
-                                      <div 
-                                        key={student.uid}
-                                        className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
-                                      >
-                                         <button 
-                                           onClick={() => setSelectedStudent(student)}
-                                           className="flex items-center gap-4 text-left flex-1"
-                                         >
-                                            <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 overflow-hidden">
-                                               {student.photoURL ? (
-                                                  <img src={student.photoURL} alt="" className="w-full h-full object-cover" />
-                                               ) : (
-                                                  <User className="w-6 h-6" />
-                                               )}
-                                            </div>
-                                            <div>
-                                               <p className="text-xs font-black italic uppercase text-slate-900 leading-none">{student.name}</p>
-                                               <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">{student.modality}</p>
-                                            </div>
-                                         </button>
-                                         <a 
-                                           href={`https://wa.me/${student.trainerPhone}`}
-                                           target="_blank"
-                                           className="text-emerald-500 hover:text-emerald-600 transition"
-                                         >
-                                            <MessageSquare className="w-6 h-6 fill-current opacity-80" />
-                                         </a>
-                                         {student.status !== 'excluded' && (
-                                           <button
-                                             onClick={() => handleDeleteStudent(student.uid)}
-                                             className="text-slate-300 hover:text-red-500 transition ml-2 cursor-pointer"
-                                             title="Excluir aluno"
-                                           >
-                                             <Trash2 className="w-5 h-5" />
-                                           </button>
-                                         )}
-                                      </div>
-                                   ))
-                                )}
-                             </div>
+                                 {/* Student List items */}
+                                 <div className="space-y-3 pb-20">
+                                    {filteredStudents.length === 0 ? (
+                                       <div className="py-10 text-center text-slate-400 text-xs font-bold">Nenhum aluno encontrado</div>
+                                    ) : (
+                                       filteredStudents.map((student) => (
+                                          <div 
+                                            key={student.uid}
+                                            className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
+                                          >
+                                             <button 
+                                               onClick={() => setSelectedStudent(student)}
+                                               className="flex items-center gap-4 text-left flex-1"
+                                             >
+                                                <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 overflow-hidden">
+                                                   {student.photoURL ? (
+                                                      <img src={student.photoURL} alt="" className="w-full h-full object-cover" />
+                                                   ) : (
+                                                      <User className="w-6 h-6" />
+                                                   )}
+                                                </div>
+                                                <div>
+                                                   <p className="text-xs font-black italic uppercase text-slate-900 leading-none">{student.name}</p>
+                                                   <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">{student.modality}</p>
+                                                </div>
+                                             </button>
+                                             <a 
+                                               href={`https://wa.me/${student.trainerPhone}`}
+                                               target="_blank"
+                                               className="text-emerald-500 hover:text-emerald-600 transition"
+                                             >
+                                                <MessageSquare className="w-6 h-6 fill-current opacity-80" />
+                                             </a>
+                                             {student.status !== 'excluded' && (
+                                               <button
+                                                 onClick={() => handleDeleteStudent(student.uid)}
+                                                 className="text-slate-300 hover:text-red-500 transition ml-2 cursor-pointer"
+                                                 title="Excluir aluno"
+                                               >
+                                                 <Trash2 className="w-5 h-5" />
+                                               </button>
+                                             )}
+                                          </div>
+                                       ))
+                                    )}
+                                 </div>
+                               </>
+                             ) : (
+                               <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 relative text-left">
+                                  {/* Button Criar novo grupo */}
+                                  <button 
+                                    className="w-full py-4 bg-white border border-[#3182ce] hover:bg-[#3182ce]/5 rounded-lg text-[#3182ce] text-sm font-bold transition cursor-pointer mb-4"
+                                  >
+                                     + Criar novo grupo
+                                  </button>
+                                  
+                                  {/* Pesquisar grupos */}
+                                  <div className="relative mb-4">
+                                     <input 
+                                       type="text" 
+                                       placeholder="Pesquisar grupos"
+                                       value={studentGroupSearch}
+                                       onChange={(e) => setStudentGroupSearch(e.target.value)}
+                                       className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-4 pr-11 text-sm font-medium text-slate-700 outline-none focus:border-slate-300 transition"
+                                     />
+                                     <Search className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                                  </div>
+
+                                  {/* Lista de grupos */}
+                                  <div className="space-y-3">
+                                     {['Sem grupo', ...studentGroups]
+                                       .filter(g => g.toLowerCase().includes(studentGroupSearch.toLowerCase()))
+                                       .map(group => {
+                                       let count = 0;
+                                       if (group === 'Sem grupo') {
+                                         count = users.filter(u => !u.modality).length;
+                                       } else {
+                                         count = users.filter(u => u.modality === group).length;
+                                       }
+                                       return (
+                                         <div key={group} className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:border-slate-300 transition flex flex-col text-left bg-white">
+                                           <span className="text-[#3182ce] font-bold text-[15px] leading-tight mb-0.5">{group}</span>
+                                           <span className="text-slate-700 text-[11px] font-medium">
+                                             {count === 0 ? 'Esse grupo não tem alunos' : count === 1 ? '1 aluno está nesse grupo' : `${count} alunos nesse grupo`}
+                                           </span>
+                                         </div>
+                                       );
+                                     })}
+                                  </div>
+                               </div>
+                             )}
                           </div>
                        </div>
                     )}
