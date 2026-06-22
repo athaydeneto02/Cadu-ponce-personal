@@ -2775,7 +2775,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 relative text-left">
                                   {/* Button Criar novo grupo */}
                                   <button 
-                                    className="w-full py-4 bg-white border border-[#3182ce] hover:bg-[#3182ce]/5 rounded-lg text-[#3182ce] text-sm font-bold transition cursor-pointer mb-4"
+                                    className="w-full py-4 bg-white border border-[#dc2626] hover:bg-[#dc2626]/5 rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer mb-4"
                                   >
                                      + Criar novo grupo
                                   </button>
@@ -2805,7 +2805,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        }
                                        return (
                                          <div key={group} className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:border-slate-300 transition flex flex-col text-left bg-white">
-                                           <span className="text-[#3182ce] font-bold text-[15px] leading-tight mb-0.5">{group}</span>
+                                           <span className="text-[#dc2626] font-bold text-[15px] leading-tight mb-0.5">{group}</span>
                                            <span className="text-slate-700 text-[11px] font-medium">
                                              {count === 0 ? 'Esse grupo não tem alunos' : count === 1 ? '1 aluno está nesse grupo' : `${count} alunos nesse grupo`}
                                            </span>
