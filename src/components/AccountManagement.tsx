@@ -278,12 +278,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [activePanel, setActivePanel] = useState<'sales_links' | 'feedbacks' | 'updates' | 'wallet_panel' | null>(null);
   const [isNotifyingByCategory, setIsNotifyingByCategory] = useState(false);
-  const [selectedCategoryForNotify, setSelectedCategoryForNotify] = useState<string | null>(null);
+  // New notification flow states
+  const [notifyView, setNotifyView] = useState<'list' | 'create_type' | 'create_target' | 'select_students' | 'select_groups' | 'compose'>('list');
+  const [notifyListTab, setNotifyListTab] = useState<'agendadas' | 'recorrentes'>('agendadas');
+  const [notifyType, setNotifyType] = useState<'now' | 'scheduled' | 'recurring' | null>(null);
+  const [notifyTarget, setNotifyTarget] = useState<'student' | 'group' | null>(null);
+  const [notifyStudentSearch, setNotifyStudentSearch] = useState('');
   const [selectedUidsForNotify, setSelectedUidsForNotify] = useState<string[]>([]);
-  const [notifyStep, setNotifyStep] = useState<'category' | 'students' | 'message'>('category');
+  const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendComplete, setSendComplete] = useState(false);
+  // Legacy states (keep for compatibility)
+  const [selectedCategoryForNotify, setSelectedCategoryForNotify] = useState<string | null>(null);
+  const [notifyStep, setNotifyStep] = useState<'category' | 'students' | 'message'>('category');
   const [isWorkoutActionModalOpen, setIsWorkoutActionModalOpen] = useState(false);
   const [isCreateWorkoutModalOpen, setIsCreateWorkoutModalOpen] = useState(false);
   const [routineWorkouts, setRoutineWorkouts] = useState<any[]>([]);
@@ -1041,15 +1049,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               <button 
                                  onClick={() => {
                                     setIsNotifyingByCategory(true);
-                                    setNotifyStep('category');
-                                    setSelectedCategoryForNotify(null);
+                                    setNotifyView('list');
                                     setSelectedUidsForNotify([]);
                                     setSendComplete(false);
+                                    setNotifyTitle('');
+                                    setNotifyMessage('');
                                  }}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
                                  <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
-                                   <Send className="w-5 h-5" />
+                                   <Bell className="w-5 h-5" />
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Notificações</span>
                               </button>
@@ -2899,7 +2908,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
             </AnimatePresence>
 
-            {/* NOTIFY BY CATEGORY FLOW OVERLAY */}
+            {/* NEW NOTIFICATION FLOW OVERLAY */}
             <AnimatePresence>
               {isNotifyingByCategory && (
                 <motion.div 
@@ -2908,201 +2917,359 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   exit={{ opacity: 0, y: 100 }}
                   className="absolute inset-0 z-50 bg-[#f4f7fa] flex flex-col"
                 >
-                  {/* Header */}
-                  <div className="bg-[#0c1622] p-4 flex flex-col gap-2 relative">
+                  {/* ── HEADER ── */}
+                  <div className="bg-[#0c1622] p-4 pt-6 flex flex-col items-start gap-2 shrink-0">
                     <button 
                       onClick={() => {
-                        if (notifyStep === 'students') setNotifyStep('category');
-                        else if (notifyStep === 'message') setNotifyStep('students');
-                        else setIsNotifyingByCategory(false);
+                        if (notifyView === 'list') setIsNotifyingByCategory(false);
+                        else if (notifyView === 'create_type') setNotifyView('list');
+                        else if (notifyView === 'create_target') setNotifyView('create_type');
+                        else if (notifyView === 'select_students' || notifyView === 'select_groups') setNotifyView('create_target');
+                        else if (notifyView === 'compose') { setNotifyView(notifyTarget === 'student' ? 'select_students' : 'select_groups'); }
                       }}
-                      className="absolute left-4 top-4 text-white/60"
+                      className="text-white/80 text-[11px] font-bold flex items-center gap-1 cursor-pointer mb-1"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ChevronLeft className="w-3.5 h-3.5" /> Voltar
                     </button>
-                    
-                    <button 
-                      onClick={() => setIsNotifyingByCategory(false)}
-                      className="absolute right-4 top-4 text-white opacity-60"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-
-                    <div className="pt-8">
-                      <h3 className="text-white text-xl font-black italic uppercase tracking-tighter text-left leading-tight">
-                        {notifyStep === 'category' ? 'Enviar notificação por categoria' : 
-                         notifyStep === 'students' ? `Selecionar ${selectedCategoryForNotify}` : 
-                         'Escrever Notificação'}
-                      </h3>
-                      <p className="text-white/60 text-[10px] font-bold text-left leading-relaxed">
-                        {notifyStep === 'category' ? 'Escolha a categoria de alunos que receberá a notificação.' : 
-                         notifyStep === 'students' ? 'Selecione os alunos que devem receber esta mensagem.' : 
-                         'Digite abaixo a mensagem que será enviada para os alunos selecionados.'}
-                      </p>
-                    </div>
+                    <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">
+                      {notifyView === 'list' ? 'Notificações' :
+                       notifyView === 'create_type' ? 'Criar notificação' :
+                       notifyView === 'create_target' ? 'Notificações' :
+                       notifyView === 'select_students' ? 'Notificações' :
+                       notifyView === 'select_groups' ? 'Notificações' :
+                       'Notificações'}
+                    </h4>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {notifyStep === 'category' ? (
-                      /* STEP 1: CATEGORY SELECTION */
-                      [
-                        { label: 'Em risco', desc: '5-10 DIAS SEM TREINO', color: 'bg-amber-400' },
-                        { label: 'Oscilando', desc: 'TREINAM MENOS DE 3X POR SEMANA', color: 'bg-amber-300' },
-                        { label: 'Abandono', desc: '30+ DIAS SEM TREINO', color: 'bg-rose-500' },
-                        { label: 'Engajado', desc: 'TREINAM MAIS DE 3X POR SEMANA', color: 'bg-emerald-400' },
-                        { label: 'Recuperado', desc: 'RETORNARAM APÓS ABANDONO', color: 'bg-[#dc2626]' },
-                      ].map((cat) => {
-                        const categoryData = engajamentoCategorias.find(c => c.label === cat.label);
-                        return (
-                          <button 
-                            key={cat.label}
-                            onClick={() => {
-                               setSelectedCategoryForNotify(cat.label);
-                               setNotifyStep('students');
-                               // Pre-select all students in category
-                               const studentsInCat = users.filter(u => u.role === 'student' && (
-                                 (cat.label === 'Engajado' && (u.status === 'active' || !u.status)) ||
-                                 (cat.label === 'Abandono' && u.status === 'inactive') ||
-                                 (cat.label === 'Em risco' && u.status === 'active' && false) // To be implemented with real engagement metrics
-                               )).slice(0, categoryData?.count || 0);
-                               setSelectedUidsForNotify(studentsInCat.map(s => s.uid));
-                            }}
-                            className="w-full bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between hover:bg-slate-50 transition text-left group"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className={`w-2.5 h-2.5 rounded-full ${cat.color}`} />
-                              <div className="space-y-0.5">
-                                <p className="text-sm font-black italic uppercase text-slate-900 leading-none">{cat.label}</p>
-                                <p className="text-[9px] font-bold text-slate-400 tracking-wider leading-none uppercase">{cat.desc}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                               <span className="text-[10px] font-bold text-slate-400 uppercase">{categoryData?.count || 0} alunos</span>
-                               <ChevronLeft className="w-4 h-4 text-slate-300 rotate-180 group-hover:text-[#dc2626] transition" />
-                            </div>
-                          </button>
-                        );
-                      })
-                    ) : notifyStep === 'students' ? (
-                      /* STEP 2: STUDENT SELECTION */
-                      <div className="space-y-3">
-                         <div className="flex justify-between items-center px-1">
-                            <span className="text-[10px] font-black uppercase text-slate-400">{selectedUidsForNotify.length} selecionados</span>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+                    {/* ── VIEW: LIST ── */}
+                    {notifyView === 'list' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+                        {/* Criar notificação */}
+                        <button 
+                          onClick={() => setNotifyView('create_type')}
+                          className="w-full py-4 border border-[#3182ce] rounded-lg text-[#3182ce] font-bold text-sm hover:bg-blue-50 transition cursor-pointer"
+                        >
+                          + Criar notificação
+                        </button>
+
+                        {/* Lista de notificações tabs */}
+                        <div>
+                          <p className="text-slate-700 text-xs font-bold mb-2">Lista de notificações</p>
+                          <div className="flex gap-2">
                             <button 
-                              onClick={() => {
-                                 const students = users.filter(u => u.role === 'student');
-                                 if (selectedUidsForNotify.length === students.length) setSelectedUidsForNotify([]);
-                                 else setSelectedUidsForNotify(students.map(s => s.uid));
-                              }}
-                              className="text-[10px] font-black uppercase text-[#dc2626]"
+                              onClick={() => setNotifyListTab('agendadas')}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                                notifyListTab === 'agendadas' ? 'bg-[#3182ce] text-white border-[#3182ce]' : 'bg-white text-[#3182ce] border-[#3182ce]'
+                              }`}
                             >
-                               {selectedUidsForNotify.length === users.filter(u => u.role === 'student').length ? 'Desmarcar todos' : 'Selecionar todos'}
+                              <span>🗓</span> Agendadas
                             </button>
-                         </div>
-                         
-                         {users.filter(u => u.role === 'student').map((student) => (
-                            <button
-                              key={student.uid}
-                              onClick={() => {
-                                 if (selectedUidsForNotify.includes(student.uid)) {
-                                    setSelectedUidsForNotify(prev => prev.filter(id => id !== student.uid));
-                                 } else {
-                                    setSelectedUidsForNotify(prev => [...prev, student.uid]);
-                                 }
-                              }}
-                              className={`w-full p-4 rounded-xl border transition flex items-center gap-3 ${selectedUidsForNotify.includes(student.uid) ? 'bg-red-50 border-[#dc2626]' : 'bg-white border-slate-100'}`}
+                            <button 
+                              onClick={() => setNotifyListTab('recorrentes')}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                                notifyListTab === 'recorrentes' ? 'bg-[#3182ce] text-white border-[#3182ce]' : 'bg-white text-[#3182ce] border-[#3182ce]'
+                              }`}
                             >
-                               <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${selectedUidsForNotify.includes(student.uid) ? 'bg-[#dc2626] border-[#dc2626]' : 'bg-white border-slate-300'}`}>
-                                  {selectedUidsForNotify.includes(student.uid) && <Check className="w-3.5 h-3.5 text-white stroke-[4]" />}
-                               </div>
-                               <div className="flex-1 text-left">
-                                  <p className="text-xs font-black italic uppercase text-slate-900 leading-none">{student.name}</p>
-                                  <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">{student.modality}</p>
-                               </div>
+                              <span>🔄</span> Recorrentes
                             </button>
-                         ))}
-                      </div>
-                    ) : (
-                      /* STEP 3: MESSAGE COMPOSITION */
-                      <div className="space-y-4">
-                         <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
-                            <textarea 
-                              placeholder="Digite sua mensagem aqui..."
-                              className="w-full h-40 text-xs font-bold text-slate-900 outline-none resize-none bg-transparent"
-                              value={notifyMessage}
-                              onChange={(e) => setNotifyMessage(e.target.value)}
-                            />
-                         </div>
-                         
-                         <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                            <p className="text-[10px] font-bold text-[#dc2626] text-left">
-                               A mensagem será enviada individualmente para os {selectedUidsForNotify.length} alunos através do aplicativo e notificações push.
-                            </p>
-                         </div>
+                          </div>
+                        </div>
+
+                        {/* Empty state */}
+                        <p className="text-[#3182ce] text-xs font-bold">
+                          {notifyListTab === 'agendadas' 
+                            ? 'Quando você tiver notificações agendadas, elas aparecerão aqui!'
+                            : 'Quando você tiver notificações recorrentes, elas aparecerão aqui!'}
+                        </p>
                       </div>
                     )}
-                  </div>
 
-                  {/* Action Button Footer */}
-                  {notifyStep !== 'category' && (
-                    <div className="p-4 bg-white border-t border-slate-100 pb-10">
-                       <button 
-                         disabled={selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) || isSending}
-                         onClick={() => {
-                            if (notifyStep === 'students') setNotifyStep('message');
-                            else {
-                               setIsSending(true);
-                               fetch('/api/send-notification', {
-                                 method: 'POST',
-                                 headers: { 'Content-Type': 'application/json' },
-                                 body: JSON.stringify({
-                                   userIds: selectedUidsForNotify,
-                                   title: 'Cadu Ponce Consultoria',
-                                   body: notifyMessage
-                                 })
-                               }).then(res => res.json())
-                                 .then(() => {
-                                   setIsSending(false);
-                                   setSendComplete(true);
-                                   setTimeout(() => {
-                                      setIsNotifyingByCategory(false);
-                                      setSendComplete(false);
-                                      setNotifyMessage('');
-                                      setNotifyStep('category');
-                                   }, 2000);
-                                 })
-                                 .catch(err => {
-                                   console.error('Error sending notification:', err);
-                                   setIsSending(false);
-                                   setSendComplete(true);
-                                   setTimeout(() => setIsNotifyingByCategory(false), 2000);
-                                 });
-                             }
-                         }}
-                         className={`w-full py-4 rounded-xl font-black italic uppercase text-xs tracking-widest shadow-lg transition flex items-center justify-center gap-2 ${selectedUidsForNotify.length === 0 || (notifyStep === 'message' && !notifyMessage) ? 'bg-slate-200 text-slate-400 shadow-none' : 'bg-[#dc2626] text-white shadow-red-200 hocus:bg-red-600'}`}
-                       >
+                    {/* ── VIEW: CREATE TYPE ── */}
+                    {notifyView === 'create_type' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        {[
+                          { key: 'now', icon: '🔔', title: 'Enviar na hora', desc: 'Seu aluno receberá a notificação imediatamente' },
+                          { key: 'scheduled', icon: '🗓️', title: 'Agendar', desc: 'Defina um dia e horário específico para o envio' },
+                          { key: 'recurring', icon: '🔄', title: 'Recorrentes', desc: 'Defina dias e horários recorrentes para o envio' },
+                        ].map((item, idx) => (
+                          <button 
+                            key={item.key}
+                            onClick={() => {
+                              setNotifyType(item.key as any);
+                              setNotifyView('create_target');
+                            }}
+                            className={`w-full flex items-center gap-4 p-4 hover:bg-slate-50 transition cursor-pointer text-left ${
+                              idx < 2 ? 'border-b border-slate-100' : ''
+                            }`}
+                          >
+                            <div className="w-12 h-12 bg-[#dbeafe] rounded-full flex items-center justify-center text-xl shrink-0">
+                              {item.icon}
+                            </div>
+                            <div>
+                              <p className="text-slate-900 font-bold text-sm">{item.title}</p>
+                              <p className="text-orange-500 text-xs font-medium">{item.desc}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── VIEW: CREATE TARGET (Aluno / Grupo) ── */}
+                    {notifyView === 'create_target' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+                        <div>
+                          <h5 className="text-slate-900 font-bold text-base mb-1">Criar notificação</h5>
+                          <p className="text-slate-400 text-xs">Escolha se a ação será feita para alunos ou grupos.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <button 
+                            onClick={() => { setNotifyTarget('student'); setSelectedUidsForNotify([]); setNotifyStudentSearch(''); setNotifyView('select_students'); }}
+                            className="w-full flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-slate-300 transition cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-[#dbeafe] rounded-full flex items-center justify-center">
+                                <User className="w-5 h-5 text-[#3182ce]" />
+                              </div>
+                              <span className="font-bold text-slate-800 text-sm">Aluno</span>
+                            </div>
+                            <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
+                          </button>
+                          <button 
+                            onClick={() => { setNotifyTarget('group'); setNotifyView('select_groups'); }}
+                            className="w-full flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-slate-300 transition cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-[#dbeafe] rounded-full flex items-center justify-center">
+                                <Users className="w-5 h-5 text-[#3182ce]" />
+                              </div>
+                              <span className="font-bold text-slate-800 text-sm">Grupo</span>
+                            </div>
+                            <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── VIEW: SELECT STUDENTS ── */}
+                    {notifyView === 'select_students' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+                        <h5 className="font-bold text-slate-900 text-base">Selecionar aluno</h5>
+                        <p className="text-slate-400 text-xs -mt-1">Escolha quais alunos devem receber esta ação.</p>
+
+                        {/* Search */}
+                        <input 
+                          type="text"
+                          placeholder="Buscar aluno"
+                          value={notifyStudentSearch}
+                          onChange={(e) => setNotifyStudentSearch(e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-[#3182ce] transition"
+                        />
+
+                        {/* Count + select all */}
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-slate-600">{users.filter(u => u.role === 'student').length} alunos</span>
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-500">
+                            Selecionar todos
+                            <input 
+                              type="checkbox"
+                              checked={selectedUidsForNotify.length === users.filter(u => u.role === 'student').length}
+                              onChange={(e) => {
+                                const students = users.filter(u => u.role === 'student');
+                                setSelectedUidsForNotify(e.target.checked ? students.map(s => s.uid) : []);
+                              }}
+                              className="w-4 h-4 accent-[#3182ce]"
+                            />
+                          </label>
+                        </div>
+
+                        {/* Student list */}
+                        <div className="space-y-0 divide-y divide-slate-100">
+                          {users
+                            .filter(u => u.role === 'student' && (notifyStudentSearch === '' || u.name.toLowerCase().includes(notifyStudentSearch.toLowerCase()) || (u.email || '').toLowerCase().includes(notifyStudentSearch.toLowerCase())))
+                            .map(student => (
+                              <div key={student.uid} className="flex items-center justify-between py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                                    {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-900 uppercase">{student.name}</p>
+                                    <p className="text-[10px] text-slate-400">{student.email}</p>
+                                  </div>
+                                </div>
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedUidsForNotify.includes(student.uid)}
+                                  onChange={() => {
+                                    if (selectedUidsForNotify.includes(student.uid)) {
+                                      setSelectedUidsForNotify(prev => prev.filter(id => id !== student.uid));
+                                    } else {
+                                      setSelectedUidsForNotify(prev => [...prev, student.uid]);
+                                    }
+                                  }}
+                                  className="w-5 h-5 accent-[#3182ce] cursor-pointer"
+                                />
+                              </div>
+                          ))}
+                        </div>
+
+                        {/* Count + Próximo */}
+                        <div className="pt-2 space-y-2">
+                          <p className="text-center text-[#3182ce] text-xs font-bold">
+                            {selectedUidsForNotify.length} {selectedUidsForNotify.length === 1 ? 'aluno selecionado' : 'alunos selecionados'}
+                          </p>
+                          <button 
+                            disabled={selectedUidsForNotify.length === 0}
+                            onClick={() => setNotifyView('compose')}
+                            className="w-full py-3 bg-[#3182ce] disabled:opacity-40 text-white font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-600 transition"
+                          >
+                            Próximo
+                          </button>
+                          <button 
+                            onClick={() => setNotifyView('create_target')}
+                            className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
+                          >
+                            Voltar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── VIEW: SELECT GROUPS ── */}
+                    {notifyView === 'select_groups' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+                        <h5 className="font-bold text-slate-900 text-base">Selecionar grupo</h5>
+                        <p className="text-slate-400 text-xs -mt-1">Escolha quais grupos devem receber esta ação.</p>
+                        <div className="space-y-0 divide-y divide-slate-100">
+                          {studentGroups.map(group => {
+                            const count = users.filter(u => u.modality === group).length;
+                            return (
+                              <button 
+                                key={group}
+                                onClick={() => {
+                                  const groupStudents = users.filter(u => u.modality === group);
+                                  setSelectedUidsForNotify(groupStudents.map(s => s.uid));
+                                  setNotifyView('compose');
+                                }}
+                                className="w-full flex items-center justify-between py-4 hover:bg-slate-50 transition cursor-pointer text-left"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-[#dbeafe] rounded-full flex items-center justify-center">
+                                    <Users className="w-5 h-5 text-[#3182ce]" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-900">{group}</p>
+                                    <p className="text-xs text-slate-400">{count} {count === 1 ? 'aluno' : 'alunos'}</p>
+                                  </div>
+                                </div>
+                                <ChevronLeft className="w-4 h-4 text-slate-400 rotate-180" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button 
+                          onClick={() => setNotifyView('create_target')}
+                          className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ── VIEW: COMPOSE ── */}
+                    {notifyView === 'compose' && (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+                        <h5 className="font-bold text-slate-900 text-base">Criar notificação</h5>
+
+                        {/* Título */}
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">Título</label>
+                          <input 
+                            type="text"
+                            value={notifyTitle}
+                            onChange={(e) => setNotifyTitle(e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#3182ce] transition"
+                          />
+                        </div>
+
+                        {/* Mensagem */}
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">Mensagem</label>
+                          <textarea 
+                            value={notifyMessage}
+                            onChange={(e) => setNotifyMessage(e.target.value)}
+                            rows={4}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#3182ce] transition resize-none"
+                          />
+                        </div>
+
+                        {/* Destinatários */}
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">Destinatários</label>
+                          <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                            <p className="text-[10px] text-slate-400 uppercase font-bold">{notifyTarget === 'student' ? 'Aluno' : 'Grupo'}</p>
+                            <p className="text-sm font-bold text-slate-800">
+                              {selectedUidsForNotify.length} {selectedUidsForNotify.length === 1 ? 'aluno selecionado' : 'alunos selecionados'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <button 
+                          disabled={!notifyTitle || !notifyMessage || isSending || selectedUidsForNotify.length === 0}
+                          onClick={() => {
+                            setIsSending(true);
+                            fetch('/api/send-notification', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                userIds: selectedUidsForNotify,
+                                title: notifyTitle,
+                                body: notifyMessage
+                              })
+                            }).then(() => {
+                              setIsSending(false);
+                              setSendComplete(true);
+                              setTimeout(() => {
+                                setIsNotifyingByCategory(false);
+                                setSendComplete(false);
+                                setNotifyTitle('');
+                                setNotifyMessage('');
+                                setNotifyView('list');
+                              }, 2000);
+                            }).catch(() => {
+                              setIsSending(false);
+                              setSendComplete(true);
+                              setTimeout(() => {
+                                setIsNotifyingByCategory(false);
+                                setSendComplete(false);
+                                setNotifyView('list');
+                              }, 2000);
+                            });
+                          }}
+                          className="w-full py-3 bg-[#3182ce] disabled:opacity-40 text-white font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-600 transition flex items-center justify-center gap-2"
+                        >
                           {isSending ? (
-                             <div className="flex items-center gap-2 capitalize">
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Enviando...
-                             </div>
+                            <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Enviando...</>
                           ) : sendComplete ? (
-                             <div className="flex items-center gap-2">
-                                <Check className="w-4 h-4" /> Notificações enviadas!
-                             </div>
-                          ) : (
-                             <>
-                                {notifyStep === 'students' ? 'Próximo passo' : 'Enviar notificação'}
-                                <ChevronLeft className="w-3.5 h-3.5 rotate-180" />
-                             </>
-                          )}
-                       </button>
-                    </div>
-                  )}
+                            <><Check className="w-4 h-4" /> Enviado!</>
+                          ) : 'Enviar'}
+                        </button>
+                        <button 
+                          onClick={() => setNotifyView(notifyTarget === 'student' ? 'select_students' : 'select_groups')}
+                          className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
+                        >
+                          Alterar público
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
-
             {/* WORKOUT ACTION MODAL */}
             <AnimatePresence>
               {isWorkoutActionModalOpen && (
