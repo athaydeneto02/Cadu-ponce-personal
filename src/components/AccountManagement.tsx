@@ -3517,30 +3517,46 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           <AnimatePresence>
             {activePanel && (
               <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col justify-end z-[40]"
+                initial={{ opacity: 0, y: activePanel === 'updates' ? 100 : 0 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: activePanel === 'updates' ? 100 : 0 }}
+                className={`absolute inset-0 flex flex-col z-[40] ${
+                  activePanel === 'updates'
+                    ? 'bg-[#f4f7fa]'
+                    : 'bg-slate-950/95 backdrop-blur-md justify-end'
+                }`}
               >
-                {/* Visual drag indicator/close block */}
-                <div className="flex justify-between items-center px-6 py-5 border-b border-slate-900">
-                  <span className="text-[10px] font-black tracking-widest text-red-500 uppercase">
-                    {activePanel === 'sales_links' && '🚀 Links de Checkout'}
-                    {activePanel === 'feedbacks' && '💬 Feedbacks Recebidos'}
-                    {activePanel === 'updates' && '🔥 Histórico de Atividades'}
-                    {activePanel === 'wallet_panel' && '💳 Gestão de Assinaturas'}
-                  </span>
-                  
-                  <button 
-                    onClick={() => setActivePanel(null)}
-                    className="p-1 px-3 bg-slate-900 border border-slate-800 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white rounded-lg"
-                  >
-                    Fechar
-                  </button>
-                </div>
+                {/* Header */}
+                {activePanel === 'updates' ? (
+                  <div className="bg-[#0c1622] px-5 pt-6 pb-4 flex flex-col gap-1 shrink-0">
+                    <button
+                      onClick={() => setActivePanel(null)}
+                      className="text-white/80 text-[11px] font-bold flex items-center gap-1 mb-1 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Voltar
+                    </button>
+                    <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">Atualizações</h4>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center px-6 py-5 border-b border-slate-900">
+                    <span className="text-[10px] font-black tracking-widest text-red-500 uppercase">
+                      {activePanel === 'sales_links' && '🚀 Links de Checkout'}
+                      {activePanel === 'feedbacks' && '💬 Feedbacks Recebidos'}
+                      {activePanel === 'wallet_panel' && '💳 Gestão de Assinaturas'}
+                    </span>
+                    <button 
+                      onClick={() => setActivePanel(null)}
+                      className="p-1 px-3 bg-slate-900 border border-slate-800 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white rounded-lg"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                )}
 
                 {/* PANEL CONTENT INTERACTIVE SWITCHES */}
-                <div className="p-6 max-h-[85%] overflow-y-auto space-y-4 text-left">
+                <div className={`overflow-y-auto space-y-4 text-left ${
+                  activePanel === 'updates' ? 'flex-1 p-4' : 'p-6 max-h-[85%]'
+                }`}>
                   
                   {/* PANEL 1: Sales links copy panel */}
                   {activePanel === 'sales_links' && (
@@ -3610,31 +3626,52 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </div>
                   )}
 
-                  {/* PANEL 3: Chronological Updates tracker */}
+                  {/* PANEL 3: Updates category grid */}
                   {activePanel === 'updates' && (
-                    <div className="space-y-4">
-                      <p className="text-xs text-slate-400 font-semibold leading-normal">
-                        Linha de tempo em tempo real com as ações e conquistas de treinos realizadas pelos alunos.
-                      </p>
-
-                      <div className="relative border-l-2 border-slate-900 pl-4 space-y-5 py-2">
-                        {recentUpdates.map((update, key) => (
-                          <div key={key} className="relative text-xs space-y-1">
-                            {/* Circle bullet identifier */}
-                            <div className="absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full bg-red-650" />
-                            <div className="flex justify-between items-center">
-                              <span className="font-extrabold text-white">{update.student}</span>
-                              <span className="text-[9px] text-slate-500">{update.time}</span>
-                            </div>
-                            <span className="text-[10px] text-red-400 bg-red-600/10 px-1.5 py-0.5 rounded font-black uppercase tracking-wider inline-block">
-                              {update.action}
-                            </span>
-                            <p className="text-slate-450 font-medium text-[11px] leading-relaxed mt-1">
-                              {update.detail}
-                            </p>
-                          </div>
-                        ))}
+                    <div className="space-y-5">
+                      <div className="bg-white rounded-xl overflow-hidden">
+                        <div className="grid grid-cols-3">
+                          {[
+                            { label: 'Treinos', emoji: '🏋️', badge: 0 },
+                            { label: 'Avaliação física', emoji: '📋', badge: 0 },
+                            { label: 'Aeróbico', emoji: '🏃', badge: 0 },
+                            { label: 'Faturas', emoji: '📄', badge: 0 },
+                            { label: 'Planos Recorrentes', emoji: '💲', badge: 0 },
+                            { label: 'Página de vendas', emoji: '🌐', badge: 0 },
+                            { label: 'Link de cadastro', emoji: '🔗', badge: 1 },
+                            { label: 'Avaliação Online', emoji: '📝', badge: 0 },
+                            { label: 'Anamneses', emoji: '📋', badge: 0 },
+                            { label: 'Progresso do aluno', emoji: '✅', badge: 0 },
+                            { label: 'Aniversários', emoji: '🎂', badge: 0 },
+                          ].map((item, idx) => (
+                            <button
+                              key={item.label}
+                              className={`flex flex-col items-center justify-center py-5 px-2 hover:bg-slate-50 transition cursor-pointer relative ${
+                                idx % 3 !== 2 ? 'border-r border-slate-100' : ''
+                              } ${
+                                idx < 9 ? 'border-b border-slate-100' : ''
+                              }`}
+                            >
+                              <div className="relative mb-2">
+                                <div className="w-14 h-14 bg-[#dbeafe] rounded-full flex items-center justify-center text-2xl">
+                                  {item.emoji}
+                                </div>
+                                {item.badge > 0 && (
+                                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#dc2626] rounded-full text-white text-[10px] font-black flex items-center justify-center">
+                                    {item.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[#3182ce] text-[10px] font-bold text-center leading-tight">{item.label}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
+                      {/* Marcar todas como lidas */}
+                      <button className="w-full py-4 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
+                        Marcar todas como lidas
+                      </button>
                     </div>
                   )}
 
