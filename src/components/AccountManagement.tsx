@@ -193,10 +193,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [selectedGroupForView, setSelectedGroupForView] = useState<string | null>(null);
-  const [updatesSubView, setUpdatesSubView] = useState<'grid' | 'link_cadastro'>('grid');
+  const [updatesSubView, setUpdatesSubView] = useState<'grid' | 'link_cadastro' | 'aniversarios'>('grid');
   const [linkCadastroTab, setLinkCadastroTab] = useState<'link' | 'contatos'>('link');
   const [linkCadastroSearch, setLinkCadastroSearch] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [aniversariosTab, setAniversariosTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
+  const [aniversariosSearch, setAniversariosSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -3537,6 +3539,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <button
                       onClick={() => {
                         if (updatesSubView === 'link_cadastro') { setUpdatesSubView('grid'); setLinkCadastroTab('link'); }
+                        else if (updatesSubView === 'aniversarios') { setUpdatesSubView('grid'); }
                         else setActivePanel(null);
                       }}
                       className="text-white/80 text-[11px] font-bold flex items-center gap-1 mb-1 cursor-pointer"
@@ -3544,7 +3547,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       <ChevronLeft className="w-3.5 h-3.5" /> Voltar
                     </button>
                     <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">
-                      {updatesSubView === 'link_cadastro' ? 'Link de Cadastro' : 'Atualizações'}
+                      {updatesSubView === 'link_cadastro' ? 'Link de Cadastro' :
+                       updatesSubView === 'aniversarios' ? 'Atualizações' :
+                       'Atualizações'}
                     </h4>
                   </div>
                 ) : (
@@ -3654,11 +3659,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             { label: 'Avaliação Online', emoji: '📝', badge: 0, key: '' },
                             { label: 'Anamneses', emoji: '📋', badge: 0, key: '' },
                             { label: 'Progresso do aluno', emoji: '✅', badge: 0, key: '' },
-                            { label: 'Aniversários', emoji: '🎂', badge: 0, key: '' },
+                            { label: 'Aniversários', emoji: '🎂', badge: 0, key: 'aniversarios' },
                           ].map((item, idx) => (
                             <button
                               key={item.label}
-                              onClick={() => { if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); } }}
+                              onClick={() => {
+                                if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); }
+                                else if (item.key === 'aniversarios') { setUpdatesSubView('aniversarios'); setAniversariosTab('pendentes'); setAniversariosSearch(''); }
+                              }}
                               className={`flex flex-col items-center justify-center py-5 px-2 hover:bg-slate-50 transition cursor-pointer relative ${
                                 idx % 3 !== 2 ? 'border-r border-slate-100' : ''
                               } ${
@@ -3817,6 +3825,137 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               </div>
                             </div>
                           )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── ANIVERSÁRIOS SUB-VIEW ── */}
+                    {updatesSubView === 'aniversarios' && (() => {
+                      const today = new Date();
+                      const todayMonth = today.getMonth() + 1;
+                      const todayDay = today.getDate();
+
+                      const studentsWithBirth = users
+                        .filter(u => u.role === 'student' && u.metadata?.birthDate)
+                        .map(u => {
+                          const [year, month, day] = (u.metadata!.birthDate!).split('-').map(Number);
+                          const thisYearBirthday = new Date(today.getFullYear(), month - 1, day);
+                          const nextBirthday = thisYearBirthday < today
+                            ? new Date(today.getFullYear() + 1, month - 1, day)
+                            : thisYearBirthday;
+                          const diffMs = nextBirthday.getTime() - today.getTime();
+                          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                          const isToday = month === todayMonth && day === todayDay;
+                          const age = today.getFullYear() - year + (thisYearBirthday <= today ? 0 : -1);
+                          return { ...u, month, day, diffDays, isToday, age, birthStr: `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}` };
+                        })
+                        .filter(u =>
+                          aniversariosSearch === '' ||
+                          u.name.toLowerCase().includes(aniversariosSearch.toLowerCase())
+                        )
+                        .sort((a, b) => a.diffDays - b.diffDays);
+
+                      const upcoming = studentsWithBirth.filter(u => u.diffDays <= 30 || u.isToday);
+                      const resolved = studentsWithBirth.filter(u => !u.isToday && u.diffDays > 30);
+                      const listToShow = aniversariosTab === 'pendentes' ? upcoming : resolved;
+
+                      return (
+                        <div className="space-y-3">
+                          {/* Tabs */}
+                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
+                            <button
+                              onClick={() => setAniversariosTab('pendentes')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aniversariosTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              Pendentes
+                            </button>
+                            <button
+                              onClick={() => setAniversariosTab('resolvidas')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aniversariosTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              Resolvidas
+                            </button>
+                          </div>
+
+                          {/* Marcar como lidas button (Pendentes only) */}
+                          {aniversariosTab === 'pendentes' && upcoming.length > 0 && (
+                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
+                              Marcar todas como lidas
+                            </button>
+                          )}
+
+                          {/* Search + Filter */}
+                          <div className="flex gap-2">
+                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Pesquisar aluno"
+                                value={aniversariosSearch}
+                                onChange={(e) => setAniversariosSearch(e.target.value)}
+                                className="flex-1 text-xs outline-none text-slate-700"
+                              />
+                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                            </div>
+                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                              <SlidersHorizontal className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Section label */}
+                          <p className="text-slate-900 font-black text-sm">Aniversários</p>
+
+                          {/* Birthday cards or empty state */}
+                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                            {listToShow.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
+                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
+                                  {aniversariosSearch ? '🔍' : '📅'}
+                                </div>
+                                <div>
+                                  <p className="text-slate-800 font-bold text-sm">
+                                    {aniversariosSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
+                                  </p>
+                                  {!aniversariosSearch && (
+                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
+                                  )}
+                                </div>
+                              </div>
+                            ) : listToShow.map((student, idx) => (
+                              <div
+                                key={student.uid}
+                                className={`flex items-center gap-3 p-4 ${idx < listToShow.length - 1 ? 'border-b border-slate-100' : ''} ${student.isToday ? 'bg-blue-50' : ''}`}
+                              >
+                                {/* Avatar */}
+                                <div className="w-11 h-11 bg-slate-100 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+                                  {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                </div>
+
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{student.name}</p>
+                                  <p className="text-[11px] text-slate-500 font-medium">
+                                    🎂 {student.birthStr} — {student.age} anos
+                                  </p>
+                                  {student.isToday ? (
+                                    <span className="text-[10px] bg-[#3182ce] text-white font-bold px-2 py-0.5 rounded-full inline-block mt-0.5">🎉 Hoje!</span>
+                                  ) : (
+                                    <p className="text-[10px] text-[#3182ce] font-medium">Em {student.diffDays} {student.diffDays === 1 ? 'dia' : 'dias'}</p>
+                                  )}
+                                </div>
+
+                                {/* WhatsApp button */}
+                                <a
+                                  href={`https://wa.me/55${(student.trainerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Feliz aniversário, ${student.name.split(' ')[0]}! 🎂🎉`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-9 h-9 bg-[#25d366] rounded-full flex items-center justify-center shrink-0 hover:bg-green-500 transition"
+                                  title="Enviar parabéns via WhatsApp"
+                                >
+                                  <Phone className="w-4 h-4 text-white fill-white" />
+                                </a>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       );
                     })()}
