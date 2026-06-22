@@ -193,7 +193,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [selectedGroupForView, setSelectedGroupForView] = useState<string | null>(null);
-  const [updatesSubView, setUpdatesSubView] = useState<'grid' | 'link_cadastro' | 'aniversarios' | 'treinos'>('grid');
+  const [updatesSubView, setUpdatesSubView] = useState<'grid' | 'link_cadastro' | 'aniversarios' | 'treinos' | 'avaliacao_fisica'>('grid');
   const [linkCadastroTab, setLinkCadastroTab] = useState<'link' | 'contatos'>('link');
   const [linkCadastroSearch, setLinkCadastroSearch] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -201,6 +201,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [aniversariosSearch, setAniversariosSearch] = useState('');
   const [treinosTab, setTreinosTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
   const [treinosSearch, setTreinosSearch] = useState('');
+  const [avaliacaoFisicaTab, setAvaliacaoFisicaTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
+  const [avaliacaoFisicaSearch, setAvaliacaoFisicaSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -3543,6 +3545,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         if (updatesSubView === 'link_cadastro') { setUpdatesSubView('grid'); setLinkCadastroTab('link'); }
                         else if (updatesSubView === 'aniversarios') { setUpdatesSubView('grid'); }
                         else if (updatesSubView === 'treinos') { setUpdatesSubView('grid'); }
+                        else if (updatesSubView === 'avaliacao_fisica') { setUpdatesSubView('grid'); }
                         else setActivePanel(null);
                       }}
                       className="text-white/80 text-[11px] font-bold flex items-center gap-1 mb-1 cursor-pointer"
@@ -3551,7 +3554,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </button>
                     <h4 className="text-white text-xl font-black italic uppercase tracking-tighter">
                       {updatesSubView === 'link_cadastro' ? 'Link de Cadastro' :
-                       (updatesSubView === 'aniversarios' || updatesSubView === 'treinos') ? 'Atualizações' :
+                       (updatesSubView === 'aniversarios' || updatesSubView === 'treinos' || updatesSubView === 'avaliacao_fisica') ? 'Atualizações' :
                        'Atualizações'}
                     </h4>
                   </div>
@@ -3653,7 +3656,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <div className="grid grid-cols-3">
                           {[
                             { label: 'Treinos', emoji: '🏋️', badge: 0, key: 'treinos' },
-                            { label: 'Avaliação física', emoji: '📋', badge: 0, key: '' },
+                            { label: 'Avaliação física', emoji: '📋', badge: 0, key: 'avaliacao_fisica' },
                             { label: 'Aeróbico', emoji: '🏃', badge: 0, key: '' },
                             { label: 'Faturas', emoji: '📄', badge: 0, key: '' },
                             { label: 'Planos Recorrentes', emoji: '💲', badge: 0, key: '' },
@@ -3670,6 +3673,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); }
                                 else if (item.key === 'aniversarios') { setUpdatesSubView('aniversarios'); setAniversariosTab('pendentes'); setAniversariosSearch(''); }
                                 else if (item.key === 'treinos') { setUpdatesSubView('treinos'); setTreinosTab('pendentes'); setTreinosSearch(''); }
+                                else if (item.key === 'avaliacao_fisica') { setUpdatesSubView('avaliacao_fisica'); setAvaliacaoFisicaTab('pendentes'); setAvaliacaoFisicaSearch(''); }
                               }}
                               className={`flex flex-col items-center justify-center py-5 px-2 hover:bg-slate-50 transition cursor-pointer relative ${
                                 idx % 3 !== 2 ? 'border-r border-slate-100' : ''
@@ -4033,6 +4037,81 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             ) : (
                               <div className="p-4 text-center text-slate-500 text-sm">
                                 Itens de treinos...
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── AVALIAÇÃO FÍSICA SUB-VIEW ── */}
+                    {updatesSubView === 'avaliacao_fisica' && (() => {
+                      const listToShow: any[] = []; 
+
+                      return (
+                        <div className="space-y-3">
+                          {/* Tabs */}
+                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
+                            <button
+                              onClick={() => setAvaliacaoFisicaTab('pendentes')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${avaliacaoFisicaTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              Pendentes
+                            </button>
+                            <button
+                              onClick={() => setAvaliacaoFisicaTab('resolvidas')}
+                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${avaliacaoFisicaTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              Resolvidas
+                            </button>
+                          </div>
+
+                          {/* Marcar como lidas button (Pendentes only) */}
+                          {avaliacaoFisicaTab === 'pendentes' && listToShow.length > 0 && (
+                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
+                              Marcar todas como lidas
+                            </button>
+                          )}
+
+                          {/* Search + Filter */}
+                          <div className="flex gap-2">
+                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Pesquisar aluno"
+                                value={avaliacaoFisicaSearch}
+                                onChange={(e) => setAvaliacaoFisicaSearch(e.target.value)}
+                                className="flex-1 text-xs outline-none text-slate-700"
+                              />
+                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                            </div>
+                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                              <SlidersHorizontal className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Section label */}
+                          <p className="text-slate-900 font-black text-sm">Avaliação física</p>
+
+                          {/* Cards or empty state */}
+                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                            {listToShow.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
+                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
+                                  {avaliacaoFisicaSearch ? '🔍' : '📝'}
+                                </div>
+                                <div>
+                                  <p className="text-slate-800 font-bold text-sm">
+                                    {avaliacaoFisicaSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
+                                  </p>
+                                  {!avaliacaoFisicaSearch && (
+                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-4 text-center text-slate-500 text-sm">
+                                Itens de avaliação física...
                               </div>
                             )}
                           </div>
