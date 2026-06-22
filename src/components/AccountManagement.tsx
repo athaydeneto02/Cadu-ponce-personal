@@ -189,6 +189,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
     return ['Online', 'Presencial'];
   });
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [selectedGroupForView, setSelectedGroupForView] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -2680,9 +2683,27 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
 
                           {/* Inner Tabs for Alunos/Grupos */}
-                          <div className="flex bg-[#0c1622] px-1">
-                             <button className="flex-1 py-3 text-sm font-bold bg-white text-slate-900 border-white rounded-t-lg">Alunos</button>
-                             <button className="flex-1 py-3 text-sm font-bold bg-[#dc2626] text-white">Grupos</button>
+                          <div className="flex bg-[#0c1622] px-0">
+                             <button 
+                               onClick={() => setStudentTab('alunos')}
+                               className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
+                                 studentTab === 'alunos'
+                                   ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg'
+                                   : 'bg-transparent text-white/70 hover:text-white'
+                               }`}
+                             >
+                               Alunos
+                             </button>
+                             <button 
+                               onClick={() => setStudentTab('grupos')}
+                               className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
+                                 studentTab === 'grupos'
+                                   ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg'
+                                   : 'bg-transparent text-white/70 hover:text-white'
+                               }`}
+                             >
+                               Grupos
+                             </button>
                           </div>
 
                           <div className="p-4 space-y-4 overflow-y-auto flex-1">
@@ -2780,49 +2801,151 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     )}
                                  </div>
                                </>
-                             ) : (
-                               <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 relative text-left">
-                                  {/* Button Criar novo grupo */}
-                                  <button 
-                                    className="w-full py-4 bg-white border border-[#dc2626] hover:bg-[#dc2626]/5 rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer mb-4"
-                                  >
-                                     + Criar novo grupo
-                                  </button>
-                                  
-                                  {/* Pesquisar grupos */}
-                                  <div className="relative mb-4">
-                                     <input 
-                                       type="text" 
-                                       placeholder="Pesquisar grupos"
-                                       value={studentGroupSearch}
-                                       onChange={(e) => setStudentGroupSearch(e.target.value)}
-                                       className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-4 pr-11 text-sm font-medium text-slate-700 outline-none focus:border-slate-300 transition"
-                                     />
-                                     <Search className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                             ) : selectedGroupForView !== null ? (
+                                /* GROUP DETAIL VIEW */
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <button
+                                      onClick={() => setSelectedGroupForView(null)}
+                                      className="text-[#dc2626] text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ChevronLeft className="w-3.5 h-3.5" /> Voltar
+                                    </button>
+                                    <h5 className="text-sm font-black text-slate-900 uppercase">{selectedGroupForView}</h5>
+                                    {selectedGroupForView !== 'Sem grupo' && (
+                                      <button
+                                        onClick={() => {
+                                          if (window.confirm(`Excluir o grupo "${selectedGroupForView}"?`)) {
+                                            const updated = studentGroups.filter(g => g !== selectedGroupForView);
+                                            setStudentGroups(updated);
+                                            localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                            setSelectedGroupForView(null);
+                                          }
+                                        }}
+                                        className="text-red-400 hover:text-red-600 transition cursor-pointer"
+                                        title="Excluir grupo"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    {selectedGroupForView === 'Sem grupo' && <div className="w-6" />}
                                   </div>
 
-                                  {/* Lista de grupos */}
-                                  <div className="space-y-3">
-                                     {['Sem grupo', ...studentGroups]
-                                       .filter(g => g.toLowerCase().includes(studentGroupSearch.toLowerCase()))
-                                       .map(group => {
-                                       let count = 0;
-                                       if (group === 'Sem grupo') {
-                                         count = users.filter(u => !u.modality).length;
-                                       } else {
-                                         count = users.filter(u => u.modality === group).length;
-                                       }
-                                       return (
-                                         <div key={group} className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:border-slate-300 transition flex flex-col text-left bg-white">
-                                           <span className="text-[#dc2626] font-bold text-[15px] leading-tight mb-0.5">{group}</span>
-                                           <span className="text-slate-700 text-[11px] font-medium">
-                                             {count === 0 ? 'Esse grupo não tem alunos' : count === 1 ? '1 aluno está nesse grupo' : `${count} alunos nesse grupo`}
-                                           </span>
-                                         </div>
-                                       );
-                                     })}
-                                  </div>
-                               </div>
+                                  {/* Students in group */}
+                                  {(() => {
+                                    const groupStudents = selectedGroupForView === 'Sem grupo'
+                                      ? users.filter(u => u.role === 'student' && !u.modality)
+                                      : users.filter(u => u.role === 'student' && u.modality === selectedGroupForView);
+                                    return groupStudents.length === 0 ? (
+                                      <div className="py-8 text-center text-slate-400 text-xs font-bold">Nenhum aluno neste grupo</div>
+                                    ) : (
+                                      <div className="space-y-2 pb-20">
+                                        {groupStudents.map(student => (
+                                          <div key={student.uid} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                                              {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-xs font-black italic uppercase text-slate-900 truncate">{student.name}</p>
+                                              <p className="text-[10px] text-slate-400 font-bold">{student.modality || 'Sem grupo'}</p>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              ) : (
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 relative text-left">
+                                   {/* Button Criar novo grupo or input */}
+                                   {showNewGroupInput ? (
+                                     <div className="flex gap-2 mb-4">
+                                       <input
+                                         type="text"
+                                         autoFocus
+                                         placeholder="Nome do grupo"
+                                         value={newGroupName}
+                                         onChange={(e) => setNewGroupName(e.target.value)}
+                                         onKeyDown={(e) => {
+                                           if (e.key === 'Enter' && newGroupName.trim()) {
+                                             const updated = [...studentGroups, newGroupName.trim()];
+                                             setStudentGroups(updated);
+                                             localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                             setNewGroupName('');
+                                             setShowNewGroupInput(false);
+                                           }
+                                           if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupName(''); }
+                                         }}
+                                         className="flex-1 border border-[#dc2626] rounded-lg px-3 py-2.5 text-sm outline-none"
+                                       />
+                                       <button
+                                         onClick={() => {
+                                           if (newGroupName.trim()) {
+                                             const updated = [...studentGroups, newGroupName.trim()];
+                                             setStudentGroups(updated);
+                                             localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                             setNewGroupName('');
+                                             setShowNewGroupInput(false);
+                                           }
+                                         }}
+                                         className="px-4 py-2 bg-[#dc2626] text-white rounded-lg text-sm font-bold cursor-pointer hover:bg-red-600 transition"
+                                       >
+                                         Criar
+                                       </button>
+                                       <button
+                                         onClick={() => { setShowNewGroupInput(false); setNewGroupName(''); }}
+                                         className="px-3 py-2 border border-slate-200 text-slate-500 rounded-lg text-sm cursor-pointer"
+                                       >
+                                         <X className="w-4 h-4" />
+                                       </button>
+                                     </div>
+                                   ) : (
+                                     <button 
+                                       onClick={() => setShowNewGroupInput(true)}
+                                       className="w-full py-4 bg-white border border-[#dc2626] hover:bg-[#dc2626]/5 rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer mb-4"
+                                     >
+                                       + Criar novo grupo
+                                     </button>
+                                   )}
+                                   
+                                   {/* Pesquisar grupos */}
+                                   <div className="relative mb-4">
+                                      <input 
+                                        type="text" 
+                                        placeholder="Pesquisar grupos"
+                                        value={studentGroupSearch}
+                                        onChange={(e) => setStudentGroupSearch(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-4 pr-11 text-sm font-medium text-slate-700 outline-none focus:border-slate-300 transition"
+                                      />
+                                      <Search className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                                   </div>
+
+                                   {/* Lista de grupos */}
+                                   <div className="space-y-3">
+                                      {['Sem grupo', ...studentGroups]
+                                        .filter(g => g.toLowerCase().includes(studentGroupSearch.toLowerCase()))
+                                        .map(group => {
+                                        const count = group === 'Sem grupo'
+                                          ? users.filter(u => u.role === 'student' && !u.modality).length
+                                          : users.filter(u => u.role === 'student' && u.modality === group).length;
+                                        return (
+                                          <button
+                                            key={group}
+                                            onClick={() => setSelectedGroupForView(group)}
+                                            className="w-full border border-slate-200 rounded-lg p-4 cursor-pointer hover:border-[#dc2626]/30 hover:bg-red-50/30 transition flex items-center justify-between text-left bg-white"
+                                          >
+                                            <div>
+                                              <span className="text-[#dc2626] font-bold text-[15px] leading-tight block mb-0.5">{group}</span>
+                                              <span className="text-slate-500 text-[11px] font-medium">
+                                                {count === 0 ? 'Esse grupo não tem alunos' : count === 1 ? '1 aluno está nesse grupo' : `${count} alunos nesse grupo`}
+                                              </span>
+                                            </div>
+                                            <ChevronLeft className="w-4 h-4 text-slate-300 rotate-180 shrink-0" />
+                                          </button>
+                                        );
+                                      })}
+                                   </div>
+                                </div>
                              )}
                           </div>
                        </div>
