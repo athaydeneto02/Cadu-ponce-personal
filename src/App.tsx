@@ -458,34 +458,36 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Bottom Navigation */}
+      {/* Premium Floating Bottom Navigation */}
       {!activeWorkout && (
-        <nav className={`fixed bottom-0 left-0 right-0 h-20 border-t flex items-center justify-around px-2 z-40 safe-area-bottom transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'}`}>
-          <NavButton 
-            active={activeTab === 'dashboard'} 
-            onClick={() => setActiveTab('dashboard')} 
-            icon={<Home className="w-6 h-6" />} 
-            label="Início" 
-          />
-          <NavButton 
-            active={activeTab === 'workouts'} 
-            onClick={() => setActiveTab('workouts')} 
-            icon={<Dumbbell className="w-6 h-6" />} 
-            label="Treinos" 
-          />
-          <NavButton 
-            active={activeTab === 'evolution'} 
-            onClick={() => setActiveTab('evolution')} 
-            icon={<Camera className="w-6 h-6" />} 
-            label="Evolução" 
-          />
-          <NavButton 
-            active={activeTab === 'profile'} 
-            onClick={() => setActiveTab('profile')} 
-            icon={<User className="w-6 h-6" />} 
-            label="Perfil" 
-          />
-        </nav>
+        <div className="fixed bottom-0 left-0 right-0 p-5 z-40 pointer-events-none flex justify-center">
+          <nav className={`pointer-events-auto w-full max-w-[400px] h-[72px] rounded-[2rem] flex items-center justify-between px-2 backdrop-blur-2xl border shadow-2xl transition-all duration-300 ${theme === 'dark' ? 'bg-slate-900/85 border-slate-700/50 shadow-black/50' : 'bg-white/90 border-slate-200/50 shadow-slate-900/10'}`}>
+            <NavButton 
+              active={activeTab === 'dashboard'} 
+              onClick={() => setActiveTab('dashboard')} 
+              icon={<Home className="w-5 h-5" />} 
+              label="Início" 
+            />
+            <NavButton 
+              active={activeTab === 'workouts'} 
+              onClick={() => setActiveTab('workouts')} 
+              icon={<Dumbbell className="w-5 h-5" />} 
+              label="Treinos" 
+            />
+            <NavButton 
+              active={activeTab === 'evolution'} 
+              onClick={() => setActiveTab('evolution')} 
+              icon={<Camera className="w-5 h-5" />} 
+              label="Evolução" 
+            />
+            <NavButton 
+              active={activeTab === 'profile'} 
+              onClick={() => setActiveTab('profile')} 
+              icon={<User className="w-5 h-5" />} 
+              label="Perfil" 
+            />
+          </nav>
+        </div>
       )}
     </div>
   );
@@ -495,28 +497,32 @@ function NavButton({ active, icon, label, onClick }: { active: boolean, icon: Re
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center justify-center space-y-1 w-20 relative outline-none transition-colors duration-300 ${active ? 'text-red-600' : 'text-slate-400 hover:text-slate-500'}`}
+      className="relative flex items-center justify-center w-full max-w-[84px] h-[56px] outline-none group"
     >
-      <motion.div 
-        animate={{ 
-          scale: active ? 1.15 : 1,
-          y: active ? -2 : 0
-        }}
-        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-        className="z-10"
-      >
-        {icon}
-      </motion.div>
-      <span className={`text-[9px] font-black uppercase tracking-[0.2em] italic transition-all duration-300 ${active ? 'opacity-100' : 'opacity-40'}`}>
-        {label}
-      </span>
+      {/* Sliding Active Background */}
       {active && (
         <motion.div 
-          layoutId="nav-pill" 
-          className="absolute -bottom-1 w-1 h-1 bg-red-600 rounded-full" 
-          transition={{ type: "spring", stiffness: 350, damping: 25 }}
+          layoutId="nav-active-pill" 
+          className="absolute inset-0 bg-gradient-to-br from-[#dc2626] to-[#991b1b] rounded-[1.25rem] shadow-[0_4px_12px_rgba(220,38,38,0.3)] border border-red-500/20" 
+          transition={{ type: "spring", stiffness: 350, damping: 28 }}
         />
       )}
+      
+      {/* Icon and Label */}
+      <div className={`relative z-10 flex flex-col items-center justify-center gap-1 transition-colors duration-300 ${active ? 'text-white' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-300'}`}>
+        <motion.div 
+          animate={{ y: active ? -1 : 0, scale: active ? 1.1 : 1 }}
+          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        >
+          {icon}
+        </motion.div>
+        <motion.span 
+          animate={{ opacity: active ? 1 : 0.5, scale: active ? 1 : 0.95 }}
+          className="text-[9px] font-black uppercase tracking-[0.15em] italic"
+        >
+          {label}
+        </motion.span>
+      </div>
     </button>
   );
 }
