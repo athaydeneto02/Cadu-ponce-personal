@@ -81,7 +81,7 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
   const [adminRoutines, setAdminRoutines] = useState<AdminRoutine[]>([]);
   const [activeSession, setActiveSession] = useState<AdminRoutine | null>(null);
   const [streak] = useState(() => getStreak());
-  const [activeTab, setActiveTab] = useState<'fichas' | 'treinos'>('treinos');
+
 
   useEffect(() => {
     // Load from cache first
@@ -130,33 +130,12 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
           )}
         </div>
 
-        {/* Tab pills */}
-        <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
-          {[
-            { key: 'treinos', label: 'Fichas Prescritas', icon: <Dumbbell className="w-3.5 h-3.5" /> },
-            { key: 'fichas', label: 'Minhas Fichas', icon: <Target className="w-3.5 h-3.5" /> },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
-                activeTab === tab.key
-                  ? 'bg-[#dc2626] text-white shadow-lg'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="px-5 pt-5 space-y-5">
-        {/* ── FICHAS PRESCRITAS TAB ─────────────────────────────────────── */}
-        {activeTab === 'treinos' && (
-          <>
-            {/* Today's workout highlight */}
+        {/* ── TREINOS ─────────────────────────────────────── */}
+        <>
+          {/* Today's workout highlight */}
             {todayRoutines.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -192,26 +171,6 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
               />
             )}
           </>
-        )}
-
-        {/* ── MINHAS FICHAS TAB ─────────────────────────────────────────── */}
-        {activeTab === 'fichas' && (
-          <>
-            {workouts.length === 0 ? (
-              <EmptyState
-                icon={<Target className="w-8 h-8 text-slate-400" />}
-                title="Nenhuma ficha pessoal"
-                subtitle="Suas fichas criadas aparecerão aqui."
-              />
-            ) : (
-              <div className="space-y-3">
-                {workouts.map(w => (
-                  <PersonalWorkoutCard key={w.id} workout={w} onSelect={(wk: Workout) => onSelectWorkout(wk)} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
 
         {/* ── WhatsApp support ──────────────────────────────────────────── */}
         <div className="mt-4 bg-slate-950 dark:bg-slate-900 rounded-[28px] p-5 border border-slate-900 dark:border-slate-800 shadow-xl relative overflow-hidden">
