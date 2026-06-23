@@ -2897,7 +2897,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                            }
                                            if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupName(''); }
                                          }}
-                                         className="flex-1 border border-[#dc2626] rounded-lg px-3 py-2.5 text-sm outline-none"
+                                         className="flex-1 border border-[#dc2626] rounded-lg px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none"
                                        />
                                        <button
                                          onClick={() => {
