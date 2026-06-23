@@ -111,3 +111,22 @@ export interface AgendaEvent {
   createdAt: string;
 }
 
+export interface WorkoutLogExercise {
+  name: string;
+  setsCompleted: number;
+  totalSets: number;
+  loads: number[];
+}
+
+export interface WorkoutLog {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  routineId: string;
+  routineName: string;
+  completedAt: string; // ISO 8601
+  durationSeconds: number;
+  rpe: number; // 1-10
+  exercisesSummary: WorkoutLogExercise[];
+}
+

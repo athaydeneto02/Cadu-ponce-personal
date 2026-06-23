@@ -9,7 +9,7 @@
  */
 
 import { supabase } from './supabase';
-import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise } from '../types';
+import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 
 // ---------------------------------------------------------------------------
 // Local-storage cache keys (session cache only — NOT the source of truth)
@@ -734,4 +734,75 @@ export const storage = {
   syncAdminData: async (): Promise<void> => { /* no-op */ },
   /** @deprecated no-op shim */
   fetchAdminData: async (): Promise<null> => null,
+
+  // ── Workout Logs ──────────────────────────────────────────────────────────
+  // Stores completed session history for each student.
+
+  WORKOUT_LOGS_KEY: 'cadu_workout_logs',
+
+  /** Saves a completed workout session to Supabase and updates local cache. */
+  saveWorkoutLog: async (log: WorkoutLog): Promise<void> => {
+    // Persist to local cache immediately for instant UI feedback
+    const all: WorkoutLog[] = storage.getWorkoutLogs();
+    const updated = [log, ...all.filter(l => l.id !== log.id)];
+    localStorage.setItem('cadu_workout_logs', JSON.stringify(updated));
+
+    // Persist to Supabase in background
+    try {
+      await supabase.from('workout_logs').upsert({
+        id: log.id,
+        student_id: log.studentId,
+        student_name: log.studentName ?? null,
+        routine_id: log.routineId,
+        routine_name: log.routineName,
+        completed_at: log.completedAt,
+        duration_seconds: log.durationSeconds,
+        rpe: log.rpe,
+        exercises_summary: log.exercisesSummary,
+      });
+    } catch (err) {
+      console.warn('saveWorkoutLog Supabase error (log kept locally):', err);
+    }
+  },
+
+  /** Returns cached workout logs synchronously. */
+  getWorkoutLogs: (): WorkoutLog[] => {
+    try {
+      const data = localStorage.getItem('cadu_workout_logs');
+      return data ? JSON.parse(data) : [];
+    } catch { return []; }
+  },
+
+  /** Fetches workout logs from Supabase for a specific student. */
+  fetchWorkoutLogs: async (studentId: string): Promise<WorkoutLog[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('workout_logs')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('completed_at', { ascending: false })
+        .limit(100);
+
+      if (error || !data) {
+        return storage.getWorkoutLogs();
+      }
+
+      const logs: WorkoutLog[] = data.map(row => ({
+        id: row.id as string,
+        studentId: row.student_id as string,
+        studentName: row.student_name as string | undefined,
+        routineId: row.routine_id as string,
+        routineName: row.routine_name as string,
+        completedAt: row.completed_at as string,
+        durationSeconds: row.duration_seconds as number,
+        rpe: row.rpe as number,
+        exercisesSummary: (row.exercises_summary as any[]) ?? [],
+      }));
+
+      localStorage.setItem('cadu_workout_logs', JSON.stringify(logs));
+      return logs;
+    } catch {
+      return storage.getWorkoutLogs();
+    }
+  },
 };

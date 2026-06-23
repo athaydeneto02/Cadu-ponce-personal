@@ -11,7 +11,8 @@ import {
   Star, Flame, PlayCircle, Info, Dumbbell, Clock,
   RotateCcw, Pause, Play, Volume2, Target, Zap, Award
 } from 'lucide-react';
-import { AdminRoutine, AdminExercise } from '../types';
+import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
+import { storage } from '../lib/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
@@ -196,8 +197,11 @@ export default function AdminWorkoutSession({ routine, onClose }: AdminWorkoutSe
 
   const saveLog = () => {
     try {
-      const log = {
+      const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') ?? '{}'); } catch { return {}; } })();
+      const log: WorkoutLog = {
         id: `log_${Date.now()}`,
+        studentId: user.uid ?? 'unknown',
+        studentName: user.name ?? undefined,
         routineId: routine.id,
         routineName: routine.name,
         completedAt: new Date().toISOString(),
@@ -210,15 +214,16 @@ export default function AdminWorkoutSession({ routine, onClose }: AdminWorkoutSe
           loads: loads[ex.id] ?? [],
         })),
       };
-      const prev = JSON.parse(localStorage.getItem('cadu_workout_logs') ?? '[]');
-      localStorage.setItem('cadu_workout_logs', JSON.stringify([log, ...prev]));
 
-      // Notify trainer
+      // Save via storage layer (localStorage + Supabase)
+      storage.saveWorkoutLog(log);
+
+      // Notify trainer via localStorage event
       const notif = {
         id: `notif_${Date.now()}`,
         type: 'treinos',
         title: 'Treino Concluído',
-        body: `Aluno concluiu "${routine.name}" em ${fmt(sessionTime)}`,
+        body: `${log.studentName ?? 'Aluno'} concluiu "${routine.name}" em ${fmt(sessionTime)}`,
         date: new Date().toISOString(),
         read: false,
       };
