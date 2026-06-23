@@ -214,6 +214,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [faturasTab, setFaturasTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
   const [faturasSearch, setFaturasSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
+  const [adminNotifs, setAdminNotifs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadNotifs = () => {
+      try {
+        const stored = localStorage.getItem('cadu_notifs_admin');
+        if (stored) setAdminNotifs(JSON.parse(stored));
+      } catch {}
+    };
+    loadNotifs();
+    window.addEventListener('cadu_new_notification', loadNotifs);
+    return () => window.removeEventListener('cadu_new_notification', loadNotifs);
+  }, []);
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
       const student = users.find(u => u.uid === uid);
@@ -3990,8 +4003,33 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                     {/* ── TREINOS SUB-VIEW ── */}
                     {updatesSubView === 'treinos' && (() => {
-                      // Empty state for now since we don't have a structured "treinos pendentes" dataset yet
-                      const listToShow: any[] = []; 
+                      const treinosNotifs = adminNotifs.filter(n => n.type === 'treinos');
+                      const pendentes = treinosNotifs.filter(n => !n.read);
+                      const resolvidas = treinosNotifs.filter(n => n.read);
+                      
+                      let listToShow = treinosTab === 'pendentes' ? pendentes : resolvidas;
+                      if (treinosSearch) {
+                        listToShow = listToShow.filter(n => 
+                          (n.title && n.title.toLowerCase().includes(treinosSearch.toLowerCase())) ||
+                          (n.body && n.body.toLowerCase().includes(treinosSearch.toLowerCase()))
+                        );
+                      }
+
+                      const markAllAsRead = () => {
+                        try {
+                          const updated = adminNotifs.map(n => n.type === 'treinos' ? { ...n, read: true } : n);
+                          localStorage.setItem('cadu_notifs_admin', JSON.stringify(updated));
+                          setAdminNotifs(updated);
+                        } catch {}
+                      };
+
+                      const toggleReadStatus = (id: string) => {
+                        try {
+                          const updated = adminNotifs.map(n => n.id === id ? { ...n, read: !n.read } : n);
+                          localStorage.setItem('cadu_notifs_admin', JSON.stringify(updated));
+                          setAdminNotifs(updated);
+                        } catch {}
+                      };
 
                       return (
                         <div className="space-y-3">
@@ -4013,7 +4051,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                           {/* Marcar como lidas button (Pendentes only) */}
                           {treinosTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
+                            <button onClick={markAllAsRead} className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
                               Marcar todas como lidas
                             </button>
                           )}
@@ -4023,7 +4061,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
                               <input
                                 type="text"
-                                placeholder="Pesquisar aluno"
+                                placeholder="Pesquisar treino ou aluno"
                                 value={treinosSearch}
                                 onChange={(e) => setTreinosSearch(e.target.value)}
                                 className="flex-1 text-xs outline-none text-slate-700"
@@ -4050,13 +4088,33 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     {treinosSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
                                   </p>
                                   {!treinosSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
+                                    <p className="text-slate-500 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
                                   )}
                                 </div>
                               </div>
                             ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de treinos...
+                              <div className="divide-y divide-slate-100">
+                                {listToShow.map(notif => (
+                                  <div key={notif.id} className="p-4 hover:bg-slate-50 flex items-start justify-between gap-4 transition-colors">
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <h4 className="text-sm font-bold text-slate-800">{notif.title}</h4>
+                                      </div>
+                                      <p className="text-xs text-slate-600 mb-1 leading-relaxed">{notif.body}</p>
+                                      <span className="text-[10px] text-slate-400 font-medium">
+                                        {new Date(notif.date).toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => toggleReadStatus(notif.id)}
+                                      className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
+                                      title={treinosTab === 'pendentes' ? 'Marcar como lida' : 'Mover para pendentes'}
+                                    >
+                                      <CheckCircle2 className="w-5 h-5" />
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
