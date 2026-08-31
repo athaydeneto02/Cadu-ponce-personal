@@ -976,15 +976,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   return (
     <div className="fixed inset-0 z-[60] bg-[#0c131c] text-white overflow-y-auto font-sans flex items-center justify-center p-0 md:p-6 lg:p-10 select-none">
       
-      {/* Absolute background visual details */}
-      <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-red-650/5 to-transparent pointer-events-none" />
-      <div className="absolute bottom-12 right-12 w-96 h-96 bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
-
       {/* Main Content Area - Full Bleed */}
       <div className="w-full h-full bg-[#0c1622] relative overflow-hidden flex flex-col">
         
         {/* Top App Header (Mobile style but visible everywhere) */}
-        <div className="h-14 bg-[#0c1622] px-6 flex items-center justify-between shrink-0 border-b border-slate-800">
+        <div className="h-14 bg-[#141C2C] px-6 flex items-center justify-between shrink-0 border-b border-[#141C2C]">
           <div className="flex items-center gap-3">
             <span className="text-white font-black italic uppercase tracking-tighter text-lg">
               Painel Admin
@@ -992,7 +988,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           </div>
           <button 
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-red-600/10 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-600/20 transition-colors"
+            className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80"
           >
             Voltar ao App
           </button>
@@ -1009,22 +1005,22 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex-1 flex flex-col bg-[#f4f7fa] overflow-hidden"
+                  className="flex-1 flex flex-col bg-[#F4F6FA] overflow-hidden"
                 >
-                  {/* Top Tab Bar (Image structure) */}
-                  <div className="flex bg-[#0c1622] shrink-0 pt-2 px-1">
+                  {/* Top Tab Bar */}
+                  <div className="flex bg-[#141C2C] shrink-0 pt-2 px-1">
                     <button 
                       onClick={() => {
                         setActiveTab('home');
                         setHomeSubView('dashboard');
                       }}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'home' && homeSubView === 'dashboard' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#dc2626] text-white border-[#dc2626]'}`}
+                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'home' && homeSubView === 'dashboard' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#E23737] text-white border-[#E23737]'}`}
                     >
                       Início
                     </button>
                     <button 
                       onClick={() => setActiveTab('wallet')}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'wallet' ? 'bg-white text-slate-900 border-white rounded-t-lg' : 'bg-[#dc2626] text-white border-[#dc2626]'}`}
+                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'wallet' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#E23737] text-white border-[#E23737]'}`}
                     >
                       Finanças
                     </button>
@@ -1035,9 +1031,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     
                     {/* CONDITIONAL RENDERING: WELCOME VS DASHBOARD VS STUDENT LIST */}
                     {users.filter(u => u.role === 'student').length === 0 ? (
-                       /* WELCOME VIEW (Image 1) */
+                       /* WELCOME VIEW */
                        <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
-                          <div className="w-24 h-24 bg-[#dc2626] rounded-full flex items-center justify-center shadow-lg mb-8">
+                          <div className="w-24 h-24 bg-[#E23737] rounded-full flex items-center justify-center shadow-lg mb-8">
                              <Dumbbell className="w-12 h-12 text-white" />
                           </div>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-2">Bem-vindo à MFIT</h3>

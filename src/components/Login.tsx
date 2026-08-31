@@ -45,10 +45,11 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 px-8 relative overflow-x-hidden overflow-y-auto">
+  return (
+    <div className="min-h-screen bg-[#1B2A4A] flex flex-col justify-center py-12 px-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background decoration */}
-      <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/10 rounded-full blur-3xl"></div>
-      <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-red-600/5 rounded-full blur-3xl"></div>
+      <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
+      <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -57,17 +58,17 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
       >
         <div className="mb-12 flex flex-col items-center">
           <BrandLogo size="lg" className="flex-col !space-x-0 !space-y-4 mb-2" />
-          <p className="text-slate-500 text-center mt-4 font-medium">Sua evolução começa aqui</p>
+          <p className="text-white/60 text-center mt-4 font-medium">Sua evolução começa aqui</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-4 mb-2 block">
+            <label className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
               E-mail ou CPF
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-slate-500 group-focus-within:text-red-600 transition-colors" />
+                <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-red-500 transition-colors" />
               </div>
               <input
                 type="text"
@@ -75,18 +76,18 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Ex: joao@email.com"
-                className="block w-full pl-12 pr-4 py-4 bg-slate-900 border border-slate-800 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-red-600/50 focus:border-red-600 transition-all font-medium"
+                className="block w-full pl-12 pr-4 py-4 bg-white border border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-medium"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-4 mb-2 block">
+            <label className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
               Senha
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-slate-500 group-focus-within:text-red-600 transition-colors" />
+                <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-red-500 transition-colors" />
               </div>
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -94,7 +95,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="********"
-                className="block w-full pl-12 pr-12 py-4 bg-slate-900 border border-slate-800 rounded-2xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-red-600/50 focus:border-red-600 transition-all font-medium"
+                className="block w-full pl-12 pr-12 py-4 bg-white border border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-medium"
               />
               <button
                 type="button"
@@ -102,9 +103,9 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                 className="absolute inset-y-0 right-0 pr-4 flex items-center"
               >
                 {showPassword ? (
-                  <EyeOff className="h-5 w-5 text-slate-500" />
+                  <EyeOff className="h-5 w-5 text-slate-400" />
                 ) : (
-                  <Eye className="h-5 w-5 text-slate-500" />
+                  <Eye className="h-5 w-5 text-slate-400" />
                 )}
               </button>
             </div>
@@ -114,7 +115,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
             <button 
               type="button"
               onClick={() => setIsResetOpen(true)}
-              className="text-xs text-slate-400 hover:text-red-500 font-semibold tracking-wide hover:underline cursor-pointer transition-colors duration-200"
+              className="text-xs text-white/60 hover:text-white font-semibold tracking-wide hover:underline cursor-pointer transition-colors duration-200"
             >
               Esqueci a senha
             </button>
@@ -124,7 +125,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
             <motion.p
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-red-400 text-xs font-semibold text-center bg-red-950/30 border border-red-900/30 rounded-xl px-4 py-2"
+              className="text-red-400 text-xs font-semibold text-center bg-red-950/50 border border-red-500/30 rounded-xl px-4 py-2"
             >
               {loginError}
             </motion.p>
@@ -147,11 +148,11 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
         </form>
 
         <div className="mt-12 text-center">
-          <p className="text-slate-500 text-xs font-medium">Ainda não é aluno?</p>
+          <p className="text-white/60 text-xs font-medium">Ainda não é aluno?</p>
           <button 
             type="button"
             onClick={onAcquireClick}
-            className="mt-2 text-white font-bold border-b border-red-600 pb-1 hover:text-red-500 transition-colors"
+            className="mt-2 text-white font-bold border-b border-white/40 pb-1 hover:text-red-400 hover:border-red-400 transition-colors"
           >
             Adquirir Consultoria Agora
           </button>

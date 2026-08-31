@@ -377,23 +377,44 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen font-sans pb-24 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-white dark' : 'bg-gray-50 text-slate-900'}`}>
-      {/* Header */}
+    <div className={`min-h-screen font-sans pb-20 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-white dark' : 'bg-[#F4F6FA] text-slate-900'}`}>
+      {/* Header — MFIT Style navy */}
       {!activeWorkout && (
-        <header className={`fixed top-0 left-0 right-0 h-16 border-b flex items-center justify-between px-6 z-40 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-100'}`}>
-          <BrandLogo size="sm" />
-          <button 
-            onClick={() => setIsNotificationsOpen(true)}
-            className="p-2 text-gray-400 hover:text-red-600 transition-colors relative"
-          >
-            <Bell className="w-6 h-6" />
-            <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>
-          </button>
+        <header className="fixed top-0 left-0 right-0 h-14 bg-[#1B2A4A] flex items-center justify-between px-4 z-40 shadow-lg">
+          {/* Left: Avatar + greeting */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-slate-500 flex items-center justify-center overflow-hidden border-2 border-white/20">
+              <img
+                src="/src/assets/images/cadu_ponce_logo_new.png"
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <span className="text-white font-bold text-sm">
+              {user ? `Olá, ${user.name.split(' ')[0]}` : 'Bem-vindo'}
+            </span>
+          </div>
+          {/* Right: icons */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsNotificationsOpen(true)}
+              className="relative p-1.5 text-white/70 hover:text-white transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1B2A4A]"></span>
+            </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className="p-1.5 text-white/70 hover:text-white transition-colors"
+            >
+              <User className="w-5 h-5" />
+            </button>
+          </div>
         </header>
       )}
 
       {/* Main Content */}
-      <main className={!activeWorkout ? "pt-16" : ""}>
+      <main className={!activeWorkout ? "pt-14" : ""}>
         <AnimatePresence>
           {!isOnline && (
             <motion.div
@@ -458,36 +479,34 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Premium Floating Bottom Navigation */}
+      {/* MFIT-Style Flat Bottom Navigation */}
       {!activeWorkout && (
-        <div className="fixed bottom-0 left-0 right-0 p-5 z-40 pointer-events-none flex justify-center">
-          <nav className={`pointer-events-auto w-full max-w-[400px] h-[72px] rounded-[2rem] flex items-center justify-between px-2 backdrop-blur-2xl border shadow-2xl transition-all duration-300 ${theme === 'dark' ? 'bg-slate-900/85 border-slate-700/50 shadow-black/50' : 'bg-white/90 border-slate-200/50 shadow-slate-900/10'}`}>
-            <NavButton 
-              active={activeTab === 'dashboard'} 
-              onClick={() => setActiveTab('dashboard')} 
-              icon={<Home className="w-5 h-5" />} 
-              label="Início" 
-            />
-            <NavButton 
-              active={activeTab === 'workouts'} 
-              onClick={() => setActiveTab('workouts')} 
-              icon={<Dumbbell className="w-5 h-5" />} 
-              label="Treinos" 
-            />
-            <NavButton 
-              active={activeTab === 'evolution'} 
-              onClick={() => setActiveTab('evolution')} 
-              icon={<Camera className="w-5 h-5" />} 
-              label="Evolução" 
-            />
-            <NavButton 
-              active={activeTab === 'profile'} 
-              onClick={() => setActiveTab('profile')} 
-              icon={<User className="w-5 h-5" />} 
-              label="Perfil" 
-            />
-          </nav>
-        </div>
+        <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
+          <NavButton 
+            active={activeTab === 'dashboard'} 
+            onClick={() => setActiveTab('dashboard')} 
+            icon={<Home className="w-5 h-5" />} 
+            label="Início" 
+          />
+          <NavButton 
+            active={activeTab === 'workouts'} 
+            onClick={() => setActiveTab('workouts')} 
+            icon={<Dumbbell className="w-5 h-5" />} 
+            label="Treinos" 
+          />
+          <NavButton 
+            active={activeTab === 'evolution'} 
+            onClick={() => setActiveTab('evolution')} 
+            icon={<Camera className="w-5 h-5" />} 
+            label="Evolução" 
+          />
+          <NavButton 
+            active={activeTab === 'profile'} 
+            onClick={() => setActiveTab('profile')} 
+            icon={<User className="w-5 h-5" />} 
+            label="Perfil" 
+          />
+        </nav>
       )}
     </div>
   );
@@ -497,32 +516,20 @@ function NavButton({ active, icon, label, onClick }: { active: boolean, icon: Re
   return (
     <button 
       onClick={onClick}
-      className="relative flex items-center justify-center w-full max-w-[84px] h-[56px] outline-none group"
+      className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
     >
-      {/* Sliding Active Background */}
+      <div className={`transition-colors duration-200 ${active ? 'text-white' : 'text-white/40'}`}>
+        {icon}
+      </div>
+      <span className={`text-[10px] font-bold transition-colors duration-200 ${active ? 'text-white' : 'text-white/40'}`}>
+        {label}
+      </span>
       {active && (
-        <motion.div 
-          layoutId="nav-active-pill" 
-          className="absolute inset-0 bg-gradient-to-br from-[#dc2626] to-[#991b1b] rounded-[1.25rem] shadow-[0_4px_12px_rgba(220,38,38,0.3)] border border-red-500/20" 
-          transition={{ type: "spring", stiffness: 350, damping: 28 }}
+        <motion.div
+          layoutId="nav-underline"
+          className="absolute bottom-0 w-8 h-0.5 bg-red-500 rounded-full"
         />
       )}
-      
-      {/* Icon and Label */}
-      <div className={`relative z-10 flex flex-col items-center justify-center gap-1 transition-colors duration-300 ${active ? 'text-white' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-300'}`}>
-        <motion.div 
-          animate={{ y: active ? -1 : 0, scale: active ? 1.1 : 1 }}
-          transition={{ type: "spring", stiffness: 400, damping: 25 }}
-        >
-          {icon}
-        </motion.div>
-        <motion.span 
-          animate={{ opacity: active ? 1 : 0.5, scale: active ? 1 : 0.95 }}
-          className="text-[9px] font-black uppercase tracking-[0.15em] italic"
-        >
-          {label}
-        </motion.span>
-      </div>
     </button>
   );
 }
