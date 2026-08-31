@@ -45,7 +45,6 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
   };
 
   return (
-  return (
     <div className="min-h-screen bg-[#1B2A4A] flex flex-col justify-center py-12 px-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background decoration */}
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
