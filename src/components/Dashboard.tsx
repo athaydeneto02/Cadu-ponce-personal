@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus } from 'lucide-react';
+import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell } from 'lucide-react';
 import { Workout, UserProfile, Goal } from '../types';
 import { supabase } from '../lib/supabase';
 import LoadHistory from './LoadHistory';
