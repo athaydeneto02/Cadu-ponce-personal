@@ -376,141 +376,215 @@ export default function App() {
     }
   };
 
+  const isStudent = user?.role !== 'admin';
+
   return (
-    <div className={`min-h-screen font-sans pb-20 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-white dark' : 'bg-[#F4F6FA] text-slate-900'}`}>
-      {/* Header — MFIT Style navy */}
-      {!activeWorkout && (
-        <header className="fixed top-0 left-0 right-0 h-14 bg-[#1B2A4A] flex items-center justify-between px-4 z-40 shadow-lg">
-          {/* Left: Avatar + greeting */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-slate-500 flex items-center justify-center overflow-hidden border-2 border-white/20">
-              <img
-                src="/src/assets/images/cadu_ponce_logo_new.png"
-                alt="avatar"
-                className="w-full h-full object-cover"
-              />
+    <div className={`min-h-screen font-sans transition-colors duration-300 ${isStudent ? 'bg-[#e8ecf0] flex items-center justify-center' : (theme === 'dark' ? 'bg-slate-950 text-white dark pb-20' : 'bg-[#F4F6FA] text-slate-900 pb-20')}`}>
+      
+      {/* STUDENT: Mobile frame container */}
+      {isStudent && !activeWorkout ? (
+        <div className="relative w-full max-w-[430px] min-h-screen bg-[#F4F6FA] flex flex-col shadow-2xl overflow-hidden">
+          {/* MFIT Header */}
+          <header className="bg-[#1c2b3e] h-14 flex items-center justify-center px-4 shrink-0 z-40 relative">
+            <div className="flex items-center gap-2">
+              <img src="/src/assets/images/cadu_ponce_logo_new.png" alt="logo" className="w-7 h-7 object-contain" />
+              <span className="text-white font-black text-lg tracking-wide">MFIT<span className="font-light">PERSONAL</span></span>
             </div>
-            <span className="text-white font-bold text-sm">
-              {user ? `Olá, ${user.name.split(' ')[0]}` : 'Bem-vindo'}
-            </span>
-          </div>
-          {/* Right: icons */}
-          <div className="flex items-center gap-3">
             <button
               onClick={() => setIsNotificationsOpen(true)}
-              className="relative p-1.5 text-white/70 hover:text-white transition-colors"
+              className="absolute right-4 top-1/2 -translate-y-1/2 relative p-1 text-white/80 hover:text-white transition"
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1B2A4A]"></span>
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">2</span>
+            </button>
+          </header>
+
+          {/* Content area */}
+          <main className="flex-1 overflow-y-auto pb-16">
+            <AnimatePresence>
+              {notification && (
+                <motion.div
+                  initial={{ opacity: 0, y: -50 }}
+                  animate={{ opacity: 1, y: 16 }}
+                  exit={{ opacity: 0, y: -50 }}
+                  className="fixed top-14 left-4 right-4 bg-slate-950 text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-start space-x-4 border border-slate-800"
+                >
+                  <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
+                    <Bell className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-sm tracking-tight">{notification.title}</h4>
+                    <p className="text-slate-400 text-xs mt-0.5 leading-tight">{notification.body}</p>
+                  </div>
+                  <button onClick={() => setNotification(null)} className="p-1 hover:bg-slate-800 rounded-lg shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {isNotificationsOpen && (
+                <NotificationsModal
+                  onClose={() => setIsNotificationsOpen(false)}
+                  isDark={false}
+                  userRole={user?.role}
+                />
+              )}
+            </AnimatePresence>
+
+            {renderContent()}
+          </main>
+
+          {/* MFIT Student Bottom Nav */}
+          <nav className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-200 flex items-stretch z-40">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'dashboard' ? 'text-[#1c2b3e]' : 'text-slate-400'}`}
+            >
+              <Home className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Início</span>
+            </button>
+            <button
+              onClick={() => window.open('https://instagram.com/caduponce', '_blank')}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-[#1c2b3e] transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="4" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+              </svg>
+              <span className="text-[10px] font-medium">Instagram</span>
+            </button>
+            <button
+              onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-[#1c2b3e] transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="text-[10px] font-medium">WhatsApp</span>
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className="p-1.5 text-white/70 hover:text-white transition-colors"
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'profile' ? 'text-[#1c2b3e]' : 'text-slate-400'}`}
             >
-              <User className="w-5 h-5" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <line x1="3" y1="6" x2="21" y2="6" strokeLinecap="round"/>
+                <line x1="3" y1="12" x2="21" y2="12" strokeLinecap="round"/>
+                <line x1="3" y1="18" x2="21" y2="18" strokeLinecap="round"/>
+              </svg>
+              <span className="text-[10px] font-medium">Menu</span>
             </button>
-          </div>
-        </header>
-      )}
-
-      {/* Main Content */}
-      <main className={!activeWorkout ? "pt-14" : ""}>
-        <AnimatePresence>
-          {!isOnline && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="bg-amber-500 text-amber-950 px-6 py-2 flex items-center justify-center space-x-2 text-[10px] font-black uppercase tracking-widest"
-            >
-              <WifiOff className="w-3 h-3" />
-              <span>Modo Offline: Dados sendo salvos localmente</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {notification && (
-            <motion.div
-              initial={{ opacity: 0, y: -50 }}
-              animate={{ opacity: 1, y: 16 }}
-              exit={{ opacity: 0, y: -50 }}
-              className="fixed top-0 left-4 right-4 bg-slate-950 text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-start space-x-4 border border-slate-800"
-            >
-              <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
-                <Bell className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-sm tracking-tight">{notification.title}</h4>
-                <p className="text-slate-400 text-xs mt-0.5 leading-tight">{notification.body}</p>
-              </div>
-              <button onClick={() => setNotification(null)} className="p-1 hover:bg-slate-800 rounded-lg shrink-0">
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {isNotificationsOpen && (
-            <NotificationsModal
-              onClose={() => setIsNotificationsOpen(false)}
-              isDark={theme === 'dark'}
-              userRole={user?.role}
-            />
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeWorkout ? 'session' : activeTab}
-            initial={{ opacity: 0, x: 15 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -15 }}
-            transition={{ 
-              type: "spring",
-              stiffness: 300,
-              damping: 30,
-              opacity: { duration: 0.2 }
-            }}
-          >
+          </nav>
+        </div>
+      ) : isStudent && activeWorkout ? (
+        <div className="relative w-full max-w-[430px] min-h-screen bg-[#F4F6FA] flex flex-col shadow-2xl overflow-hidden">
+          <main className="flex-1 overflow-y-auto">
             {renderContent()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+          </main>
+        </div>
+      ) : (
+        <div className={`w-full min-h-screen font-sans pb-20 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-white dark' : 'bg-[#F4F6FA] text-slate-900'}`}>
+          {/* Admin Header — MFIT Style navy */}
+          {!activeWorkout && (
+            <header className="fixed top-0 left-0 right-0 h-14 bg-[#1B2A4A] flex items-center justify-between px-4 z-40 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-slate-500 flex items-center justify-center overflow-hidden border-2 border-white/20">
+                  <img src="/src/assets/images/cadu_ponce_logo_new.png" alt="avatar" className="w-full h-full object-cover" />
+                </div>
+                <span className="text-white font-bold text-sm">
+                  {user ? `Olá, ${user.name.split(' ')[0]}` : 'Bem-vindo'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setIsNotificationsOpen(true)} className="relative p-1.5 text-white/70 hover:text-white transition-colors">
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1B2A4A]"></span>
+                </button>
+                <button onClick={() => setActiveTab('profile')} className="p-1.5 text-white/70 hover:text-white transition-colors">
+                  <User className="w-5 h-5" />
+                </button>
+              </div>
+            </header>
+          )}
 
-      {/* MFIT-Style Flat Bottom Navigation */}
-      {!activeWorkout && (
-        <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
-          <NavButton 
-            active={activeTab === 'dashboard'} 
-            onClick={() => setActiveTab('dashboard')} 
-            icon={<Home className="w-5 h-5" />} 
-            label="Início" 
-          />
-          <NavButton 
-            active={activeTab === 'workouts'} 
-            onClick={() => setActiveTab('workouts')} 
-            icon={<Dumbbell className="w-5 h-5" />} 
-            label="Treinos" 
-          />
-          <NavButton 
-            active={activeTab === 'evolution'} 
-            onClick={() => setActiveTab('evolution')} 
-            icon={<Camera className="w-5 h-5" />} 
-            label="Evolução" 
-          />
-          <NavButton 
-            active={activeTab === 'profile'} 
-            onClick={() => setActiveTab('profile')} 
-            icon={<User className="w-5 h-5" />} 
-            label="Perfil" 
-          />
-        </nav>
+          {/* Main Content */}
+          <main className={!activeWorkout ? "pt-14" : ""}>
+            <AnimatePresence>
+              {!isOnline && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="bg-amber-500 text-amber-950 px-6 py-2 flex items-center justify-center space-x-2 text-[10px] font-black uppercase tracking-widest"
+                >
+                  <WifiOff className="w-3 h-3" />
+                  <span>Modo Offline: Dados sendo salvos localmente</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {notification && (
+                <motion.div
+                  initial={{ opacity: 0, y: -50 }}
+                  animate={{ opacity: 1, y: 16 }}
+                  exit={{ opacity: 0, y: -50 }}
+                  className="fixed top-0 left-4 right-4 bg-slate-950 text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-start space-x-4 border border-slate-800"
+                >
+                  <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
+                    <Bell className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-sm tracking-tight">{notification.title}</h4>
+                    <p className="text-slate-400 text-xs mt-0.5 leading-tight">{notification.body}</p>
+                  </div>
+                  <button onClick={() => setNotification(null)} className="p-1 hover:bg-slate-800 rounded-lg shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {isNotificationsOpen && (
+                <NotificationsModal
+                  onClose={() => setIsNotificationsOpen(false)}
+                  isDark={theme === 'dark'}
+                  userRole={user?.role}
+                />
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeWorkout ? 'session' : activeTab}
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30, opacity: { duration: 0.2 } }}
+              >
+                {renderContent()}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {/* Admin Bottom Navigation */}
+          {!activeWorkout && (
+            <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
+              <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
+              <NavButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={<Dumbbell className="w-5 h-5" />} label="Treinos" />
+              <NavButton active={activeTab === 'evolution'} onClick={() => setActiveTab('evolution')} icon={<Camera className="w-5 h-5" />} label="Evolução" />
+              <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Perfil" />
+            </nav>
+          )}
+        </div>
       )}
     </div>
   );
 }
+
 
 function NavButton({ active, icon, label, onClick }: { active: boolean, icon: React.ReactNode, label: string, onClick: () => void }) {
   return (

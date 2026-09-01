@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell } from 'lucide-react';
+import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box } from 'lucide-react';
 import { Workout, UserProfile, Goal } from '../types';
 import { supabase } from '../lib/supabase';
 import LoadHistory from './LoadHistory';
@@ -160,179 +160,103 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       setIsUpdating(false);
     }
   };
-
-  const [dashTab, setDashTab] = useState<'inicio' | 'financas'>('inicio');
-
   return (
-    <div className="flex flex-col min-h-full">
-      {/* MFIT-style Tab Bar */}
-      <div className="flex bg-[#1B2A4A] shrink-0">
-        <button
-          onClick={() => setDashTab('inicio')}
-          className={`flex-1 py-3 text-sm font-bold border-b-4 transition-all ${
-            dashTab === 'inicio'
-              ? 'bg-white text-slate-900 border-white rounded-t-xl shadow-sm'
-              : 'bg-red-600 text-white border-red-600'
-          }`}
-        >
-          Início
-        </button>
-        <button
-          onClick={() => setDashTab('financas')}
-          className={`flex-1 py-3 text-sm font-bold border-b-4 transition-all ${
-            dashTab === 'financas'
-              ? 'bg-white text-slate-900 border-white rounded-t-xl shadow-sm'
-              : 'bg-red-600 text-white border-red-600'
-          }`}
-        >
-          Finanças
-        </button>
+    <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
+      {/* Header Extension (Dark Blue) */}
+      <div className="bg-[#1c2b3e] px-4 pt-4 pb-8 flex flex-col items-center">
+        {/* Avatar and Info */}
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#0070f3] mb-2 bg-slate-400">
+            {/* The user avatar from the screenshot. The top header already has the logo, but the screenshot has an avatar here too? Wait, the screenshot shows the logo at the very top, and then the trainer's avatar. */}
+            <div className="w-full h-full bg-slate-500 flex items-center justify-center text-white text-xl">
+              C
+            </div>
+          </div>
+          <h2 className="text-white text-sm font-medium">Cadu Ponce</h2>
+          <p className="text-slate-400 text-xs">CREF: 044859-G\PR</p>
+        </div>
+
+        {/* Greeting */}
+        <div className="w-full mt-6 text-left">
+          <h1 className="text-white text-xl font-medium">Boa noite, {user?.name?.split(' ')[0] || 'Aluno'}!</h1>
+        </div>
       </div>
 
-      {dashTab === 'inicio' ? (
-        <div className="flex-1 bg-[#F4F6FA] overflow-y-auto pb-4">
-          {/* Quick Actions Row */}
-          <div className="bg-white px-4 py-4 border-b border-gray-100">
-            <div className="grid grid-cols-3 gap-2">
-              <button className="flex flex-col items-center gap-1.5 group active:scale-95 transition">
-                <div className="w-12 h-12 bg-white rounded-full shadow border border-slate-100 flex items-center justify-center text-red-600 group-hover:bg-red-50 transition">
-                  <MessageSquare className="w-5 h-5" />
+      <div className="px-4 -mt-4 space-y-4 pb-6">
+        {/* Frequência de Treinos */}
+        <div className="bg-white rounded-xl shadow-sm p-4 relative z-10">
+          <h3 className="text-slate-800 font-bold text-[15px] mb-4">Frequência de Treinos</h3>
+          <div className="flex justify-between items-center px-1">
+            {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, i) => (
+              <div key={i} className="flex flex-col items-center gap-2">
+                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${i === 0 ? 'border-red-500 text-red-500' : 'border-[#0070f3] text-[#0070f3]'}`}>
+                  {i === 0 && <span className="font-bold">!</span>}
                 </div>
-                <span className="text-[10px] text-slate-600 font-bold">Feedbacks</span>
-              </button>
-              <button className="flex flex-col items-center gap-1.5 group active:scale-95 transition">
-                <div className="w-12 h-12 bg-white rounded-full shadow border border-slate-100 flex items-center justify-center text-red-600 group-hover:bg-red-50 transition">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] text-slate-600 font-bold">Atualizações</span>
-              </button>
-              <button className="flex flex-col items-center gap-1.5 group active:scale-95 transition">
-                <div className="w-12 h-12 bg-white rounded-full shadow border border-slate-100 flex items-center justify-center text-red-600 group-hover:bg-red-50 transition">
-                  <Bell className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] text-slate-600 font-bold">Notificações</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="px-4 pt-4 space-y-4">
-            {/* Welcome / Next Workout Card */}
-            {currentWorkout ? (
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shrink-0 shadow-md">
-                    <Dumbbell className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 leading-tight">Próximo Treino</h3>
-                    <p className="text-slate-500 text-sm font-semibold">{currentWorkout.name}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onStartWorkout(currentWorkout)}
-                  className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl shadow-md transition active:scale-[0.98] text-sm uppercase tracking-wider"
-                >
-                  Iniciar Treino
-                </button>
-                <button
-                  onClick={() => {}}
-                  className="w-full mt-2 border-2 border-red-200 text-red-600 font-bold py-3 rounded-xl transition hover:bg-red-50 text-sm"
-                >
-                  Ver todos os treinos
-                </button>
+                <span className="text-[10px] font-bold text-slate-600">{day}</span>
               </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-center">
-                <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-md">
-                  <Dumbbell className="w-8 h-8 text-white" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-1">Bem-vindo!</h3>
-                <p className="text-slate-500 text-sm font-medium mb-5">Aguardando seu treino ser liberado</p>
-                <button className="w-full bg-red-600 text-white font-bold py-3 rounded-xl text-sm">
-                  Falar com Treinador
-                </button>
-              </div>
-            )}
-
-            {/* Weight & Quick Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <Scale className="w-4 h-4 text-red-600" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Peso Atual</span>
-                </div>
-                <p className="text-2xl font-black text-slate-900">{(user?.weight || 0).toFixed(1)}<span className="text-sm text-slate-400 font-bold ml-1">kg</span></p>
-              </div>
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-4 h-4 text-red-600" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Frequência</span>
-                </div>
-                <p className="text-2xl font-black text-slate-900">4<span className="text-sm text-slate-400 font-bold ml-1">/semana</span></p>
-              </div>
-            </div>
-
-            {/* Weekly Calendar */}
-            <WeeklyCalendar trainingDays={[1, 2, 4, 5]} />
-
-            {/* Treinos Grid — MFIT Style */}
-            <div>
-              <h4 className="text-xs font-black uppercase text-slate-700 tracking-tight mb-3">Treinos</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <MfitCard
-                  icon={<Dumbbell className="w-5 h-5" />}
-                  label="Meus Treinos"
-                  onClick={() => onStartWorkout && workouts[0] && onStartWorkout(workouts[0])}
-                />
-                <MfitCard
-                  icon={<Calendar className="w-5 h-5" />}
-                  label="Agenda"
-                  onClick={() => {}}
-                />
-                <MfitCard
-                  icon={<BarChart2 className="w-5 h-5" />}
-                  label="Relatório de Frequência"
-                  onClick={() => {}}
-                />
-                <MfitCard
-                  icon={<Play className="w-5 h-5" />}
-                  label="Biblioteca de Exercícios"
-                  onClick={() => {}}
-                />
-              </div>
-            </div>
-
-            {/* Load History */}
-            <div className="pt-2">
-              <LoadHistory workouts={workouts} />
-            </div>
+            ))}
           </div>
         </div>
-      ) : (
-        /* Finanças Tab */
-        <div className="flex-1 bg-[#F4F6FA] flex items-center justify-center">
-          <div className="text-center text-slate-400 px-8">
-            <TrendingUp className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p className="font-bold text-sm">Finanças em breve</p>
-            <p className="text-xs mt-1">Acompanhe seus pagamentos aqui</p>
+
+        {/* Pontos MFIT */}
+        <div className="rounded-xl shadow-sm p-4 flex items-center justify-between" style={{ background: 'linear-gradient(to right, #0070f3, #004d99)' }}>
+          <div className="text-white">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="font-bold italic text-sm">///</span>
+              <span className="text-sm">Pontos MFIT</span>
+            </div>
+            <p className="text-[13px] font-medium">Treine e ganhe descontos</p>
           </div>
+          <button className="text-white flex items-center gap-1 text-sm font-medium">
+            Ativar <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-      )}
+
+        {/* Grid de Botões */}
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <Dumbbell className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Treinos</span>
+          </button>
+          
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <Plus className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Treinos<br/>Extras</span>
+          </button>
+          
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <Activity className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Avaliações</span>
+          </button>
+          
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Meu<br/>Progresso</span>
+          </button>
+          
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Faturas</span>
+          </button>
+          
+          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
+              <Box className="w-5 h-5" />
+            </div>
+            <span className="text-white font-medium text-sm leading-tight">Arquivos</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
-
-function MfitCard({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="bg-white rounded-2xl p-4 border-2 border-red-100 flex flex-col justify-between h-24 text-left hover:bg-red-50/40 active:scale-[0.97] transition shadow-sm"
-    >
-      <div className="w-9 h-9 bg-red-50 rounded-full flex items-center justify-center text-red-600">
-        {icon}
-      </div>
-      <span className="text-[11px] font-black uppercase text-red-600 leading-tight">{label}</span>
-    </button>
-  );
-}
-
