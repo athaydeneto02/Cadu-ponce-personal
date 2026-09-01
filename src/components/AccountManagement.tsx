@@ -297,9 +297,25 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
+
+  // Criar Rotina form state
+  const [criarRotinaForm, setCriarRotinaForm] = useState({
+    nome: '',
+    tipo: '',
+    objetivo: '',
+    dificuldade: '',
+    orientacoes: '',
+    permitirPdf: 'sim',
+    mostrarTempo: 'sim',
+    comecaEm: '',
+    terminaEm: '',
+    retirarAoVencer: false,
+    naoExibirAntes: false,
+  });
+
   const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [frequency, setFrequency] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [editWeight, setEditWeight] = useState('');
@@ -4864,7 +4880,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         
                         <div className="w-full space-y-3">
                           <button 
-                            onClick={() => handleAddWorkout('inferiores')} // Replace with actual add routine flow
+                            onClick={() => setSelectedDetailTab('criar_rotina')}
                             className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
                           >
                             Criar rotina
