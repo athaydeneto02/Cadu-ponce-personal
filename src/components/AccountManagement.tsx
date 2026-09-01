@@ -4660,71 +4660,108 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       {/* OVERLAY 1: STUDENT DETAILS & COACH ACTIONS MODAL */}
       <AnimatePresence>
         {selectedStudent && (
-          <div className="fixed inset-0 z-[100] bg-[#f4f7fa] flex flex-col md:p-6 overflow-hidden">
+          <div className="fixed inset-0 z-[100] bg-[#141C2C] flex flex-col md:p-6 overflow-hidden font-sans">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="w-full h-full flex flex-col max-w-lg mx-auto bg-[#f4f7fa] md:rounded-3xl md:shadow-2xl overflow-hidden relative text-left"
+              className="w-full h-full flex flex-col max-w-lg mx-auto bg-[#F4F6FA] md:rounded-3xl overflow-hidden relative text-left"
             >
-              {/* NEW HEADER */}
-              <div className="bg-[#1c2e40] pt-6 flex flex-col shrink-0">
-                <div className="px-6 pb-6">
+              {/* HEADER */}
+              <div className="bg-[#141C2C] flex flex-col shrink-0">
+                <div className="px-4 py-4">
                   <button 
-                    onClick={() => setSelectedStudent(null)}
-                    className="flex items-center gap-1.5 text-xs font-bold text-white/80 hover:text-white transition mb-6 uppercase tracking-wider cursor-pointer"
+                    onClick={() => {
+                      if (selectedDetailTab === 'treinos') setSelectedDetailTab('inicio');
+                      else setSelectedStudent(null);
+                    }}
+                    className="flex items-center gap-1 text-xs font-bold text-white mb-4 hover:opacity-80 transition cursor-pointer"
                   >
                     <ChevronLeft className="w-4 h-4" /> Voltar
                   </button>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-white/10 text-white rounded-full flex items-center justify-center font-black text-2xl uppercase select-none shrink-0 border-2 border-white/20">
-                      {selectedStudent.name.substring(0, 2)}
+                    <div className="w-12 h-12 bg-slate-400 text-white rounded-full flex items-center justify-center font-bold text-xl uppercase select-none shrink-0 overflow-hidden">
+                      <User className="w-8 h-8 text-slate-200 mt-2" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-white uppercase tracking-wider leading-tight mb-1">{selectedStudent.name}</h3>
-                      <p className="text-sm text-slate-300 font-semibold">{selectedStudent.modality || 'Presencial'}</p>
+                      <h3 className="text-lg font-medium text-white tracking-wide leading-tight mb-0.5">{selectedStudent.name}</h3>
+                      <p className="text-xs text-white/80">{selectedStudent.modality || 'Presencial'}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* TABS attached to header */}
-                <div className="flex px-4 gap-2">
-                  <button
-                    onClick={() => setSelectedDetailTab('inicio')}
-                    className={`flex-1 py-3 text-sm font-bold uppercase tracking-widest rounded-t-xl transition duration-300 cursor-pointer ${
-                      selectedDetailTab === 'inicio' 
-                        ? 'bg-[#f4f7fa] text-slate-800' 
-                        : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white shadow-inner'
-                    }`}
-                  >
-                    Início
-                  </button>
-                  <button
-                    onClick={() => setSelectedDetailTab('opcoes')}
-                    className={`flex-1 py-3 text-sm font-bold uppercase tracking-widest rounded-t-xl transition duration-300 cursor-pointer ${
-                      selectedDetailTab === 'opcoes' 
-                        ? 'bg-[#f4f7fa] text-slate-800' 
-                        : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white shadow-inner'
-                    }`}
-                  >
-                    Opções
-                  </button>
+                {/* TABS */}
+                <div className="flex px-2 pt-2">
+                  {selectedDetailTab === 'treinos' ? (
+                    <>
+                      <button className="flex-1 py-3 text-sm font-semibold rounded-t-lg bg-white text-slate-800 transition cursor-pointer">
+                        Rotinas de treino
+                      </button>
+                      <button className="flex-1 py-3 text-sm font-semibold rounded-t-lg bg-[#2b88ff] text-white hover:bg-[#1e78eb] transition cursor-pointer">
+                        Aeróbico
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setSelectedDetailTab('inicio')}
+                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                          selectedDetailTab === 'inicio' 
+                            ? 'bg-white text-slate-800' 
+                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                        }`}
+                      >
+                        Início
+                      </button>
+                      <button
+                        onClick={() => setSelectedDetailTab('opcoes')}
+                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                          selectedDetailTab === 'opcoes' 
+                            ? 'bg-white text-slate-800' 
+                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                        }`}
+                      >
+                        Opções
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Scrollable Container */}
-              <div className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-none space-y-4">
                 
                 {/* TABCONTENT: INITIAL (INÍCIO) */}
                 {selectedDetailTab === 'inicio' && (
                   <div className="space-y-4">
+                    {/* Top Icons */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 grid grid-cols-3 gap-2 text-center">
+                      <button 
+                        onClick={() => setSelectedDetailTab('treinos')}
+                        className="flex flex-col items-center gap-2 group cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] transition group-hover:bg-[#dbeafe]">
+                          <Dumbbell className="w-5 h-5" />
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-700">Treinos</span>
+                      </button>
+                      <button className="flex flex-col items-center gap-2 group cursor-pointer">
+                        <div className="w-10 h-10 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] transition group-hover:bg-[#dbeafe]">
+                          <span className="font-bold text-lg leading-none">$</span>
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-700">Posição financeira</span>
+                      </button>
+                      <button className="flex flex-col items-center gap-2 group cursor-pointer">
+                        <div className="w-10 h-10 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] transition group-hover:bg-[#dbeafe]">
+                          <Activity className="w-5 h-5" />
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-700">Avaliações</span>
+                      </button>
+                    </div>
                     
                     {/* Weekly Frequency Section */}
-                    <div 
-                      onClick={() => setShowFrequencyCalendar(true)}
-                      className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm cursor-pointer hover:border-[#3182ce] transition"
-                    >
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-5 text-center">Frequência de Treinos</h4>
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-800 mb-4">Frequência de Treinos</h4>
                       
                       <div className="flex justify-between items-center">
                         {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, idx) => {
@@ -4736,366 +4773,144 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 e.stopPropagation();
                                 handleToggleDay(idx);
                               }}
-                              className="flex flex-col items-center gap-2 cursor-pointer group"
+                              className="flex flex-col items-center gap-1.5 cursor-pointer group"
                             >
-                              <div className={`w-8 h-8 rounded-full border-[2px] flex items-center justify-center transition-colors ${
+                              <div className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
                                 isActive 
-                                  ? 'border-[#3182ce] bg-white' 
-                                  : 'border-slate-300 bg-white'
+                                  ? 'border-amber-400 text-amber-500 font-black' 
+                                  : 'border-[#2b88ff] text-transparent'
                               }`}>
-                                {isActive ? (
-                                  <div className="w-2.5 h-2.5 bg-[#3182ce] rounded-full" />
-                                ) : (
-                                  <X className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400 transition" strokeWidth={3} />
-                                )}
+                                {isActive ? '!' : ''}
                               </div>
-                              <span className="text-[10px] font-black text-slate-500 uppercase">{day}</span>
+                              <span className="text-xs font-bold text-slate-800">{day}</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
 
-                    {/* Expanding Categories List */}
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+                    {/* Engajamento do aluno */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                      <div className="flex justify-between items-start mb-4">
+                        <h4 className="text-xs font-bold text-slate-800">Engajamento do aluno</h4>
+                        <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-2 py-0.5 rounded-full">Oscilando</span>
+                      </div>
                       
-                      {/* CATEGORY: WORKOUTS (TREINOS) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'treinos' ? null : 'treinos')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <Dumbbell className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Treinos Sincronizados</span>
-                            <span className="block text-[11px] font-semibold text-slate-500">
-                              {workouts.filter(w => w.studentId === selectedStudent.uid).length} Fichas Ativas
-                            </span>
-                          </div>
-                          {expandedCategory === 'treinos' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </button>
-                        
-                        {expandedCategory === 'treinos' && (
-                          <div className="px-5 pb-5 pt-2 space-y-4">
-                            {/* Workout list */}
-                            {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
-                              <div className="text-center py-6 text-slate-500 text-xs font-semibold">
-                                <p className="mb-3.5">Nenhuma ficha de treino ativa cadastrada.</p>
-                                <div className="flex flex-col gap-2 max-w-xs mx-auto">
-                                  <button
-                                    onClick={() => handleAddWorkout('inferiores')}
-                                    className="bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-bold py-2.5 px-4 rounded-xl text-[11px] uppercase tracking-wider transition cursor-pointer shadow-sm"
-                                  >
-                                    ⚡ Inicializar Treino Inferiores
-                                  </button>
-                                  <button
-                                    onClick={() => handleAddWorkout('superiores')}
-                                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 px-4 rounded-xl text-[11px] uppercase tracking-wider transition cursor-pointer shadow-sm"
-                                  >
-                                    ⚡ Inicializar Treino Superiores
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                {workouts.filter(w => w.studentId === selectedStudent.uid).map((w) => (
-                                  <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
-                                      {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
-                                      
-                                      {/* Quick exercises preview indicator */}
-                                      <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
-                                        {w.exercises?.length || 0} exercícios
-                                      </span>
-                                    </div>
-                                    <div className="flex gap-1.5 shrink-0">
-                                      {/* PDF EXPORT BUTTON */}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          generateWorkoutPDF(w, selectedStudent.name);
-                                        }}
-                                        className="p-2.5 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-xl transition duration-200 active:scale-90 cursor-pointer"
-                                        title="Baixar Treino em PDF"
-                                      >
-                                        <Download className="w-4 h-4" />
-                                      </button>
-                                      
-                                      {/* DELETE INDIVIDUAL WORKOUT */}
-                                      <button
-                                        onClick={() => handleDeleteWorkout(w.id)}
-                                        className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200 cursor-pointer"
-                                        title="Excluir ficha"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {/* Add training presets panel */}
-                                <div className="pt-4 mt-2 border-t border-dashed border-slate-200">
-                                  <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-3 text-center">Prescrever Novo Treino</span>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    <button
-                                      onClick={() => handleAddWorkout('inferiores')}
-                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
-                                    >
-                                      + Inferiores
-                                    </button>
-                                    <button
-                                      onClick={() => handleAddWorkout('superiores')}
-                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
-                                    >
-                                      + Superiores
-                                    </button>
-                                    <button
-                                      onClick={() => handleAddWorkout('cardio')}
-                                      className="py-2.5 bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 rounded-xl transition cursor-pointer text-center shadow-sm"
-                                    >
-                                      + Core/Cardio
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                      <div className="flex justify-between">
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-medium">Último treino há</p>
+                          <p className="text-sm font-bold text-slate-800">0 dias</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-medium">Frequência média</p>
+                          <p className="text-sm font-bold text-slate-800">0x semana</p>
+                        </div>
                       </div>
+                    </div>
 
-                      {/* CATEGORY: ASSESSMENTS (AVALIAÇÕES) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'avaliacoes' ? null : 'avaliacoes')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <ClipboardCheck className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Avaliações Físicas</span>
-                            <span className="block text-[11px] font-semibold text-slate-500">
-                              {selectedStudent.weight || '--'} kg • {selectedStudent.height || '--'} cm
-                            </span>
-                          </div>
-                          {expandedCategory === 'avaliacoes' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </button>
-                        
-                        {expandedCategory === 'avaliacoes' && (
-                          <div className="px-5 pb-5 pt-2 space-y-4">
-                            <div className="grid grid-cols-3 gap-3">
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Peso (kg)</label>
-                                <input 
-                                  type="number"
-                                  step="0.1"
-                                  value={editWeight}
-                                  onChange={(e) => setEditWeight(e.target.value)}
-                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
-                                  placeholder="59"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Altura (cm)</label>
-                                <input 
-                                  type="number"
-                                  value={editHeight}
-                                  onChange={(e) => setEditHeight(e.target.value)}
-                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
-                                  placeholder="164"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Gordura (BF)</label>
-                                <input 
-                                  type="text"
-                                  value={editBF}
-                                  onChange={(e) => setEditBF(e.target.value)}
-                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
-                                  placeholder="18.5%"
-                                />
-                              </div>
-                            </div>
+                    {/* List Items */}
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-100">
+                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                        <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
+                          <Activity className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-medium text-slate-700">Progresso do aluno</span>
+                      </button>
+                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                        <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-medium text-slate-700">Treinos extras</span>
+                      </button>
+                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                        <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-medium text-slate-700">Arquivos</span>
+                      </button>
+                    </div>
 
-                            <button
-                              onClick={handleSaveAssessment}
-                              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-sm ${
-                                saveSuccess 
-                                  ? 'bg-emerald-500 text-white' 
-                                  : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white'
-                              }`}
-                            >
-                              {saveSuccess ? '✓ Atualizado com Sucesso!' : 'Salvar Dados da Avaliação'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* CATEGORY: FINANCE (POSIÇÃO FINANCEIRA) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setShowFinanceModal(true)}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition border-b border-slate-100"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <Wallet className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Posição Financeira</span>
-                            <span className={`block text-[11px] font-semibold text-slate-500`}>
-                              Gerenciar faturas e pagamentos
-                            </span>
-                          </div>
-                          <ChevronRight className="w-5 h-5 text-slate-400" />
-                        </button>
-                      </div>
-
-                      {/* CATEGORY: STUDENT PROGRESS (PROGRESSO DO ALUNO) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'progresso' ? null : 'progresso')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <Activity className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Progresso do Aluno</span>
-                            <span className="block text-[11px] font-semibold text-slate-500">Resumo de cargas de repetição</span>
-                          </div>
-                          {expandedCategory === 'progresso' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </button>
-                        
-                        {expandedCategory === 'progresso' && (
-                          <div className="px-5 pb-5 pt-2 space-y-3.5">
-                            <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
-                              <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Evolução Fiel de Carga</span>
-                              <div className="space-y-2 text-sm font-semibold text-slate-700">
-                                <div className="flex justify-between border-b border-slate-100 pb-2">
-                                  <span>Supino Reto</span>
-                                  <span className="text-[#3182ce] font-bold font-mono">60 kg → 64 kg 🔥</span>
-                                </div>
-                                <div className="flex justify-between border-b border-slate-100 pb-2">
-                                  <span>Agachamento Búlgaro</span>
-                                  <span className="text-[#3182ce] font-bold font-mono">10 kg → 12 kg 🔥</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Puxada Aberta</span>
-                                  <span className="text-slate-500 font-mono">55 kg (estável)</span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <p className="text-[10px] text-slate-400 text-center font-bold">Visite a aba de Fotos de Evolução do aluno no Feed para revisões visuais.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* CATEGORY: EXTRA ROUTINES (TREINOS EXTRAS) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'extras' ? null : 'extras')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <Sparkles className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Treinos Extras & Cardio</span>
-                            <span className="block text-[11px] font-semibold text-slate-500">Orientações extras prescritas</span>
-                          </div>
-                          {expandedCategory === 'extras' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </button>
-                        
-                        {expandedCategory === 'extras' && (
-                          <div className="px-5 pb-5 pt-2 space-y-3.5 text-sm">
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recomendações Auxiliares (Cardio, Mobilidade...)</label>
-                              <textarea
-                                value={extraPrescription}
-                                onChange={(e) => setExtraPrescription(e.target.value)}
-                                rows={2}
-                                className="w-full p-3 bg-white border border-slate-200 rounded-xl font-semibold text-sm outline-none text-slate-800 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 resize-none placeholder:text-slate-400"
-                                placeholder="Insira aqui as prescrições de cardio ou mobilidade... Ex: 30 minutos de hit corrida 3x na semana."
-                              />
-                            </div>
-
-                            <button
-                              onClick={handleSavePrescription}
-                              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-sm ${
-                                prescSuccess 
-                                  ? 'bg-emerald-500 text-white' 
-                                  : 'bg-[#3182ce] hover:bg-[#2b6cb0] text-white'
-                              }`}
-                            >
-                              {prescSuccess ? '✓ Prescrição Salva!' : 'Salvar Recomendações'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* CATEGORY: FILES (ARQUIVOS) */}
-                      <div className="overflow-hidden">
-                        <button
-                          onClick={() => setExpandedCategory(expandedCategory === 'arquivos' ? null : 'arquivos')}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 transition"
-                        >
-                          <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-[#3182ce] shrink-0">
-                            <Archive className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                            <span className="block text-sm font-bold text-slate-800">Arquivos Exportáveis</span>
-                            <span className="block text-[11px] font-semibold text-slate-500">Formulários e Fichas offline do aluno</span>
-                          </div>
-                          {expandedCategory === 'arquivos' ? (
-                            <ChevronUp className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          )}
-                        </button>
-                        
-                        {expandedCategory === 'arquivos' && (
-                          <div className="px-5 pb-5 pt-2 space-y-2.5">
-                            {workouts.filter(w => w.studentId === selectedStudent.uid).map((workout) => (
-                              <button
-                                key={workout.id}
-                                onClick={() => generateWorkoutPDF(workout, selectedStudent.name)}
-                                className="w-full p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between font-bold text-sm text-slate-700 transition group cursor-pointer shadow-sm"
-                              >
-                                <span className="group-hover:text-[#3182ce] transition">{workout.name}.pdf</span>
-                                <Download className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce]" />
-                              </button>
-                            ))}
-                            
-                            {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 && (
-                              <p className="text-xs text-slate-500 font-semibold text-center italic py-2">Sem arquivos de PDFs geráveis disponíveis para esse aluno. Crie uma ficha na categoria "Treinos" acima primeiro!</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
+                    {/* Anotações */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-800 mb-2">Anotações</h4>
+                      <textarea 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 focus:outline-none focus:border-[#2b88ff] min-h-[100px] resize-y"
+                        placeholder="Digite suas anotações aqui..."
+                      />
                     </div>
                   </div>
                 )}
+
+                {/* TABCONTENT: TREINOS */}
+                {selectedDetailTab === 'treinos' && (
+                  <div className="space-y-4">
+                    {/* Sub tabs */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-2 flex gap-2">
+                      <button className="flex-1 py-2 rounded-lg bg-[#EBF4FF] text-[#2b88ff] text-xs font-bold transition hover:bg-[#dbeafe]">
+                        Arquivadas
+                      </button>
+                      <button className="flex-1 py-2 rounded-lg bg-[#EBF4FF] text-[#2b88ff] text-xs font-bold transition hover:bg-[#dbeafe]">
+                        Excluídas
+                      </button>
+                    </div>
+
+                    {/* Empty State or List */}
+                    {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
+                        <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                          <Dumbbell className="w-10 h-10" />
+                        </div>
+                        <h4 className="text-[15px] font-bold text-slate-900 mb-6">Crie uma rotina de treinos para o seu aluno.</h4>
+                        
+                        <div className="w-full space-y-3">
+                          <button 
+                            onClick={() => handleAddWorkout('inferiores')} // Replace with actual add routine flow
+                            className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
+                          >
+                            Criar rotina
+                          </button>
+                          <button className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-semibold py-3 rounded-md transition">
+                            Assistir tutorial
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Existing Workouts List */
+                      <div className="space-y-3">
+                        {workouts.filter(w => w.studentId === selectedStudent.uid).map((w) => (
+                          <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
+                              {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
+                              <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
+                                {w.exercises?.length || 0} exercícios
+                              </span>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  generateWorkoutPDF(w, selectedStudent.name);
+                                }}
+                                className="p-2.5 bg-[#EBF4FF] hover:bg-[#2b88ff] text-[#2b88ff] hover:text-white rounded-xl transition duration-200 active:scale-90"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteWorkout(w.id)}
+                                className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+
 
                 {/* TABCONTENT: OPTIONS (OPÇÕES) */}
                 {selectedDetailTab === 'opcoes' && (
