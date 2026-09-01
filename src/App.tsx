@@ -537,8 +537,13 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                let ig = user?.metadata?.instagram || 'https://instagram.com/caduponce';
-                if (!ig.startsWith('http')) ig = 'https://' + ig;
+                let ig = user?.metadata?.instagram || 'caduponce';
+                ig = ig.replace('@', '').trim();
+                if (!ig.includes('instagram.com')) {
+                  ig = `https://instagram.com/${ig}`;
+                } else if (!ig.startsWith('http')) {
+                  ig = `https://${ig}`;
+                }
                 window.open(ig, '_blank');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
@@ -554,6 +559,9 @@ export default function App() {
               onClick={() => {
                 let wa = user?.trainerPhone || '5511999999999';
                 wa = wa.replace(/\D/g, ''); // keep only numbers
+                if (wa.length === 10 || wa.length === 11) {
+                  wa = '55' + wa; // Prepend Brazil country code
+                }
                 window.open(`https://wa.me/${wa}`, '_blank');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
@@ -674,8 +682,13 @@ export default function App() {
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
               <button
                 onClick={() => {
-                  let ig = user?.metadata?.instagram || 'https://instagram.com/caduponce';
-                  if (!ig.startsWith('http')) ig = 'https://' + ig;
+                  let ig = user?.metadata?.instagram || 'caduponce';
+                  ig = ig.replace('@', '').trim();
+                  if (!ig.includes('instagram.com')) {
+                    ig = `https://instagram.com/${ig}`;
+                  } else if (!ig.startsWith('http')) {
+                    ig = `https://${ig}`;
+                  }
                   window.open(ig, '_blank');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
@@ -693,6 +706,9 @@ export default function App() {
                 onClick={() => {
                   let wa = user?.trainerPhone || '5511999999999';
                   wa = wa.replace(/\D/g, ''); // keep only numbers
+                  if (wa.length === 10 || wa.length === 11) {
+                    wa = '55' + wa; // Prepend Brazil country code
+                  }
                   window.open(`https://wa.me/${wa}`, '_blank');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
