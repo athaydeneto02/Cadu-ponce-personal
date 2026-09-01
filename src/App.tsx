@@ -220,24 +220,6 @@ export default function App() {
           onSave={async (updatedUser) => {
             try {
               await storage.updateProfile(updatedUser);
-              
-              // If admin updates their profile, sync their contact info to all students
-              if (updatedUser.role === 'admin') {
-                const students = await storage.fetchUsersList();
-                for (const student of students) {
-                  await supabase
-                    .from('profiles')
-                    .update({
-                      trainer_phone: updatedUser.trainerPhone,
-                      metadata: {
-                        ...student.metadata,
-                        instagram: updatedUser.metadata?.instagram
-                      }
-                    })
-                    .eq('id', student.uid);
-                }
-              }
-
               setUser(updatedUser);
               setIsEditingProfile(false);
               setNotification({
@@ -537,14 +519,7 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                let ig = user?.metadata?.instagram || 'caduponce';
-                ig = ig.replace('@', '').trim();
-                if (!ig.includes('instagram.com')) {
-                  ig = `https://instagram.com/${ig}`;
-                } else if (!ig.startsWith('http')) {
-                  ig = `https://${ig}`;
-                }
-                window.open(ig, '_blank');
+                window.open('https://www.instagram.com/caduponce.personal', '_blank');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
@@ -557,12 +532,7 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                let wa = user?.trainerPhone || '5511999999999';
-                wa = wa.replace(/\D/g, ''); // keep only numbers
-                if (wa.length === 10 || wa.length === 11) {
-                  wa = '55' + wa; // Prepend Brazil country code
-                }
-                window.open(`https://wa.me/${wa}`, '_blank');
+                window.open('https://wa.me/554384639369', '_blank');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
@@ -682,14 +652,7 @@ export default function App() {
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
               <button
                 onClick={() => {
-                  let ig = user?.metadata?.instagram || 'caduponce';
-                  ig = ig.replace('@', '').trim();
-                  if (!ig.includes('instagram.com')) {
-                    ig = `https://instagram.com/${ig}`;
-                  } else if (!ig.startsWith('http')) {
-                    ig = `https://${ig}`;
-                  }
-                  window.open(ig, '_blank');
+                  window.open('https://www.instagram.com/caduponce.personal', '_blank');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >
@@ -704,12 +667,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
-                  let wa = user?.trainerPhone || '5511999999999';
-                  wa = wa.replace(/\D/g, ''); // keep only numbers
-                  if (wa.length === 10 || wa.length === 11) {
-                    wa = '55' + wa; // Prepend Brazil country code
-                  }
-                  window.open(`https://wa.me/${wa}`, '_blank');
+                  window.open('https://wa.me/554384639369', '_blank');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >
