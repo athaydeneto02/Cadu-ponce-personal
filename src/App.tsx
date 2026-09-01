@@ -27,6 +27,7 @@ import WorkoutList from './components/WorkoutList';
 import WorkoutSession from './components/WorkoutSession';
 import EvolutionGallery from './components/EvolutionGallery';
 import PersonalDataForm from './components/PersonalDataForm';
+import UpdatePasswordForm from './components/UpdatePasswordForm';
 import AccountManagement from './components/AccountManagement';
 import NotificationsModal from './components/NotificationsModal';
 
@@ -50,6 +51,7 @@ export default function App() {
   const [workouts, setWorkouts] = useState<Workout[]>(() => storage.getWorkouts());
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [isManagingAccounts, setIsManagingAccounts] = useState(false);
   const [notification, setNotification] = useState<{title: string, body: string} | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -238,6 +240,21 @@ export default function App() {
       );
     }
 
+    if (isUpdatingPassword) {
+      return (
+        <UpdatePasswordForm 
+          onClose={() => setIsUpdatingPassword(false)}
+          onSuccess={() => {
+            setIsUpdatingPassword(false);
+            setNotification({
+              title: "Senha Atualizada",
+              body: "Sua senha foi alterada com sucesso."
+            });
+          }}
+        />
+      );
+    }
+
     if (isManagingAccounts) {
       return (
         <AccountManagement 
@@ -298,7 +315,7 @@ export default function App() {
                   </button>
 
                   {/* Atualizar Senha */}
-                  <button className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
+                  <button onClick={() => setIsUpdatingPassword(true)} className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
                     <div className="text-left">
                       <h3 className="text-slate-800 font-bold text-base">Atualizar senha</h3>
                       <p className="text-slate-800 text-lg tracking-widest mt-0.5 leading-none">................</p>
@@ -403,6 +420,12 @@ export default function App() {
                 label="Dados Pessoais" 
                 isDark={theme === 'dark'} 
                 onClick={() => setIsEditingProfile(true)}
+              />
+              <ProfileItem 
+                icon={<Shield className="w-5 h-5" />} 
+                label="Atualizar Senha" 
+                isDark={theme === 'dark'} 
+                onClick={() => setIsUpdatingPassword(true)}
               />
               <ProfileItem 
                 icon={<Bell className="w-5 h-5" />} 
