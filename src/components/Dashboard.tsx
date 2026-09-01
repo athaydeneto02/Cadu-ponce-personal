@@ -182,6 +182,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showMeuProgresso, setShowMeuProgresso] = useState(false);
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
   const [showFaturas, setShowFaturas] = useState(false);
+  const [showArquivos, setShowArquivos] = useState(false);
 
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
@@ -418,6 +419,78 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
+  if (showArquivos) {
+    const categories = [
+      { label: 'Planos alimentares', icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h.01M12 3v1M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zM9 12a3 3 0 006 0" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 19l2-5h10l2 5" />
+        </svg>
+      )},
+      { label: 'Exames médicos', icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0 3.314-3.134 6-7 6s-7-2.686-7-6 3.134-6 7-6c1.94 0 3.694.757 4.97 1.984" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l1.5-1.5M18 6l-1.5 1.5M12 9v3l2 1" />
+        </svg>
+      )},
+      { label: 'Planners', icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9h18M9 21V9" />
+        </svg>
+      )},
+      { label: 'Arquivos diversos', icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )},
+    ];
+    return (
+      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+        <div className="px-4 pt-4 pb-2">
+          <button onClick={() => setShowArquivos(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+          </button>
+        </div>
+        <h2 className="text-white text-xl font-semibold px-4 pb-4">Arquivos</h2>
+
+        <div className="mx-4 bg-white rounded-xl shadow-xl overflow-hidden">
+          {/* Icon + headline */}
+          <div className="flex flex-col items-center pt-8 pb-4 px-6">
+            <div className="w-16 h-16 rounded-full bg-[#dbeafe] flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </div>
+            <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
+              Envie <span className="text-[#0070f3]">arquivos</span> para o seu professor!
+            </p>
+          </div>
+
+          {/* Category list */}
+          <div className="divide-y divide-slate-100 px-4 pb-2">
+            {categories.map((cat, i) => (
+              <div key={i} className="flex items-center gap-4 py-4">
+                <div className="w-10 h-10 rounded-full bg-[#eff6ff] flex items-center justify-center shrink-0">
+                  {cat.icon}
+                </div>
+                <span className="text-slate-700 font-medium text-sm">{cat.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Button */}
+          <div className="px-4 pb-6 pt-2">
+            <label className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md flex items-center justify-center cursor-pointer transition text-sm">
+              Adicionar arquivos
+              <input type="file" className="hidden" multiple />
+            </label>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
       {/* Header Extension (Dark Blue) */}
@@ -525,7 +598,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             <span className="text-white font-medium text-sm leading-tight">Faturas</span>
           </button>
           
-          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+          <button
+            onClick={() => setShowArquivos(true)}
+            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
+          >
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
               <Box className="w-5 h-5" />
             </div>
