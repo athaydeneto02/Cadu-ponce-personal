@@ -4983,6 +4983,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
                         >
                           <option value="">Selecione</option>
+                          <option value="adaptacao">Adaptação</option>
                           <option value="iniciante">Iniciante</option>
                           <option value="intermediario">Intermediário</option>
                           <option value="avancado">Avançado</option>
