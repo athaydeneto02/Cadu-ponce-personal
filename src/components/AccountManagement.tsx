@@ -4926,7 +4926,201 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 )}
 
+                {/* TABCONTENT: CRIAR ROTINA */}
+                {selectedDetailTab === 'criar_rotina' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
 
+                      {/* Nome da rotina */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Nome da rotina</label>
+                        <input
+                          type="text"
+                          value={criarRotinaForm.nome}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, nome: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Tipo dos treinos */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Tipo dos treinos</label>
+                        <select
+                          value={criarRotinaForm.tipo}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, tipo: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
+                        >
+                          <option value="">Selecione</option>
+                          <option value="musculacao">Musculação</option>
+                          <option value="funcional">Funcional</option>
+                          <option value="hiit">HIIT</option>
+                          <option value="aerobico">Aeróbico</option>
+                          <option value="mobilidade">Mobilidade</option>
+                        </select>
+                      </div>
+
+                      {/* Objetivo */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Objetivo</label>
+                        <select
+                          value={criarRotinaForm.objetivo}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, objetivo: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
+                        >
+                          <option value="">Selecione</option>
+                          <option value="hipertrofia">Hipertrofia</option>
+                          <option value="emagrecimento">Emagrecimento</option>
+                          <option value="forca">Força</option>
+                          <option value="condicionamento">Condicionamento</option>
+                          <option value="saude">Saúde e bem-estar</option>
+                        </select>
+                      </div>
+
+                      {/* Dificuldade */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Dificuldade</label>
+                        <select
+                          value={criarRotinaForm.dificuldade}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, dificuldade: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
+                        >
+                          <option value="">Selecione</option>
+                          <option value="iniciante">Iniciante</option>
+                          <option value="intermediario">Intermediário</option>
+                          <option value="avancado">Avançado</option>
+                        </select>
+                      </div>
+
+                      {/* Orientações gerais */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Orientações gerais</label>
+                        <textarea
+                          value={criarRotinaForm.orientacoes}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, orientacoes: e.target.value }))}
+                          rows={4}
+                          placeholder="Orientações gerais"
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] resize-none placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      {/* Permitir PDF */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Permitir que o aluno baixe o treino em pdf?</label>
+                        <div className="flex flex-col gap-1 mt-1">
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="permitirPdf"
+                              value="sim"
+                              checked={criarRotinaForm.permitirPdf === 'sim'}
+                              onChange={() => setCriarRotinaForm(f => ({ ...f, permitirPdf: 'sim' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Sim
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="permitirPdf"
+                              value="nao"
+                              checked={criarRotinaForm.permitirPdf === 'nao'}
+                              onChange={() => setCriarRotinaForm(f => ({ ...f, permitirPdf: 'nao' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Não
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Mostrar tempo */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Mostrar o tempo do treino para o aluno?</label>
+                        <div className="flex flex-col gap-1 mt-1">
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="mostrarTempo"
+                              value="sim"
+                              checked={criarRotinaForm.mostrarTempo === 'sim'}
+                              onChange={() => setCriarRotinaForm(f => ({ ...f, mostrarTempo: 'sim' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Sim
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="mostrarTempo"
+                              value="nao"
+                              checked={criarRotinaForm.mostrarTempo === 'nao'}
+                              onChange={() => setCriarRotinaForm(f => ({ ...f, mostrarTempo: 'nao' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Não
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Começa em */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Começa em:</label>
+                        <input
+                          type="date"
+                          value={criarRotinaForm.comecaEm}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, comecaEm: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Termina em */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Termina em:</label>
+                        <input
+                          type="date"
+                          value={criarRotinaForm.terminaEm}
+                          onChange={e => setCriarRotinaForm(f => ({ ...f, terminaEm: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Checkboxes */}
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={criarRotinaForm.retirarAoVencer}
+                            onChange={e => setCriarRotinaForm(f => ({ ...f, retirarAoVencer: e.target.checked }))}
+                            className="mt-0.5 accent-[#0070f3]"
+                          />
+                          <span className="text-xs text-slate-700">Retirar a rotina da tela do aluno quando ela vencer.</span>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={criarRotinaForm.naoExibirAntes}
+                            onChange={e => setCriarRotinaForm(f => ({ ...f, naoExibirAntes: e.target.checked }))}
+                            className="mt-0.5 accent-[#0070f3]"
+                          />
+                          <span className="text-xs text-slate-700">Não exibir essa rotina para o aluno antes da data de início</span>
+                        </label>
+                      </div>
+
+                      {/* Salvar button */}
+                      <button
+                        onClick={() => {
+                          if (criarRotinaForm.nome.trim()) {
+                            handleAddWorkout(criarRotinaForm.nome);
+                            setCriarRotinaForm({ nome: '', tipo: '', objetivo: '', dificuldade: '', orientacoes: '', permitirPdf: 'sim', mostrarTempo: 'sim', comecaEm: '', terminaEm: '', retirarAoVencer: false, naoExibirAntes: false });
+                            setSelectedDetailTab('treinos');
+                          }
+                        }}
+                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition text-sm"
+                      >
+                        Salvar
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* TABCONTENT: OPTIONS (OPÇÕES) */}
                 {selectedDetailTab === 'opcoes' && (
