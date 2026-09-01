@@ -33,6 +33,7 @@ import NotificationsModal from './components/NotificationsModal';
 import SplashScreen from './components/SplashScreen';
 import Login from './components/Login';
 import AcquireConsulting from './components/AcquireConsulting';
+import logoImg from './assets/images/cadu_ponce_logo_new.png';
 
 type Tab = 'dashboard' | 'workouts' | 'evolution' | 'profile';
 
@@ -342,8 +343,9 @@ export default function App() {
             <div className={`rounded-2xl p-6 shadow-sm border flex items-center space-x-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
               <div className="w-16 h-16 bg-red-50 dark:bg-red-950/20 rounded-full flex items-center justify-center overflow-hidden border-2 border-red-100 dark:border-red-900/30">
                 <img 
-                  src="/src/assets/images/cadu_ponce_logo_new.png" 
+                  src={logoImg} 
                   className="w-full h-full object-cover"
+                  alt="avatar"
                 />
               </div>
               <div className="flex-1">
@@ -458,16 +460,15 @@ export default function App() {
         <div className="relative w-full max-w-[430px] min-h-screen bg-[#F4F6FA] flex flex-col shadow-2xl overflow-hidden">
           {/* MFIT Header */}
           <header className="bg-[#1c2b3e] h-14 flex items-center justify-center px-4 shrink-0 z-40 relative">
-            <div className="flex items-center gap-2">
-              <img src="/src/assets/images/cadu_ponce_logo_new.png" alt="logo" className="w-7 h-7 object-contain" />
-              <span className="text-white font-black text-lg tracking-wide">MFIT<span className="font-light">PERSONAL</span></span>
-            </div>
+            <img src={logoImg} alt="logo" className="w-auto h-8 object-contain" />
             <button
               onClick={() => setIsNotificationsOpen(true)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 relative p-1 text-white/80 hover:text-white transition"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white transition"
             >
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">2</span>
+              <div className="relative flex items-center justify-center">
+                <Bell className="w-6 h-6" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center">2</span>
+              </div>
             </button>
           </header>
 
@@ -567,7 +568,7 @@ export default function App() {
             <header className="fixed top-0 left-0 right-0 h-14 bg-[#1B2A4A] flex items-center justify-between px-4 z-40 shadow-lg">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-slate-500 flex items-center justify-center overflow-hidden border-2 border-white/20">
-                  <img src="/src/assets/images/cadu_ponce_logo_new.png" alt="avatar" className="w-full h-full object-cover" />
+                  <img src={logoImg} alt="avatar" className="w-full h-full object-cover" />
                 </div>
                 <span className="text-white font-bold text-sm">
                   {user ? `Olá, ${user.name.split(' ')[0]}` : 'Bem-vindo'}
