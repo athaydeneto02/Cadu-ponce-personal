@@ -177,6 +177,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
   const [showTreinosExtra, setShowTreinosExtra] = useState(false);
+  const [showTreinos, setShowTreinos] = useState(false);
+  const [treinosTab, setTreinosTab] = useState<'rotinas' | 'aerobico'>('rotinas');
 
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
@@ -264,6 +266,70 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
+  if (showTreinos) {
+    return (
+      <div className="flex flex-col min-h-full bg-[#f4f6fa]">
+        {/* Navy top section */}
+        <div className="bg-[#1c2b3e] px-4 pt-4 pb-0">
+          <button onClick={() => setShowTreinos(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition mb-2">
+            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+          </button>
+          <h2 className="text-white text-xl font-semibold mb-4">Treinos</h2>
+
+          {/* Tabs */}
+          <div className="flex rounded-t-lg overflow-hidden">
+            <button
+              onClick={() => setTreinosTab('rotinas')}
+              className={`flex-1 py-3 text-sm font-bold transition ${treinosTab === 'rotinas' ? 'bg-[#0070f3] text-white' : 'bg-white text-slate-700'}`}
+            >
+              Rotinas de Treinos
+            </button>
+            <button
+              onClick={() => setTreinosTab('aerobico')}
+              className={`flex-1 py-3 text-sm font-bold transition ${treinosTab === 'aerobico' ? 'bg-[#0070f3] text-white' : 'bg-white text-slate-700'}`}
+            >
+              Aeróbico
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="bg-white flex-1 flex flex-col items-center justify-center py-20 px-6 mx-0">
+          {treinosTab === 'rotinas' ? (
+            <>
+              <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 6.5h11M6.5 9.5h11M6.5 12.5h7M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 15l2 2 4-4" />
+                </svg>
+              </div>
+              <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
+                Seu professor ainda não disponibilizou nenhum treino!
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
+                {/* Running person icon */}
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="13" cy="4" r="1.5" fill="currentColor" stroke="none"/>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 8.5l1.5 3L9 15l-2.5 3M14.5 8.5l1.5 2-3 2.5M10 8.5l2.5-1.5 2 1.5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 18l2-3.5 2.5 1.5 1-4 3 1.5" />
+                </svg>
+              </div>
+              <p className="text-slate-800 font-bold text-[16px] text-center leading-snug mb-3">
+                Você ainda não tem um treino aeróbico
+              </p>
+              <p className="text-slate-500 text-sm text-center leading-relaxed">
+                Quando seu professor adicionar um treino aeróbico, ele aparecerá aqui.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
       {/* Header Extension (Dark Blue) */}
@@ -321,7 +387,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
         {/* Grid de Botões */}
         <div className="grid grid-cols-2 gap-3 mt-4">
-          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+          <button
+            onClick={() => { setShowTreinos(true); setTreinosTab('rotinas'); }}
+            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
+          >
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
               <Dumbbell className="w-5 h-5" />
             </div>
