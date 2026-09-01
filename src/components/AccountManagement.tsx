@@ -5027,7 +5027,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </div>
                     )}
                   </div>
-                  </div>
                 )}
 
                 {/* TABCONTENT: CRIAR PLANILHA AEROBICO */}
