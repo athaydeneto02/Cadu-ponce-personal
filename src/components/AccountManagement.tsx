@@ -67,7 +67,9 @@ import {
   Info,
   SlidersHorizontal,
   Camera,
-  RefreshCw
+  RefreshCw,
+  FilePlus,
+  Clipboard
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -299,7 +301,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
@@ -324,6 +326,17 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [criarPlanilhaForm, setCriarPlanilhaForm] = useState({
     nome: '',
     tipo: 'numero_treinos'
+  });
+
+  // Treino Extra form state
+  const [treinoExtraForm, setTreinoExtraForm] = useState({
+    dataExecucao: '',
+    nome: '',
+    instrucoes: '',
+    linkYoutube: '',
+    alunos: '',
+    grupoAlunos: '',
+    enviarLembrete: false
   });
 
   const [showFinanceModal, setShowFinanceModal] = useState(false);
@@ -4698,7 +4711,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="px-4 py-4">
                   <button 
                     onClick={() => {
-                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
+                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha', 'treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
                       else setSelectedStudent(null);
                     }}
                     className="flex items-center gap-1 text-xs font-bold text-white mb-4 hover:opacity-80 transition cursor-pointer"
@@ -4717,7 +4730,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 </div>
 
                 {/* TABS */}
-                {selectedDetailTab !== 'progresso' && (
+                {!['progresso', 'treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab) && (
                   <div className="flex px-2 pt-2">
                     {selectedDetailTab === 'treinos' ? (
                       <>
@@ -4861,7 +4874,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                         <span className="text-xs font-medium text-slate-700">Progresso do aluno</span>
                       </button>
-                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                      <button 
+                        onClick={() => setSelectedDetailTab('treinos_extras')}
+                        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
+                      >
                         <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
                           <Plus className="w-4 h-4" />
                         </div>
@@ -5417,6 +5433,170 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       >
                         Enviar lembrete
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TABCONTENT: TREINOS EXTRAS (EMPTY STATE) */}
+                {selectedDetailTab === 'treinos_extras' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
+                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                        <FilePlus className="w-8 h-8" />
+                      </div>
+                      
+                      <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
+                        Adicione um <span className="text-[#0070f3]">treino extra</span> na rotina do seu aluno!
+                      </h3>
+
+                      <div className="w-full space-y-4 mb-8">
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <Dumbbell className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Complemente a rotina de treinos</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <Clipboard className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Envie instruções para a execução</span>
+                        </div>
+
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <Calendar className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Defina o dia da atividade</span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <TrendingUp className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Incentive a consistência do aluno</span>
+                        </div>
+                      </div>
+
+                      <button 
+                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
+                        onClick={() => setSelectedDetailTab('criar_treino_extra')}
+                      >
+                        Adicionar treino extra
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TABCONTENT: CRIAR TREINO EXTRA (FORM) */}
+                {selectedDetailTab === 'criar_treino_extra' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
+                      
+                      <h3 className="text-[15px] font-bold text-slate-800 border-b border-slate-100 pb-3">
+                        Configurar treino extra
+                      </h3>
+
+                      {/* Data de execução */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Data de execução</label>
+                        <input
+                          type="date"
+                          value={treinoExtraForm.dataExecucao}
+                          onChange={e => setTreinoExtraForm(f => ({ ...f, dataExecucao: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Nome da atividade */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Nome da atividade</label>
+                        <input
+                          type="text"
+                          value={treinoExtraForm.nome}
+                          onChange={e => setTreinoExtraForm(f => ({ ...f, nome: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Instruções */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Instruções para o aluno</label>
+                        <textarea
+                          value={treinoExtraForm.instrucoes}
+                          onChange={e => setTreinoExtraForm(f => ({ ...f, instrucoes: e.target.value }))}
+                          rows={4}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] resize-none"
+                        />
+                        <div className="text-right text-[10px] text-slate-400">0/400</div>
+                      </div>
+
+                      {/* Link YouTube */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Link do vídeo do YouTube <span className="text-[10px] italic font-normal text-slate-500">(opcional)</span></label>
+                        <input
+                          type="text"
+                          value={treinoExtraForm.linkYoutube}
+                          onChange={e => setTreinoExtraForm(f => ({ ...f, linkYoutube: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Enviar para */}
+                      <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <label className="block text-xs font-semibold text-slate-700 pt-2">Enviar também para... <span className="text-[10px] italic font-normal text-slate-500">(opcional)</span></label>
+                        
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-slate-700">Alunos</label>
+                          <select
+                            value={treinoExtraForm.alunos}
+                            onChange={e => setTreinoExtraForm(f => ({ ...f, alunos: e.target.value }))}
+                            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#0070f3] bg-white text-slate-500"
+                          >
+                            <option value="">Selecione</option>
+                          </select>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-slate-700">Grupo de alunos</label>
+                          <select
+                            value={treinoExtraForm.grupoAlunos}
+                            onChange={e => setTreinoExtraForm(f => ({ ...f, grupoAlunos: e.target.value }))}
+                            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#0070f3] bg-white text-slate-500"
+                          >
+                            <option value="">Selecione</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Toggle Lembrete */}
+                      <div className="pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${treinoExtraForm.enviarLembrete ? 'bg-[#0070f3]' : 'bg-slate-300'}`}>
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={treinoExtraForm.enviarLembrete}
+                              onChange={e => setTreinoExtraForm(f => ({ ...f, enviarLembrete: e.target.checked }))}
+                            />
+                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${treinoExtraForm.enviarLembrete ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                          </div>
+                          <span className="text-xs font-bold text-slate-800">Enviar lembrete no dia do treino</span>
+                        </label>
+                      </div>
+
+                      {/* Salvar button */}
+                      <button
+                        onClick={() => {
+                          setTreinoExtraForm({ dataExecucao: '', nome: '', instrucoes: '', linkYoutube: '', alunos: '', grupoAlunos: '', enviarLembrete: false });
+                          setSelectedDetailTab('inicio');
+                        }}
+                        className="w-full bg-[#55a6ea] hover:bg-[#4396db] text-white font-semibold py-2.5 rounded-md transition text-sm mt-4"
+                      >
+                        Salvar treino extra
+                      </button>
+
                     </div>
                   </div>
                 )}
