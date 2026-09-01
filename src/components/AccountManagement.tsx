@@ -301,6 +301,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
+  const [treinosViewStatus, setTreinosViewStatus] = useState<'ativas' | 'arquivadas' | 'excluidas'>('ativas');
 
   // Criar Rotina form state
   const [criarRotinaForm, setCriarRotinaForm] = useState({
@@ -4881,18 +4882,41 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {/* TABCONTENT: TREINOS */}
                 {selectedDetailTab === 'treinos' && (
                   <div className="space-y-4">
+                    {/* Pace button for Aerobico */}
+                    {treinosSubTab === 'aerobico' && (
+                      <div className="flex justify-end">
+                        <button className="bg-[#0070f3] hover:bg-[#005ccc] text-white text-xs font-bold px-3 py-1 rounded transition">
+                          Pace
+                        </button>
+                      </div>
+                    )}
+
                     {/* Sub tabs */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-2 flex gap-2">
-                      <button className="flex-1 py-2 rounded-lg bg-[#EBF4FF] text-[#2b88ff] text-xs font-bold transition hover:bg-[#dbeafe]">
+                      <button 
+                        onClick={() => setTreinosViewStatus(treinosViewStatus === 'arquivadas' ? 'ativas' : 'arquivadas')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                          treinosViewStatus === 'arquivadas' 
+                            ? 'bg-[#2b88ff] text-white' 
+                            : 'bg-[#EBF4FF] text-[#2b88ff] hover:bg-[#dbeafe]'
+                        }`}
+                      >
                         Arquivadas
                       </button>
-                      <button className="flex-1 py-2 rounded-lg bg-[#EBF4FF] text-[#2b88ff] text-xs font-bold transition hover:bg-[#dbeafe]">
+                      <button 
+                        onClick={() => setTreinosViewStatus(treinosViewStatus === 'excluidas' ? 'ativas' : 'excluidas')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                          treinosViewStatus === 'excluidas' 
+                            ? 'bg-[#2b88ff] text-white' 
+                            : 'bg-[#EBF4FF] text-[#2b88ff] hover:bg-[#dbeafe]'
+                        }`}
+                      >
                         Excluídas
                       </button>
                     </div>
 
                     {/* Content for Rotinas */}
-                    {treinosSubTab === 'rotinas' && (
+                    {treinosSubTab === 'rotinas' && treinosViewStatus === 'ativas' && (
                       workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
                         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
                           <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
@@ -4947,14 +4971,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       )
                     )}
 
-                    {/* Content for Aerobico */}
-                    {treinosSubTab === 'aerobico' && (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center relative">
-                        <div className="absolute top-4 right-4">
-                          <button className="bg-[#0070f3] hover:bg-[#005ccc] text-white text-xs font-bold px-3 py-1 rounded transition">
-                            Pace
-                          </button>
+                    {treinosSubTab === 'rotinas' && (treinosViewStatus === 'arquivadas' || treinosViewStatus === 'excluidas') && (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
+                        <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
+                          <Archive className="w-8 h-8" />
                         </div>
+                        <h4 className="text-[13px] font-bold text-slate-900">
+                          {treinosViewStatus === 'arquivadas' ? 'Não há rotinas arquivadas' : 'Não há rotinas excluídas'}
+                        </h4>
+                      </div>
+                    )}
+
+                    {/* Content for Aerobico */}
+                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'ativas' && (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
                         <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6 mt-4">
                           <Activity className="w-10 h-10" />
                         </div>
@@ -4968,6 +4998,35 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </button>
                       </div>
                     )}
+
+                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'excluidas' && (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100">
+                        <div className="p-4 border-b border-slate-100">
+                          <h3 className="text-[13px] font-bold text-slate-800">Planilhas excluídas</h3>
+                        </div>
+                        <div className="p-8 flex flex-col items-center text-center">
+                          <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-1.22-1.8A2 2 0 0 0 7.53 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                          </div>
+                          <p className="text-xs font-bold text-slate-800">Esse aluno não tem planilhas excluídas</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'arquivadas' && (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100">
+                        <div className="p-4 border-b border-slate-100">
+                          <h3 className="text-[13px] font-bold text-slate-800">Planilhas arquivadas</h3>
+                        </div>
+                        <div className="p-8 flex flex-col items-center text-center">
+                          <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-1.22-1.8A2 2 0 0 0 7.53 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                          </div>
+                          <p className="text-xs font-bold text-slate-800">Esse aluno não tem planilhas arquivadas</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   </div>
                 )}
 
