@@ -4951,11 +4951,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
                         >
                           <option value="">Selecione</option>
-                          <option value="musculacao">Musculação</option>
-                          <option value="funcional">Funcional</option>
-                          <option value="hiit">HIIT</option>
-                          <option value="aerobico">Aeróbico</option>
-                          <option value="mobilidade">Mobilidade</option>
+                          <option value="dia_semana">Dia da Semana</option>
+                          <option value="numerico">Numérico</option>
                         </select>
                       </div>
 
