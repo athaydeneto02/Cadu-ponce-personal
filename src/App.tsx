@@ -282,6 +282,78 @@ export default function App() {
       case 'evolution':
         return <EvolutionGallery />;
       case 'profile':
+        if (user?.role !== 'admin') {
+          return (
+            <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+              <div className="px-4 pt-4 pb-2">
+                <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+                  <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+                </button>
+              </div>
+              <h2 className="text-white text-xl font-semibold px-4 pb-12">Editar Perfil</h2>
+
+              <div className="bg-white flex-1 rounded-t-xl px-4 pt-16 pb-8 relative">
+                {/* Profile Picture overlapping */}
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                  <div className="w-24 h-24 rounded-full bg-slate-500 border-4 border-[#1c2b3e] flex items-center justify-center relative overflow-hidden">
+                    <User className="w-12 h-12 text-slate-300" />
+                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center cursor-pointer">
+                      <Plus className="w-8 h-8 text-white" />
+                    </div>
+                  </div>
+                  <span className="text-slate-600 text-sm mt-2 font-medium">Editar foto</span>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Seus Dados */}
+                  <button onClick={() => setIsEditingProfile(true)} className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
+                    <div className="text-left">
+                      <h3 className="text-slate-800 font-bold text-base">Seus dados</h3>
+                      <p className="text-slate-500 text-sm mt-0.5">Nome, Email, Instagram, Telefone</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-800" />
+                  </button>
+
+                  {/* Atualizar Senha */}
+                  <button className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
+                    <div className="text-left">
+                      <h3 className="text-slate-800 font-bold text-base">Atualizar senha</h3>
+                      <p className="text-slate-800 text-lg tracking-widest mt-0.5 leading-none">................</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-800" />
+                  </button>
+
+                  {/* Idioma */}
+                  <button className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
+                    <div className="text-left">
+                      <h3 className="text-slate-800 font-bold text-base">Idioma</h3>
+                      <p className="text-slate-500 text-sm mt-0.5">Português</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-800" />
+                  </button>
+
+                  {/* Logout Button (Extra, necessary for the app) */}
+                  <button 
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      localStorage.clear();
+                      setIsAuthenticated(false);
+                      setIsManagingAccounts(false);
+                      setUser(null);
+                    }}
+                    className="w-full bg-white border border-red-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition mt-6"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-red-600 font-bold text-base">Sair da Conta</h3>
+                      <p className="text-red-400 text-xs mt-0.5">Fazer logout do aplicativo</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">Meu Perfil</h1>
