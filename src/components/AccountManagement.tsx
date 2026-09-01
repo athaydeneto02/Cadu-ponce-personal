@@ -297,9 +297,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
+  const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
 
   // Criar Rotina form state
   const [criarRotinaForm, setCriarRotinaForm] = useState({
@@ -314,6 +315,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     terminaEm: '',
     retirarAoVencer: false,
     naoExibirAntes: false,
+  });
+
+  // Criar Planilha (Aeróbico) form state
+  const [criarPlanilhaForm, setCriarPlanilhaForm] = useState({
+    nome: '',
+    tipo: 'numero_treinos'
   });
 
   const [showFinanceModal, setShowFinanceModal] = useState(false);
@@ -4710,10 +4717,24 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="flex px-2 pt-2">
                   {selectedDetailTab === 'treinos' ? (
                     <>
-                      <button className="flex-1 py-3 text-sm font-semibold rounded-t-lg bg-white text-slate-800 transition cursor-pointer">
+                      <button 
+                        onClick={() => setTreinosSubTab('rotinas')}
+                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                          treinosSubTab === 'rotinas'
+                            ? 'bg-white text-slate-800'
+                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                        }`}
+                      >
                         Rotinas de treino
                       </button>
-                      <button className="flex-1 py-3 text-sm font-semibold rounded-t-lg bg-[#2b88ff] text-white hover:bg-[#1e78eb] transition cursor-pointer">
+                      <button 
+                        onClick={() => setTreinosSubTab('aerobico')}
+                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                          treinosSubTab === 'aerobico'
+                            ? 'bg-white text-slate-800'
+                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                        }`}
+                      >
                         Aeróbico
                       </button>
                     </>
@@ -4870,59 +4891,144 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </button>
                     </div>
 
-                    {/* Empty State or List */}
-                    {workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
-                        <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
-                          <Dumbbell className="w-10 h-10" />
-                        </div>
-                        <h4 className="text-[15px] font-bold text-slate-900 mb-6">Crie uma rotina de treinos para o seu aluno.</h4>
-                        
-                        <div className="w-full space-y-3">
-                          <button 
-                            onClick={() => setSelectedDetailTab('criar_rotina')}
-                            className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
-                          >
-                            Criar rotina
-                          </button>
-                          <button className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-semibold py-3 rounded-md transition">
-                            Assistir tutorial
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Existing Workouts List */
-                      <div className="space-y-3">
-                        {workouts.filter(w => w.studentId === selectedStudent.uid).map((w) => (
-                          <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
-                              {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
-                              <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
-                                {w.exercises?.length || 0} exercícios
-                              </span>
-                            </div>
-                            <div className="flex gap-1.5 shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  generateWorkoutPDF(w, selectedStudent.name);
-                                }}
-                                className="p-2.5 bg-[#EBF4FF] hover:bg-[#2b88ff] text-[#2b88ff] hover:text-white rounded-xl transition duration-200 active:scale-90"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteWorkout(w.id)}
-                                className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                    {/* Content for Rotinas */}
+                    {treinosSubTab === 'rotinas' && (
+                      workouts.filter(w => w.studentId === selectedStudent.uid).length === 0 ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
+                          <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                            <Dumbbell className="w-10 h-10" />
                           </div>
-                        ))}
+                          <h4 className="text-[15px] font-bold text-slate-900 mb-6">Crie uma rotina de treinos para o seu aluno.</h4>
+                          
+                          <div className="w-full space-y-3">
+                            <button 
+                              onClick={() => setSelectedDetailTab('criar_rotina')}
+                              className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
+                            >
+                              Criar rotina
+                            </button>
+                            <button className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-semibold py-3 rounded-md transition">
+                              Assistir tutorial
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Existing Workouts List */
+                        <div className="space-y-3">
+                          {workouts.filter(w => w.studentId === selectedStudent.uid).map((w) => (
+                            <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
+                                {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
+                                <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
+                                  {w.exercises?.length || 0} exercícios
+                                </span>
+                              </div>
+                              <div className="flex gap-1.5 shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    generateWorkoutPDF(w, selectedStudent.name);
+                                  }}
+                                  className="p-2.5 bg-[#EBF4FF] hover:bg-[#2b88ff] text-[#2b88ff] hover:text-white rounded-xl transition duration-200 active:scale-90"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteWorkout(w.id)}
+                                  className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    )}
+
+                    {/* Content for Aerobico */}
+                    {treinosSubTab === 'aerobico' && (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center relative">
+                        <div className="absolute top-4 right-4">
+                          <button className="bg-[#0070f3] hover:bg-[#005ccc] text-white text-xs font-bold px-3 py-1 rounded transition">
+                            Pace
+                          </button>
+                        </div>
+                        <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6 mt-4">
+                          <Activity className="w-10 h-10" />
+                        </div>
+                        <h4 className="text-[13px] font-bold text-slate-900 mb-6">Crie a primeira planilha de treino aeróbico do seu aluno.</h4>
+                        
+                        <button 
+                          onClick={() => setSelectedDetailTab('criar_planilha')}
+                          className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
+                        >
+                          Criar planilha
+                        </button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* TABCONTENT: CRIAR PLANILHA AEROBICO */}
+                {selectedDetailTab === 'criar_planilha' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
+                      {/* Nome */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Nome</label>
+                        <input
+                          type="text"
+                          value={criarPlanilhaForm.nome}
+                          onChange={e => setCriarPlanilhaForm(f => ({ ...f, nome: e.target.value }))}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
+                        />
+                      </div>
+
+                      {/* Tipo */}
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-slate-700">Tipo</label>
+                        <div className="flex flex-col gap-1 mt-1">
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="planilhaTipo"
+                              value="numero_treinos"
+                              checked={criarPlanilhaForm.tipo === 'numero_treinos'}
+                              onChange={() => setCriarPlanilhaForm(f => ({ ...f, tipo: 'numero_treinos' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Número de treinos
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="planilhaTipo"
+                              value="intervalo_data"
+                              checked={criarPlanilhaForm.tipo === 'intervalo_data'}
+                              onChange={() => setCriarPlanilhaForm(f => ({ ...f, tipo: 'intervalo_data' }))}
+                              className="accent-[#0070f3]"
+                            />
+                            Intervalo de data
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Salvar button */}
+                      <button
+                        onClick={() => {
+                          if (criarPlanilhaForm.nome.trim()) {
+                            // handle adding plan
+                            setCriarPlanilhaForm({ nome: '', tipo: 'numero_treinos' });
+                            setSelectedDetailTab('treinos');
+                          }
+                        }}
+                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition text-sm mt-4"
+                      >
+                        Salvar
+                      </button>
+                    </div>
                   </div>
                 )}
 
