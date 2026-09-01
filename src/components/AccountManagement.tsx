@@ -65,7 +65,9 @@ import {
   Activity,
   ClipboardCheck,
   Info,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Camera,
+  RefreshCw
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
@@ -297,7 +299,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso'>('inicio');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
@@ -4696,7 +4698,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="px-4 py-4">
                   <button 
                     onClick={() => {
-                      if (selectedDetailTab === 'treinos') setSelectedDetailTab('inicio');
+                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
                       else setSelectedStudent(null);
                     }}
                     className="flex items-center gap-1 text-xs font-bold text-white mb-4 hover:opacity-80 transition cursor-pointer"
@@ -4715,55 +4717,57 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 </div>
 
                 {/* TABS */}
-                <div className="flex px-2 pt-2">
-                  {selectedDetailTab === 'treinos' ? (
-                    <>
-                      <button 
-                        onClick={() => setTreinosSubTab('rotinas')}
-                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                          treinosSubTab === 'rotinas'
-                            ? 'bg-white text-slate-800'
-                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
-                        }`}
-                      >
-                        Rotinas de treino
-                      </button>
-                      <button 
-                        onClick={() => setTreinosSubTab('aerobico')}
-                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                          treinosSubTab === 'aerobico'
-                            ? 'bg-white text-slate-800'
-                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
-                        }`}
-                      >
-                        Aeróbico
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => setSelectedDetailTab('inicio')}
-                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                          selectedDetailTab === 'inicio' 
-                            ? 'bg-white text-slate-800' 
-                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
-                        }`}
-                      >
-                        Início
-                      </button>
-                      <button
-                        onClick={() => setSelectedDetailTab('opcoes')}
-                        className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                          selectedDetailTab === 'opcoes' 
-                            ? 'bg-white text-slate-800' 
-                            : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
-                        }`}
-                      >
-                        Opções
-                      </button>
-                    </>
-                  )}
-                </div>
+                {selectedDetailTab !== 'progresso' && (
+                  <div className="flex px-2 pt-2">
+                    {selectedDetailTab === 'treinos' ? (
+                      <>
+                        <button 
+                          onClick={() => setTreinosSubTab('rotinas')}
+                          className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                            treinosSubTab === 'rotinas'
+                              ? 'bg-white text-slate-800'
+                              : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                          }`}
+                        >
+                          Rotinas de treino
+                        </button>
+                        <button 
+                          onClick={() => setTreinosSubTab('aerobico')}
+                          className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                            treinosSubTab === 'aerobico'
+                              ? 'bg-white text-slate-800'
+                              : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                          }`}
+                        >
+                          Aeróbico
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setSelectedDetailTab('inicio')}
+                          className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                            selectedDetailTab === 'inicio' 
+                              ? 'bg-white text-slate-800' 
+                              : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                          }`}
+                        >
+                          Início
+                        </button>
+                        <button
+                          onClick={() => setSelectedDetailTab('opcoes')}
+                          className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
+                            selectedDetailTab === 'opcoes' 
+                              ? 'bg-white text-slate-800' 
+                              : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
+                          }`}
+                        >
+                          Opções
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Scrollable Container */}
@@ -4848,7 +4852,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                     {/* List Items */}
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-100">
-                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                      <button 
+                        onClick={() => setSelectedDetailTab('progresso')}
+                        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
+                      >
                         <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
                           <Activity className="w-4 h-4" />
                         </div>
@@ -5356,6 +5363,61 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </button>
                     </div>
 
+                  </div>
+                )}
+
+                {/* TABCONTENT: PROGRESSO DO ALUNO */}
+                {selectedDetailTab === 'progresso' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
+                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                        <ClipboardCheck className="w-8 h-8" />
+                      </div>
+                      
+                      <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
+                        Incentive seu <span className="text-[#0070f3]">aluno</span> a registrar o progresso!
+                      </h3>
+
+                      <div className="w-full space-y-4 mb-8">
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <Camera className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Acompanhe a evolução com fotos</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <TrendingUp className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Registre mudanças ao longo do tempo</span>
+                        </div>
+
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <RefreshCw className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Compare resultados</span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                            <Zap className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">Mantenha o aluno motivado</span>
+                        </div>
+                      </div>
+
+                      <button 
+                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
+                        onClick={() => {
+                          const msg = `Olá ${selectedStudent.name}, não esqueça de registrar seu progresso no app!`;
+                          window.open(`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=${encodeURIComponent(msg)}`, '_blank');
+                        }}
+                      >
+                        Enviar lembrete
+                      </button>
+                    </div>
                   </div>
                 )}
 
