@@ -301,7 +301,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra' | 'arquivos'>('inicio');
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
@@ -4711,7 +4712,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="px-4 py-4">
                   <button 
                     onClick={() => {
-                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha', 'treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
+                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha', 'treinos_extras', 'criar_treino_extra', 'arquivos'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
                       else setSelectedStudent(null);
                     }}
                     className="flex items-center gap-1 text-xs font-bold text-white mb-4 hover:opacity-80 transition cursor-pointer"
@@ -4730,7 +4731,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 </div>
 
                 {/* TABS */}
-                {!['progresso', 'treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab) && (
+                {!['progresso', 'treinos_extras', 'criar_treino_extra', 'arquivos'].includes(selectedDetailTab) && (
                   <div className="flex px-2 pt-2">
                     {selectedDetailTab === 'treinos' ? (
                       <>
@@ -4883,7 +4884,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                         <span className="text-xs font-medium text-slate-700">Treinos extras</span>
                       </button>
-                      <button className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition">
+                      <button 
+                        onClick={() => setSelectedDetailTab('arquivos')}
+                        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
+                      >
                         <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff]">
                           <FileText className="w-4 h-4" />
                         </div>
@@ -5601,6 +5605,78 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 )}
 
+
+                {/* TABCONTENT: ARQUIVOS */}
+                {selectedDetailTab === 'arquivos' && (
+                  <div className="space-y-4 pb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
+                      <button 
+                        onClick={() => setShowUploadModal(true)}
+                        className="w-full flex items-center justify-center gap-2 py-3 border border-[#2b88ff] text-[#2b88ff] font-semibold rounded-md mb-8 hover:bg-blue-50 transition text-sm"
+                      >
+                        <Plus className="w-4 h-4" /> Adicionar arquivos
+                      </button>
+
+                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                        <FilePlus className="w-8 h-8" />
+                      </div>
+                      
+                      <h3 className="text-[15px] font-bold text-slate-800 mb-6 text-center">
+                        Adicione arquivos para o seu aluno, use para:
+                      </h3>
+
+                      <ul className="text-sm font-medium text-slate-700 space-y-2 list-disc pl-4">
+                        <li>Planos alimentares</li>
+                        <li>Exames</li>
+                        <li>Planners</li>
+                        <li>Arquivos diversos</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ARQUIVOS UPLOAD MODAL */}
+      <AnimatePresence>
+        {showUploadModal && (
+          <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 font-sans">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="flex justify-between items-center p-5 border-b border-slate-100">
+                <h3 className="font-bold text-[#141C2C] text-[15px]">Selecionar arquivo</h3>
+                <button 
+                  onClick={() => setShowUploadModal(false)}
+                  className="text-slate-400 hover:text-slate-600 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 flex flex-col items-center">
+                <p className="text-[13px] font-medium text-slate-700 mb-6">Tamanho máximo: 20mb</p>
+                
+                <div className="w-full space-y-3">
+                  <label className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-bold py-3 rounded-md flex justify-center items-center gap-2 cursor-pointer transition text-sm shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                    Escolher arquivo
+                    <input type="file" className="hidden" />
+                  </label>
+                  
+                  <button 
+                    onClick={() => setShowUploadModal(false)}
+                    className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-bold py-3 rounded-md transition text-sm"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
