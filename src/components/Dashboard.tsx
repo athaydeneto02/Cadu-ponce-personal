@@ -160,6 +160,110 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       setIsUpdating(false);
     }
   };
+
+  const [showFreqCalendar, setShowFreqCalendar] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => new Date());
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+    // Convert to Mon-first: Sun=6, Mon=0...
+    const startOffset = (firstDay === 0 ? 6 : firstDay - 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return { startOffset, daysInMonth };
+  };
+
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  const [showTreinosExtra, setShowTreinosExtra] = useState(false);
+
+  if (showFreqCalendar) {
+    const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
+    const cells: (number | null)[] = Array(startOffset).fill(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    return (
+      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+        {/* Voltar */}
+        <div className="px-4 pt-4 pb-2">
+          <button onClick={() => setShowFreqCalendar(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+          </button>
+        </div>
+        <h2 className="text-white text-xl font-semibold px-4 pb-4">Frequência de Treinos</h2>
+
+        {/* Calendar Card */}
+        <div className="mx-4 bg-white rounded-xl shadow-xl p-5 mb-6">
+          {/* Month nav */}
+          <div className="flex items-start justify-between mb-6">
+            <button
+              onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+              className="text-[#0070f3] flex items-center gap-1 text-sm font-semibold"
+            >
+              <ChevronRight className="w-4 h-4 rotate-180" /> Anterior
+            </button>
+            <div className="text-center">
+              <p className="text-slate-800 font-bold text-lg leading-tight">{calMonth.getFullYear()}</p>
+              <p className="text-slate-500 text-sm">{monthNames[calMonth.getMonth()]}</p>
+            </div>
+            <div className="w-20" /> {/* spacer */}
+          </div>
+
+          {/* Day headers */}
+          <div className="grid grid-cols-7 mb-2">
+            {['Seg.','Ter.','Qua.','Qui.','Sex.','Sáb.','Dom.'].map(d => (
+              <div key={d} className="text-center text-[11px] font-semibold text-slate-500">{d}</div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-y-1">
+            {cells.map((day, i) => (
+              <div key={i} className="flex items-center justify-center py-1">
+                {day !== null ? (
+                  <div className="w-9 h-9 rounded-full bg-[#f0f4f8] flex items-center justify-center text-slate-700 text-[13px] font-medium">
+                    {day}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          {/* Ver ano completo */}
+          <div className="text-right mt-4">
+            <button className="text-[#0070f3] text-sm font-semibold">Ver ano completo</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (showTreinosExtra) {
+    return (
+      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+        {/* Voltar */}
+        <div className="px-4 pt-4 pb-2">
+          <button onClick={() => setShowTreinosExtra(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+          </button>
+        </div>
+        <h2 className="text-white text-xl font-semibold px-4 pb-4">Treinos Extra</h2>
+
+        {/* Empty state card */}
+        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center justify-center py-16 px-6">
+          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-3-3v6M5 8.5A2.5 2.5 0 017.5 6h9A2.5 2.5 0 0119 8.5v9a2.5 2.5 0 01-2.5 2.5h-9A2.5 2.5 0 015 17.5v-9z" />
+            </svg>
+          </div>
+          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
+            Seu professor ainda não adicionou<br />nenhum treino extra!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
       {/* Header Extension (Dark Blue) */}
@@ -184,7 +288,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
       <div className="px-4 -mt-4 space-y-4 pb-6">
         {/* Frequência de Treinos */}
-        <div className="bg-white rounded-xl shadow-sm p-4 relative z-10">
+        <button
+          onClick={() => setShowFreqCalendar(true)}
+          className="w-full bg-white rounded-xl shadow-sm p-4 relative z-10 text-left"
+        >
           <h3 className="text-slate-800 font-bold text-[15px] mb-4">Frequência de Treinos</h3>
           <div className="flex justify-between items-center px-1">
             {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, i) => (
@@ -196,7 +303,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
               </div>
             ))}
           </div>
-        </div>
+        </button>
 
         {/* Pontos MFIT */}
         <div className="rounded-xl shadow-sm p-4 flex items-center justify-between" style={{ background: 'linear-gradient(to right, #0070f3, #004d99)' }}>
@@ -221,7 +328,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             <span className="text-white font-medium text-sm leading-tight">Treinos</span>
           </button>
           
-          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+          <button
+            onClick={() => setShowTreinosExtra(true)}
+            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
+          >
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
               <Plus className="w-5 h-5" />
             </div>
