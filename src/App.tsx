@@ -437,17 +437,17 @@ export default function App() {
           </main>
 
           {/* MFIT Student Bottom Nav */}
-          <nav className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-200 flex items-stretch z-40">
+          <nav className="absolute bottom-0 left-0 right-0 h-16 bg-[#1c2b3e] border-t border-white/10 flex items-stretch z-40">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'dashboard' ? 'text-[#1c2b3e]' : 'text-slate-400'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'dashboard' ? 'text-white' : 'text-white/60 hover:text-white'}`}
             >
               <Home className="w-5 h-5" />
               <span className="text-[10px] font-medium">Início</span>
             </button>
             <button
               onClick={() => window.open('https://instagram.com/caduponce', '_blank')}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-[#1c2b3e] transition"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <rect x="2" y="2" width="20" height="20" rx="5" ry="5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -458,7 +458,7 @@ export default function App() {
             </button>
             <button
               onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-[#1c2b3e] transition"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" strokeLinecap="round" strokeLinejoin="round"/>
@@ -467,7 +467,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'profile' ? 'text-[#1c2b3e]' : 'text-slate-400'}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'profile' ? 'text-white' : 'text-white/60 hover:text-white'}`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <line x1="3" y1="6" x2="21" y2="6" strokeLinecap="round"/>
@@ -574,6 +574,30 @@ export default function App() {
           {!activeWorkout && (
             <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
+              <button
+                onClick={() => window.open('https://instagram.com/caduponce', '_blank')}
+                className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
+              >
+                <div className="text-white/40 hover:text-white transition-colors duration-200">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="12" cy="12" r="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+                  </svg>
+                </div>
+                <span className="text-[10px] font-bold text-white/40 hover:text-white transition-colors duration-200">Instagram</span>
+              </button>
+              <button
+                onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+                className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
+              >
+                <div className="text-white/40 hover:text-white transition-colors duration-200">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <span className="text-[10px] font-bold text-white/40 hover:text-white transition-colors duration-200">WhatsApp</span>
+              </button>
               <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Perfil" />
             </nav>
           )}
