@@ -181,6 +181,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [treinosTab, setTreinosTab] = useState<'rotinas' | 'aerobico'>('rotinas');
   const [showMeuProgresso, setShowMeuProgresso] = useState(false);
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
+  const [showFaturas, setShowFaturas] = useState(false);
 
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
@@ -396,6 +397,27 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
+  if (showFaturas) {
+    return (
+      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+        <div className="px-4 pt-4 pb-2">
+          <button onClick={() => setShowFaturas(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
+          </button>
+        </div>
+        <h2 className="text-white text-xl font-semibold px-4 pb-4">Planos e Faturas</h2>
+        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center justify-center py-16 px-6">
+          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
+            <DollarSign className="w-10 h-10 text-[#0070f3]" />
+          </div>
+          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
+            Seu professor ainda não lançou nenhum plano ou fatura
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
       {/* Header Extension (Dark Blue) */}
@@ -493,7 +515,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             <span className="text-white font-medium text-sm leading-tight">Meu<br/>Progresso</span>
           </button>
           
-          <button className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left">
+          <button
+            onClick={() => setShowFaturas(true)}
+            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
+          >
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
               <DollarSign className="w-5 h-5" />
             </div>
