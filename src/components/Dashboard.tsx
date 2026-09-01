@@ -532,19 +532,6 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
           </div>
         </button>
 
-        {/* Pontos MFIT */}
-        <div className="rounded-xl shadow-sm p-4 flex items-center justify-between" style={{ background: 'linear-gradient(to right, #0070f3, #004d99)' }}>
-          <div className="text-white">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="font-bold italic text-sm">///</span>
-              <span className="text-sm">Pontos MFIT</span>
-            </div>
-            <p className="text-[13px] font-medium">Treine e ganhe descontos</p>
-          </div>
-          <button className="text-white flex items-center gap-1 text-sm font-medium">
-            Ativar <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
 
         {/* Grid de Botões */}
         <div className="grid grid-cols-2 gap-3 mt-4">
