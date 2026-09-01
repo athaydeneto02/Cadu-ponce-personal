@@ -427,31 +427,6 @@ export default function App() {
                 isDark={theme === 'dark'} 
                 onClick={() => setIsUpdatingPassword(true)}
               />
-              <ProfileItem 
-                icon={<Bell className="w-5 h-5" />} 
-                label="Notificações" 
-                isDark={theme === 'dark'} 
-                onClick={() => setIsNotificationsOpen(true)}
-              />
-              
-              {/* Export Summary Button */}
-              <button 
-                onClick={() => {
-                  setNotification({
-                    title: "Relatório Disponível",
-                    body: "Seu resumo de progresso em PDF foi gerado com sucesso!"
-                  });
-                }}
-                className={`w-full flex items-center justify-between p-5 rounded-2xl border shadow-sm transition-all active:scale-[0.98] ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-100 text-slate-700'}`}
-              >
-                <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'bg-slate-800 text-red-500' : 'bg-gray-50 text-red-600'}`}>
-                    <Share2 className="w-5 h-5" />
-                  </div>
-                  <span className="font-bold">Exportar Resumo</span>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-300" />
-              </button>
 
               <button 
                 onClick={async () => {
