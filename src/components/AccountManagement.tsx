@@ -4966,10 +4966,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         >
                           <option value="">Selecione</option>
                           <option value="hipertrofia">Hipertrofia</option>
-                          <option value="emagrecimento">Emagrecimento</option>
-                          <option value="forca">Força</option>
-                          <option value="condicionamento">Condicionamento</option>
-                          <option value="saude">Saúde e bem-estar</option>
+                          <option value="reducao_gordura">Redução de gordura</option>
+                          <option value="reducao_gordura_hipertrofia">Redução de gordura/hipertrofia</option>
+                          <option value="definicao_muscular">Definição muscular</option>
+                          <option value="condicionamento_fisico">Condicionamento físico</option>
+                          <option value="qualidade_vida">Qualidade de vida</option>
                         </select>
                       </div>
 
