@@ -22,6 +22,10 @@ export default function PersonalDataForm({ user, onSave, onClose, isDark }: Pers
     weight: user?.weight || 0,
     height: user?.height || 0,
     trainerPhone: user?.trainerPhone || '',
+    metadata: {
+      ...user?.metadata,
+      instagram: user?.metadata?.instagram || '',
+    }
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -110,7 +114,7 @@ export default function PersonalDataForm({ user, onSave, onClose, isDark }: Pers
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">WhatsApp do Treinador</label>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">WhatsApp {user?.role === 'admin' ? '(Para alunos entrarem em contato)' : 'do Treinador'}</label>
               <div className={`relative flex items-center ${isDark ? 'text-white' : 'text-slate-950'}`}>
                 <Phone className="absolute left-4 w-5 h-5 text-slate-400" />
                 <input 
@@ -122,6 +126,22 @@ export default function PersonalDataForm({ user, onSave, onClose, isDark }: Pers
                 />
               </div>
             </div>
+
+            {user?.role === 'admin' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Instagram (Para alunos acessarem)</label>
+                <div className={`relative flex items-center ${isDark ? 'text-white' : 'text-slate-950'}`}>
+                  <User className="absolute left-4 w-5 h-5 text-slate-400" />
+                  <input 
+                    type="text"
+                    value={formData.metadata?.instagram || ''}
+                    onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, instagram: e.target.value } })}
+                    className={`w-full pl-12 pr-4 py-4 rounded-3xl border outline-none focus:border-red-600 transition-all font-bold ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}
+                    placeholder="Ex: https://instagram.com/caduponce"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

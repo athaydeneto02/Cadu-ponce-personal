@@ -220,6 +220,24 @@ export default function App() {
           onSave={async (updatedUser) => {
             try {
               await storage.updateProfile(updatedUser);
+              
+              // If admin updates their profile, sync their contact info to all students
+              if (updatedUser.role === 'admin') {
+                const students = await storage.fetchUsersList();
+                for (const student of students) {
+                  await supabase
+                    .from('profiles')
+                    .update({
+                      trainer_phone: updatedUser.trainerPhone,
+                      metadata: {
+                        ...student.metadata,
+                        instagram: updatedUser.metadata?.instagram
+                      }
+                    })
+                    .eq('id', student.uid);
+                }
+              }
+
               setUser(updatedUser);
               setIsEditingProfile(false);
               setNotification({
@@ -446,7 +464,11 @@ export default function App() {
               <span className="text-[10px] font-medium">Início</span>
             </button>
             <button
-              onClick={() => window.open('https://instagram.com/caduponce', '_blank')}
+              onClick={() => {
+                let ig = user?.metadata?.instagram || 'https://instagram.com/caduponce';
+                if (!ig.startsWith('http')) ig = 'https://' + ig;
+                window.open(ig, '_blank');
+              }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -457,7 +479,11 @@ export default function App() {
               <span className="text-[10px] font-medium">Instagram</span>
             </button>
             <button
-              onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+              onClick={() => {
+                let wa = user?.trainerPhone || '5511999999999';
+                wa = wa.replace(/\D/g, ''); // keep only numbers
+                window.open(`https://wa.me/${wa}`, '_blank');
+              }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -575,7 +601,11 @@ export default function App() {
             <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
               <button
-                onClick={() => window.open('https://instagram.com/caduponce', '_blank')}
+                onClick={() => {
+                  let ig = user?.metadata?.instagram || 'https://instagram.com/caduponce';
+                  if (!ig.startsWith('http')) ig = 'https://' + ig;
+                  window.open(ig, '_blank');
+                }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >
                 <div className="text-white/40 hover:text-white transition-colors duration-200">
@@ -588,7 +618,11 @@ export default function App() {
                 <span className="text-[10px] font-bold text-white/40 hover:text-white transition-colors duration-200">Instagram</span>
               </button>
               <button
-                onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
+                onClick={() => {
+                  let wa = user?.trainerPhone || '5511999999999';
+                  wa = wa.replace(/\D/g, ''); // keep only numbers
+                  window.open(`https://wa.me/${wa}`, '_blank');
+                }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >
                 <div className="text-white/40 hover:text-white transition-colors duration-200">
