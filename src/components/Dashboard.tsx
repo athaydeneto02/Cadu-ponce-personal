@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box } from 'lucide-react';
 import { Workout, UserProfile, Goal } from '../types';
+import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
 import { supabase } from '../lib/supabase';
 import LoadHistory from './LoadHistory';
 import PersonalGoals from './PersonalGoals';
@@ -498,10 +499,11 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         {/* Avatar and Info */}
         <div className="flex flex-col items-center">
           <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#0070f3] mb-2 bg-slate-400">
-            {/* The user avatar from the screenshot. The top header already has the logo, but the screenshot has an avatar here too? Wait, the screenshot shows the logo at the very top, and then the trainer's avatar. */}
-            <div className="w-full h-full bg-slate-500 flex items-center justify-center text-white text-xl">
-              C
-            </div>
+            <img 
+              src={caduAvatar} 
+              alt="Cadu Ponce" 
+              className="w-full h-full object-cover"
+            />
           </div>
           <h2 className="text-white text-sm font-medium">Cadu Ponce</h2>
           <p className="text-slate-400 text-xs">CREF: 044859-G\PR</p>
