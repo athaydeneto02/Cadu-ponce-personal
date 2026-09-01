@@ -574,8 +574,6 @@ export default function App() {
           {!activeWorkout && (
             <nav className="fixed bottom-0 left-0 right-0 h-16 bg-[#1B2A4A] flex items-stretch z-40 shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
-              <NavButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={<Dumbbell className="w-5 h-5" />} label="Treinos" />
-              <NavButton active={activeTab === 'evolution'} onClick={() => setActiveTab('evolution')} icon={<Camera className="w-5 h-5" />} label="Evolução" />
               <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Perfil" />
             </nav>
           )}
