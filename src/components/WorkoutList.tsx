@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,6 +13,7 @@ interface WorkoutListProps {
   workouts: Workout[];
   onSelectWorkout: (workout: Workout) => void;
   trainerPhone?: string;
+  onBack?: () => void;
 }
 
 type ActiveTab = 'routines' | 'aerobic';
@@ -82,18 +83,28 @@ function groupRoutines(routines: AdminRoutine[]): RoutineGroup[] {
   return Object.values(map);
 }
 
-export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }: WorkoutListProps) {
+export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, onBack }: WorkoutListProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('routines');
   const [adminRoutines, setAdminRoutines] = useState<AdminRoutine[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<RoutineGroup | null>(null);
   const [activeSession, setActiveSession] = useState<AdminRoutine | null>(null);
 
   useEffect(() => {
-    const uid = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}').uid; } catch { return null; } })();
-    const cached = storage.getAdminRoutines().filter((r: AdminRoutine) => r.studentIds?.includes(uid));
+    const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
+    const uid = user.uid || user.id;
+    const userName = (user.name || '').toLowerCase().trim();
+
+    const isMatch = (r: AdminRoutine) => {
+      if (!uid && !userName) return false;
+      if (uid && r.studentIds && r.studentIds.includes(uid)) return true;
+      if (userName && r.studentNames && r.studentNames.some(n => (n || '').toLowerCase().trim() === userName)) return true;
+      return false;
+    };
+
+    const cached = storage.getAdminRoutines().filter(isMatch);
     setAdminRoutines(cached);
     storage.fetchAdminRoutines().then(all => {
-      setAdminRoutines(all.filter((r: AdminRoutine) => r.studentIds?.includes(uid)));
+      setAdminRoutines(all.filter(isMatch));
     }).catch(() => {});
   }, []);
 
@@ -117,13 +128,20 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
     <div className="min-h-screen bg-[#F4F6FA]">
       {/* Dark header area */}
       <div className="bg-[#1c2b3e] px-4 pt-4 pb-0">
+        {onBack && (
+          <button onClick={onBack} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition mb-2">
+            <ChevronLeft className="w-4 h-4" /> Voltar
+          </button>
+        )}
+        <h2 className="text-white text-xl font-semibold mb-3">Treinos</h2>
+
         <div className="flex space-x-0 mt-2">
           <button
             onClick={() => setActiveTab('routines')}
             className={`flex-1 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'routines'
-                ? 'bg-white text-slate-900'
-                : 'bg-transparent text-white/60'
+                ? 'bg-[#0070f3] text-white'
+                : 'bg-white text-slate-700'
             }`}
           >
             Rotinas de Treinos
@@ -132,8 +150,8 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone }:
             onClick={() => setActiveTab('aerobic')}
             className={`flex-1 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'aerobic'
-                ? 'bg-[#3b82f6] text-white'
-                : 'bg-transparent text-white/60'
+                ? 'bg-[#0070f3] text-white'
+                : 'bg-white text-slate-700'
             }`}
           >
             Aeróbico
@@ -228,6 +246,14 @@ function RoutineDetail({
     <div className="min-h-screen bg-[#F4F6FA]">
       {/* Header card */}
       <div className="bg-white shadow-sm mb-2">
+        <div className="px-4 pt-3 pb-2 border-b border-slate-100">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-slate-500 text-xs font-semibold hover:text-slate-800 transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" /> Voltar para rotinas
+          </button>
+        </div>
         <div className="flex items-center gap-3 p-4">
           <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
             <Dumbbell className="w-6 h-6 text-blue-500" />
