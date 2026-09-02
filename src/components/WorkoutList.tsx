@@ -146,8 +146,14 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   useEffect(() => {
     const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
     const allUsers = storage.getUsersList();
+    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
-    const isMatch = (r: AdminRoutine) => routineMatchesUser(r, user, allUsers);
+    const isMatch = (r: AdminRoutine) => {
+      if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
+      if (r.name && deletedSet.has(r.name.toLowerCase().trim())) return false;
+      return routineMatchesUser(r, user, allUsers);
+    };
 
     const cached = storage.getAdminRoutines().filter(isMatch);
     setAdminRoutines(cached);
@@ -161,9 +167,18 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   }
 
   // Combine adminRoutines with workouts prop so any assigned workout is guaranteed to appear
-  const combinedRoutines: AdminRoutine[] = [...adminRoutines];
+  const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+  const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
+  const isDeleted = (id?: string, name?: string) => {
+    if (id && deletedSet.has(id.toLowerCase().trim())) return true;
+    if (name && deletedSet.has(name.toLowerCase().trim())) return true;
+    return false;
+  };
+
+  const combinedRoutines: AdminRoutine[] = adminRoutines.filter(r => !isDeleted(r.id, r.name));
   if (workouts && workouts.length > 0) {
     for (const w of workouts) {
+      if (isDeleted(w.id, w.name)) continue;
       const alreadyExists = combinedRoutines.some(r => normalizeStr(r.name) === normalizeStr(w.name));
       if (!alreadyExists) {
         combinedRoutines.push({

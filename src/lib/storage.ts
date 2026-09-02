@@ -292,9 +292,21 @@ export const storage = {
     const localCached = storage.getWorkouts();
     if (error || !data) return localCached;
 
-    const fromSupabase = data.map(rowToWorkout);
+    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
+    const isDeleted = (id?: string, name?: string) => {
+      if (id && deletedSet.has(id.toLowerCase().trim())) return true;
+      if (name && deletedSet.has(name.toLowerCase().trim())) return true;
+      return false;
+    };
+
+    const fromSupabase = data
+      .map(rowToWorkout)
+      .filter(w => !isDeleted(w.id, w.name));
+
+    const validLocals = localCached.filter(w => !isDeleted(w.id, w.name));
     const supabaseIds = new Set(fromSupabase.map(w => w.id));
-    const unsyncedLocals = localCached.filter(w => !supabaseIds.has(w.id));
+    const unsyncedLocals = validLocals.filter(w => !supabaseIds.has(w.id));
     const merged = [...fromSupabase, ...unsyncedLocals];
     localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(merged));
     return merged;
@@ -351,12 +363,30 @@ export const storage = {
   },
 
   deleteWorkout: async (workoutId: string): Promise<void> => {
-    const all = storage.getWorkouts().filter(w => w.id !== workoutId);
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(all));
+    const all = storage.getWorkouts();
+    const workoutToDelete = all.find(w => w.id === workoutId);
+    const workoutName = workoutToDelete?.name;
+
+    const remaining = all.filter(w => w.id !== workoutId);
+    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(remaining));
+
+    // Track in deleted list so it's never restored by sync
+    try {
+      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
+      if (!deletedList.includes(workoutId)) deletedList.push(workoutId);
+      if (workoutName && !deletedList.includes(workoutName)) deletedList.push(workoutName);
+      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
+    } catch {}
+
     try {
       await supabase.from('workouts').delete().eq('id', workoutId);
     } catch (e) {
       console.warn('deleteWorkout Supabase error:', e);
+    }
+    if (workoutName) {
+      try {
+        await supabase.from('workouts').delete().eq('name', workoutName);
+      } catch {}
     }
   },
 
@@ -507,13 +537,24 @@ export const storage = {
     // Local cache may have new-column data (dayOfWeek, muscleGroup, etc.)
     // that wasn't stored in Supabase yet (if columns don't exist).
     const localCached: AdminRoutine[] = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
-    const supabaseIds = new Set(routineRows.map(r => r.id as string));
-    const unsyncedLocals = localCached.filter(l => !supabaseIds.has(l.id));
+    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
-    const routines = routineRows.map(row => {
+    const isDeleted = (id?: string, name?: string) => {
+      if (id && deletedSet.has(id.toLowerCase().trim())) return true;
+      if (name && deletedSet.has(name.toLowerCase().trim())) return true;
+      return false;
+    };
+
+    const validLocals = localCached.filter(l => !isDeleted(l.id, l.name));
+    const validSupabaseRows = routineRows.filter(r => !isDeleted(r.id as string, r.name as string));
+    const supabaseIds = new Set(validSupabaseRows.map(r => r.id as string));
+    const unsyncedLocals = validLocals.filter(l => !supabaseIds.has(l.id));
+
+    const routines = validSupabaseRows.map(row => {
       const fromSupabase = rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? []);
       // Enrich with any locally-cached new fields that Supabase may not have yet
-      const localVersion = localCached.find(l => l.id === fromSupabase.id);
+      const localVersion = validLocals.find(l => l.id === fromSupabase.id);
       if (localVersion) {
         return {
           ...fromSupabase,
@@ -615,10 +656,45 @@ export const storage = {
 
   /** Deletes a routine (and its exercises cascade) from Supabase. */
   deleteAdminRoutine: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('admin_routines').delete().eq('id', id);
-    if (error) console.error('deleteAdminRoutine error:', error.message);
-    const all = storage.getAdminRoutines().filter(r => r.id !== id);
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+    const all = storage.getAdminRoutines();
+    const routineToDelete = all.find(r => r.id === id);
+    const routineName = routineToDelete?.name;
+
+    const remaining = all.filter(r => r.id !== id);
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(remaining));
+
+    // Track in deleted list so it's never restored by sync
+    try {
+      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
+      if (!deletedList.includes(id)) deletedList.push(id);
+      if (routineName && !deletedList.includes(routineName)) deletedList.push(routineName);
+      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
+    } catch {}
+
+    // Also remove from workouts cache
+    if (routineName) {
+      try {
+        const allWorkouts = storage.getWorkouts();
+        const remainingWorkouts = allWorkouts.filter(w => w.id !== id && w.name.toLowerCase().trim() !== routineName.toLowerCase().trim());
+        localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(remainingWorkouts));
+      } catch {}
+    }
+
+    try {
+      const { error } = await supabase.from('admin_routines').delete().eq('id', id);
+      if (error) console.error('deleteAdminRoutine error:', error.message);
+    } catch (e) {
+      console.warn('deleteAdminRoutine Supabase error:', e);
+    }
+
+    if (routineName) {
+      try {
+        await supabase.from('workouts').delete().eq('name', routineName);
+      } catch {}
+    }
+    try {
+      await supabase.from('workouts').delete().eq('id', id);
+    } catch {}
   },
 
   // --- AGENDA EVENTS ---

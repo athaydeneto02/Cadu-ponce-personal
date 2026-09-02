@@ -627,8 +627,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const handleDeleteAdminRoutine = async (id: string) => {
+    const routineToDelete = adminRoutines.find(r => r.id === id);
     await storage.deleteAdminRoutine(id);
     setAdminRoutines(storage.getAdminRoutines());
+    if (routineToDelete?.name) {
+      const updatedWorkouts = workouts.filter(w => w.name.toLowerCase().trim() !== routineToDelete.name.toLowerCase().trim());
+      setWorkouts(updatedWorkouts);
+    }
   };
 
   const handleEditAdminRoutine = (routine: import('../types').AdminRoutine) => {
@@ -884,10 +889,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setWorkouts(updatedWorkouts);
   };
 
-  const handleDeleteWorkout = (id: string) => {
+  const handleDeleteWorkout = async (id: string) => {
+    const w = workouts.find(w => w.id === id);
     const updated = workouts.filter(w => w.id !== id);
-    storage.saveWorkouts(updated);
     setWorkouts(updated);
+    await storage.deleteWorkout(id);
+    if (w?.name) {
+      const matchingAdmin = adminRoutines.find(r => r.name.toLowerCase().trim() === w.name.toLowerCase().trim());
+      if (matchingAdmin) {
+        await storage.deleteAdminRoutine(matchingAdmin.id);
+        setAdminRoutines(storage.getAdminRoutines());
+      }
+    }
   };
 
   const refreshList = () => {
