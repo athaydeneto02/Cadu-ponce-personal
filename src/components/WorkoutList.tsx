@@ -151,12 +151,23 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
       let deletedSet = new Set<string>();
       try {
         const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
-        deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
+        // Drop any legacy names from deleted list, only keep true routine IDs
+        const validIds = deletedList.filter(item => 
+          item.startsWith('routine_') || 
+          item.startsWith('w_') || 
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item)
+        );
+        deletedSet = new Set(validIds.map(s => s.toLowerCase().trim()));
+        localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(validIds));
       } catch {}
+
+      // Active routines must never be suppressed
+      for (const r of routinesList) {
+        if (r.id) deletedSet.delete(r.id.toLowerCase().trim());
+      }
 
       return routinesList.filter(r => {
         if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
-        if (r.name && deletedSet.has(r.name.toLowerCase().trim())) return false;
         return routineMatchesUser(r, user, allUsers);
       });
     };
