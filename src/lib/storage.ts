@@ -84,9 +84,15 @@ function rowToAdminRoutine(row: Record<string, unknown>, exercises: AdminExercis
     name: row.name as string,
     goal: (row.goal as string) ?? '',
     difficulty: (row.difficulty as string) ?? '',
+    dayOfWeek: (row.day_of_week as string) ?? undefined,
+    muscleGroup: (row.muscle_group as string) ?? undefined,
+    generalNotes: (row.general_notes as string) ?? undefined,
     notes: (row.notes as string) ?? undefined,
     studentIds: (row.student_ids as string[]) ?? [],
     studentNames: (row.student_names as string[]) ?? [],
+    startDate: (row.start_date as string) ?? undefined,
+    endDate: (row.end_date as string) ?? undefined,
+    routineGroupName: (row.routine_group_name as string) ?? undefined,
     exercises,
     createdAt: (row.created_at as string) ?? new Date().toISOString(),
   };
@@ -494,9 +500,15 @@ export const storage = {
       name: routine.name,
       goal: routine.goal ?? '',
       difficulty: routine.difficulty ?? '',
+      day_of_week: routine.dayOfWeek ?? null,
+      muscle_group: routine.muscleGroup ?? null,
+      general_notes: routine.generalNotes ?? null,
       notes: routine.notes ?? null,
       student_ids: routine.studentIds ?? [],
       student_names: routine.studentNames ?? [],
+      start_date: routine.startDate ?? null,
+      end_date: routine.endDate ?? null,
+      routine_group_name: routine.routineGroupName ?? null,
     });
 
     if (rErr) {

@@ -91,9 +91,15 @@ export interface AdminRoutine {
   name: string;
   goal: string;
   difficulty: string;
+  dayOfWeek?: string;       // e.g. "Segunda", "Terça", "Quarta" etc.
+  muscleGroup?: string;     // e.g. "Peito, Tríceps e Ombro"
+  generalNotes?: string;    // Orientações gerais do dia
   notes?: string;
   studentIds: string[];      // array of student IDs this is assigned to
   studentNames: string[];    // parallel array of student names
+  startDate?: string;        // Per-student assignment start date (YYYY-MM-DD)
+  endDate?: string;          // Per-student assignment end date (YYYY-MM-DD)
+  routineGroupName?: string; // Groups multiple day-routines under one named routine
   exercises: AdminExercise[];
   createdAt: string;
 }

@@ -382,6 +382,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [showRoutineNotes, setShowRoutineNotes] = useState(false);
   const [routinePdfPermission, setRoutinePdfPermission] = useState('Não');
   const [routineShowTime, setRoutineShowTime] = useState('Não');
+  const [routineDayOfWeek, setRoutineDayOfWeek] = useState('');
+  const [routineMuscleGroup, setRoutineMuscleGroup] = useState('');
+  const [routineGeneralNotes, setRoutineGeneralNotes] = useState('');
+  const [routineStartDate, setRoutineStartDate] = useState('');
+  const [routineEndDate, setRoutineEndDate] = useState('');
+  const [routineGroupName, setRoutineGroupName] = useState('');
 
   // Admin Routines State
   const [adminRoutines, setAdminRoutines] = useState<import('../types').AdminRoutine[]>(() => storage.getAdminRoutines());
@@ -515,6 +521,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       name: routineName,
       goal: routineGoal,
       difficulty: routineDifficulty,
+      dayOfWeek: routineDayOfWeek || undefined,
+      muscleGroup: routineMuscleGroup || undefined,
+      generalNotes: routineGeneralNotes || undefined,
+      startDate: routineStartDate || undefined,
+      endDate: routineEndDate || undefined,
+      routineGroupName: routineGroupName || undefined,
       notes: routineNotes,
       studentIds: routineStudentIds,
       studentNames,
@@ -623,6 +635,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setRoutineGoal(routine.goal);
     setRoutineDifficulty(routine.difficulty);
     setRoutineNotes(routine.notes || '');
+    setRoutineDayOfWeek(routine.dayOfWeek || '');
+    setRoutineMuscleGroup(routine.muscleGroup || '');
+    setRoutineGeneralNotes(routine.generalNotes || '');
+    setRoutineStartDate(routine.startDate || '');
+    setRoutineEndDate(routine.endDate || '');
+    setRoutineGroupName(routine.routineGroupName || '');
     setRoutineExercises(routine.exercises);
     setRoutineStudentIds(routine.studentIds || []);
     setHomeSubView('create_routine');
@@ -2330,11 +2348,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                 {/* General notes */}
                                 <div className="space-y-1.5 text-left">
-                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Orientações Gerais</label>
+                                  <label className="text-[10px] font-bold text-slate-900 uppercase">Orientações Gerais (Exibidas ao aluno)</label>
                                   <textarea
-                                    placeholder="Orientações gerais para o aluno..."
-                                    value={routineNotes}
-                                    onChange={(e) => setRoutineNotes(e.target.value)}
+                                    placeholder="Orientações gerais para o aluno ver no treino..."
+                                    value={routineGeneralNotes}
+                                    onChange={(e) => setRoutineGeneralNotes(e.target.value)}
                                     className="w-full min-h-[70px] px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] resize-none transition"
                                   />
                                 </div>
@@ -2813,6 +2831,39 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     >
                                        Excluídos: {excludedStudents.length}
                                     </button>
+                                 </div>
+
+                                 {/* Routine Group Name */}
+                                 <div className="space-y-1.5 text-left">
+                                   <label className="text-[10px] font-bold text-slate-900 uppercase">Grupo (agrupa dias na mesma rotina)</label>
+                                   <input type="text" value={routineGroupName} onChange={(e) => setRoutineGroupName(e.target.value)} placeholder="Ex: Treino Musculação I" className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition" />
+                                 </div>
+
+                                 {/* Day of Week */}
+                                 <div className="space-y-1.5 text-left">
+                                   <label className="text-[10px] font-bold text-slate-900 uppercase">Dia da Semana</label>
+                                   <select value={routineDayOfWeek} onChange={(e) => setRoutineDayOfWeek(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none appearance-none">
+                                     <option value="">Selecionar dia...</option>
+                                     <option>Segunda</option><option>Terça</option><option>Quarta</option><option>Quinta</option><option>Sexta</option><option>Sábado</option><option>Domingo</option>
+                                   </select>
+                                 </div>
+
+                                 {/* Muscle Group */}
+                                 <div className="space-y-1.5 text-left">
+                                   <label className="text-[10px] font-bold text-slate-900 uppercase">Grupo Muscular do Dia</label>
+                                   <input type="text" value={routineMuscleGroup} onChange={(e) => setRoutineMuscleGroup(e.target.value)} placeholder="Ex: Peito, Tríceps e Ombro" className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition" />
+                                 </div>
+
+                                 {/* Start/End Date */}
+                                 <div className="grid grid-cols-2 gap-3">
+                                   <div className="space-y-1.5 text-left">
+                                     <label className="text-[10px] font-bold text-slate-900 uppercase">Data Início</label>
+                                     <input type="date" value={routineStartDate} onChange={(e) => setRoutineStartDate(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition" />
+                                   </div>
+                                   <div className="space-y-1.5 text-left">
+                                     <label className="text-[10px] font-bold text-slate-900 uppercase">Data Fim</label>
+                                     <input type="date" value={routineEndDate} onChange={(e) => setRoutineEndDate(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-100 text-xs font-bold text-slate-800 outline-none focus:border-[#dc2626] transition" />
+                                   </div>
                                  </div>
 
                                  {/* Add Student link */}
