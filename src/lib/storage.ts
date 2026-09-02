@@ -387,6 +387,21 @@ export const storage = {
       try {
         await supabase.from('workouts').delete().eq('name', workoutName);
       } catch {}
+      try {
+        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', workoutName);
+        const tombstoneId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
+        await supabase.from('agenda_events').insert({
+          id: tombstoneId,
+          student_id: 'all',
+          student_name: 'all',
+          title: workoutName,
+          date: new Date().toISOString().split('T')[0],
+          start_time: '00:00',
+          end_time: '23:59',
+          type: 'deleted_routine',
+          notes: workoutId
+        });
+      } catch {}
     }
   },
 
@@ -570,8 +585,51 @@ export const storage = {
     });
 
     const merged = [...routines, ...unsyncedLocals];
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(merged));
-    return merged;
+
+    // Cloud sync via agenda_events (seamless cross-device sync with no RLS hurdles)
+    try {
+      const { data: cloudEvents } = await supabase
+        .from('agenda_events')
+        .select('*')
+        .in('type', ['assigned_routine', 'deleted_routine']);
+
+      if (cloudEvents && cloudEvents.length > 0) {
+        for (const ev of cloudEvents) {
+          if (ev.type === 'deleted_routine') {
+            if (ev.title) deletedSet.add(ev.title.toLowerCase().trim());
+            if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
+          }
+        }
+        localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
+
+        for (const ev of cloudEvents) {
+          if (ev.type === 'assigned_routine' && ev.notes) {
+            try {
+              const parsed: AdminRoutine = JSON.parse(ev.notes);
+              if (parsed && parsed.name && !isDeleted(parsed.id, parsed.name)) {
+                const existingIdx = merged.findIndex(r => r.name.toLowerCase().trim() === parsed.name.toLowerCase().trim());
+                if (existingIdx === -1) {
+                  merged.push(parsed);
+                } else {
+                  merged[existingIdx] = { ...merged[existingIdx], ...parsed };
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('agenda_events routine cloud sync error:', e);
+    }
+
+    // Clean out deleted routines and workouts from local caches
+    const finalRoutines = merged.filter(r => !isDeleted(r.id, r.name));
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
+
+    const cleanWorkouts = storage.getWorkouts().filter(w => !isDeleted(w.id, w.name));
+    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
+
+    return finalRoutines;
   },
 
   /** Returns cached routines (sync, used while async fetch is in-flight). */
@@ -587,6 +645,29 @@ export const storage = {
     const idx = all.findIndex(r => r.id === routine.id);
     if (idx >= 0) all[idx] = routine; else all.unshift(routine);
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+
+    // Cloud sync via agenda_events (works on all devices seamlessly)
+    try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(routine.id);
+      const eventId = isUUID ? routine.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`);
+
+      // Delete any previous tombstone for this routine name
+      await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').ilike('title', routine.name);
+
+      await supabase.from('agenda_events').upsert({
+        id: eventId,
+        student_id: (routine.studentIds && routine.studentIds[0]) || 'all',
+        student_name: (routine.studentNames && routine.studentNames.join(', ')) || 'Todos',
+        title: routine.name,
+        date: routine.startDate || new Date().toISOString().split('T')[0],
+        start_time: '00:00',
+        end_time: '23:59',
+        type: 'assigned_routine',
+        notes: JSON.stringify(routine)
+      });
+    } catch (e) {
+      console.warn('saveAdminRoutine cloud sync error:', e);
+    }
 
     // Try full upsert with new columns first
     const { error: rErr } = await supabase.from('admin_routines').upsert({
@@ -670,6 +751,29 @@ export const storage = {
       if (routineName && !deletedList.includes(routineName)) deletedList.push(routineName);
       localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
     } catch {}
+
+    // Cloud sync tombstone via agenda_events
+    try {
+      if (routineName) {
+        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', routineName);
+      }
+      await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').eq('id', id);
+
+      const tombstoneId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
+      await supabase.from('agenda_events').insert({
+        id: tombstoneId,
+        student_id: 'all',
+        student_name: 'all',
+        title: routineName || id,
+        date: new Date().toISOString().split('T')[0],
+        start_time: '00:00',
+        end_time: '23:59',
+        type: 'deleted_routine',
+        notes: id
+      });
+    } catch (e) {
+      console.warn('deleteAdminRoutine cloud sync tombstone error:', e);
+    }
 
     // Also remove from workouts cache
     if (routineName) {
