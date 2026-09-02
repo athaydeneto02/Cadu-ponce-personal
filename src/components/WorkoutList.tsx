@@ -83,6 +83,60 @@ function groupRoutines(routines: AdminRoutine[]): RoutineGroup[] {
   return Object.values(map);
 }
 
+function normalizeStr(str?: string): string {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function routineMatchesUser(r: AdminRoutine, user: any, allUsers: any[]): boolean {
+  if (!user) return false;
+  const uid = user.uid || user.id;
+  const userEmail = normalizeStr(user.email);
+  const userName = normalizeStr(user.name);
+
+  // 1. Direct ID match
+  if (uid && r.studentIds && r.studentIds.includes(uid)) return true;
+
+  // 2. Direct Name match (normalized without accents, including partial prefixes)
+  if (userName && r.studentNames && r.studentNames.some(n => {
+    const normN = normalizeStr(n);
+    if (!normN) return false;
+    return normN === userName || normN.includes(userName) || userName.includes(normN) || (normN.length >= 4 && userName.length >= 4 && normN.slice(0, 4) === userName.slice(0, 4));
+  })) {
+    return true;
+  }
+
+  // 3. Match via users list (email / name / id linkage)
+  if (allUsers && allUsers.length > 0) {
+    const matchingStudents = allUsers.filter(u => {
+      const uUid = u.uid || u.id;
+      if (uid && uUid === uid) return true;
+      if (userEmail && normalizeStr(u.email) === userEmail) return true;
+      const uName = normalizeStr(u.name);
+      if (userName && uName && (uName === userName || uName.includes(userName) || userName.includes(uName) || (uName.length >= 4 && userName.length >= 4 && uName.slice(0, 4) === userName.slice(0, 4)))) return true;
+      return false;
+    });
+
+    for (const student of matchingStudents) {
+      const sId = student.uid || student.id;
+      const sName = normalizeStr(student.name);
+      if (sId && r.studentIds && r.studentIds.includes(sId)) return true;
+      if (sName && r.studentNames && r.studentNames.some(n => {
+        const normN = normalizeStr(n);
+        return normN && (normN === sName || normN.includes(sName) || sName.includes(normN) || (normN.length >= 4 && sName.length >= 4 && normN.slice(0, 4) === sName.slice(0, 4)));
+      })) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, onBack }: WorkoutListProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('routines');
   const [adminRoutines, setAdminRoutines] = useState<AdminRoutine[]>([]);
@@ -91,15 +145,9 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
 
   useEffect(() => {
     const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
-    const uid = user.uid || user.id;
-    const userName = (user.name || '').toLowerCase().trim();
+    const allUsers = storage.getUsersList();
 
-    const isMatch = (r: AdminRoutine) => {
-      if (!uid && !userName) return false;
-      if (uid && r.studentIds && r.studentIds.includes(uid)) return true;
-      if (userName && r.studentNames && r.studentNames.some(n => (n || '').toLowerCase().trim() === userName)) return true;
-      return false;
-    };
+    const isMatch = (r: AdminRoutine) => routineMatchesUser(r, user, allUsers);
 
     const cached = storage.getAdminRoutines().filter(isMatch);
     setAdminRoutines(cached);
@@ -112,7 +160,34 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
     return <AdminWorkoutSession routine={activeSession} onClose={() => setActiveSession(null)} />;
   }
 
-  const groups = groupRoutines(adminRoutines);
+  // Combine adminRoutines with workouts prop so any assigned workout is guaranteed to appear
+  const combinedRoutines: AdminRoutine[] = [...adminRoutines];
+  if (workouts && workouts.length > 0) {
+    for (const w of workouts) {
+      const alreadyExists = combinedRoutines.some(r => normalizeStr(r.name) === normalizeStr(w.name));
+      if (!alreadyExists) {
+        combinedRoutines.push({
+          id: w.id,
+          name: w.name,
+          goal: w.description || 'Treino Personalizado',
+          difficulty: 'Iniciante',
+          exercises: (w.exercises || []).map(e => ({
+            id: e.id,
+            name: e.name,
+            sets: e.sets,
+            reps: e.reps,
+            rest: e.rest || '60s',
+            notes: e.notes || undefined,
+          })),
+          studentIds: [w.studentId],
+          studentNames: [],
+          createdAt: w.createdAt,
+        });
+      }
+    }
+  }
+
+  const groups = groupRoutines(combinedRoutines);
 
   if (selectedGroup) {
     return (
