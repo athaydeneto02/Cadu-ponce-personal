@@ -479,9 +479,28 @@ export const storage = {
       }
     }
 
-    const routines = routineRows.map(row =>
-      rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? [])
-    );
+    // Merge Supabase data with local cache:
+    // Local cache may have new-column data (dayOfWeek, muscleGroup, etc.)
+    // that wasn't stored in Supabase yet (if columns don't exist).
+    const localCached: AdminRoutine[] = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
+
+    const routines = routineRows.map(row => {
+      const fromSupabase = rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? []);
+      // Enrich with any locally-cached new fields that Supabase may not have yet
+      const localVersion = localCached.find(l => l.id === fromSupabase.id);
+      if (localVersion) {
+        return {
+          ...fromSupabase,
+          dayOfWeek: fromSupabase.dayOfWeek ?? localVersion.dayOfWeek,
+          muscleGroup: fromSupabase.muscleGroup ?? localVersion.muscleGroup,
+          generalNotes: fromSupabase.generalNotes ?? localVersion.generalNotes,
+          startDate: fromSupabase.startDate ?? localVersion.startDate,
+          endDate: fromSupabase.endDate ?? localVersion.endDate,
+          routineGroupName: fromSupabase.routineGroupName ?? localVersion.routineGroupName,
+        };
+      }
+      return fromSupabase;
+    });
 
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
     return routines;
@@ -495,6 +514,13 @@ export const storage = {
 
   /** Upserts a single routine (and its exercises) to Supabase. */
   saveAdminRoutine: async (routine: AdminRoutine): Promise<void> => {
+    // Always update local cache first so data is never lost
+    const all = storage.getAdminRoutines();
+    const idx = all.findIndex(r => r.id === routine.id);
+    if (idx >= 0) all[idx] = routine; else all.unshift(routine);
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
+
+    // Try full upsert with new columns first
     const { error: rErr } = await supabase.from('admin_routines').upsert({
       id: routine.id,
       name: routine.name,
@@ -511,14 +537,33 @@ export const storage = {
       routine_group_name: routine.routineGroupName ?? null,
     });
 
+    let savedOk = !rErr;
+
+    // If failed (e.g. new columns don't exist yet), fall back to base columns only
     if (rErr) {
-      console.error('saveAdminRoutine error:', rErr.message);
-    } else {
-      // Replace exercises
+      console.warn('saveAdminRoutine full upsert failed, trying fallback:', rErr.message);
+      const { error: fallbackErr } = await supabase.from('admin_routines').upsert({
+        id: routine.id,
+        name: routine.name,
+        goal: routine.goal ?? '',
+        difficulty: routine.difficulty ?? '',
+        notes: routine.notes ?? null,
+        student_ids: routine.studentIds ?? [],
+        student_names: routine.studentNames ?? [],
+      });
+      if (fallbackErr) {
+        console.error('saveAdminRoutine fallback also failed:', fallbackErr.message);
+      } else {
+        savedOk = true;
+      }
+    }
+
+    // Save exercises if routine was persisted
+    if (savedOk) {
       await supabase.from('admin_exercises').delete().eq('routine_id', routine.id);
       if (routine.exercises && routine.exercises.length > 0) {
-        const rows = routine.exercises.map((e, idx) => ({
-          id: e.id || `aex_${Date.now()}_${idx}`,
+        const rows = routine.exercises.map((e, i) => ({
+          id: e.id || `aex_${Date.now()}_${i}`,
           routine_id: routine.id,
           name: e.name,
           sets: e.sets,
@@ -527,17 +572,11 @@ export const storage = {
           notes: e.notes ?? null,
           video_url: e.videoUrl ?? null,
           video_file_url: e.videoFileUrl ?? null,
-          sort_order: idx,
+          sort_order: i,
         }));
         await supabase.from('admin_exercises').insert(rows);
       }
     }
-
-    // Always update local cache
-    const all = storage.getAdminRoutines();
-    const idx = all.findIndex(r => r.id === routine.id);
-    if (idx >= 0) all[idx] = routine; else all.unshift(routine);
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
   },
 
   saveAdminRoutines: (routines: AdminRoutine[]): void => {
