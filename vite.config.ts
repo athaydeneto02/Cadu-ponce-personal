@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['pwa-icon.svg'],
+        includeAssets: ['icon.png'],
         manifest: {
           name: 'Cadu Ponce Consultoria',
           short_name: 'Cadu Ponce',
@@ -21,9 +21,9 @@ export default defineConfig(() => {
           display: 'standalone',
           icons: [
             {
-              src: 'pwa-icon.svg',
-              sizes: '192x192 512x512',
-              type: 'image/svg+xml',
+              src: 'icon.png',
+              sizes: '512x512',
+              type: 'image/png',
               purpose: 'any maskable'
             }
           ]
