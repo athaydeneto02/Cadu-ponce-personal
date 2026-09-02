@@ -631,8 +631,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     await storage.deleteAdminRoutine(id);
     setAdminRoutines(storage.getAdminRoutines());
     if (routineToDelete?.name) {
-      const updatedWorkouts = workouts.filter(w => w.name.toLowerCase().trim() !== routineToDelete.name.toLowerCase().trim());
-      setWorkouts(updatedWorkouts);
+      const matching = workouts.filter(w => w.name.toLowerCase().trim() === routineToDelete.name.toLowerCase().trim());
+      for (const mw of matching) {
+        await storage.deleteWorkout(mw.id);
+      }
+      setWorkouts(storage.getWorkouts());
     }
   };
 
@@ -5496,19 +5499,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                           await storage.saveAdminRoutine(newRoutine);
                           setAdminRoutines(storage.getAdminRoutines());
-
-                          // Also save corresponding workout for backwards compatibility
-                          const workoutUUID = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `w_${Date.now()}`;
-                          const newWorkout: Workout = {
-                            id: workoutUUID,
-                            name: criarRotinaForm.nome.trim(),
-                            description: criarRotinaForm.orientacoes || '',
-                            studentId: selectedStudent.uid,
-                            createdAt: new Date().toISOString(),
-                            exercises: []
-                          };
-                          try { await storage.saveWorkout(newWorkout); } catch (e) { console.warn(e); }
-                          setWorkouts(storage.getWorkouts());
 
                           setCriarRotinaForm({
                             nome: '',

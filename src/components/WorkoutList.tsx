@@ -146,19 +146,27 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   useEffect(() => {
     const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
     const allUsers = storage.getUsersList();
-    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
-    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
-    const isMatch = (r: AdminRoutine) => {
-      if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
-      if (r.name && deletedSet.has(r.name.toLowerCase().trim())) return false;
-      return routineMatchesUser(r, user, allUsers);
+    const loadAndFilter = (routinesList: AdminRoutine[]) => {
+      let deletedSet = new Set<string>();
+      try {
+        const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
+        deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
+      } catch {}
+
+      return routinesList.filter(r => {
+        if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
+        if (r.name && deletedSet.has(r.name.toLowerCase().trim())) return false;
+        return routineMatchesUser(r, user, allUsers);
+      });
     };
 
-    const cached = storage.getAdminRoutines().filter(isMatch);
-    setAdminRoutines(cached);
-    storage.fetchAdminRoutines().then(all => {
-      setAdminRoutines(all.filter(isMatch));
+    // 1. Initial cached filter
+    setAdminRoutines(loadAndFilter(storage.getAdminRoutines()));
+
+    // 2. Fetch fresh from cloud and apply updated deletion filters
+    storage.fetchAdminRoutines().then(freshAll => {
+      setAdminRoutines(loadAndFilter(freshAll));
     }).catch(() => {});
   }, []);
 
@@ -166,43 +174,8 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
     return <AdminWorkoutSession routine={activeSession} onClose={() => setActiveSession(null)} />;
   }
 
-  // Combine adminRoutines with workouts prop so any assigned workout is guaranteed to appear
-  const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
-  const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
-  const isDeleted = (id?: string, name?: string) => {
-    if (id && deletedSet.has(id.toLowerCase().trim())) return true;
-    if (name && deletedSet.has(name.toLowerCase().trim())) return true;
-    return false;
-  };
-
-  const combinedRoutines: AdminRoutine[] = adminRoutines.filter(r => !isDeleted(r.id, r.name));
-  if (workouts && workouts.length > 0) {
-    for (const w of workouts) {
-      if (isDeleted(w.id, w.name)) continue;
-      const alreadyExists = combinedRoutines.some(r => normalizeStr(r.name) === normalizeStr(w.name));
-      if (!alreadyExists) {
-        combinedRoutines.push({
-          id: w.id,
-          name: w.name,
-          goal: w.description || 'Treino Personalizado',
-          difficulty: 'Iniciante',
-          exercises: (w.exercises || []).map(e => ({
-            id: e.id,
-            name: e.name,
-            sets: e.sets,
-            reps: e.reps,
-            rest: e.rest || '60s',
-            notes: e.notes || undefined,
-          })),
-          studentIds: [w.studentId],
-          studentNames: [],
-          createdAt: w.createdAt,
-        });
-      }
-    }
-  }
-
-  const groups = groupRoutines(combinedRoutines);
+  // Purely render student's active routines without resurrecting deleted workouts
+  const groups = groupRoutines(adminRoutines);
 
   if (selectedGroup) {
     return (
