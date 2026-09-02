@@ -289,51 +289,75 @@ export const storage = {
     if (studentId) query = query.eq('student_id', studentId);
 
     const { data, error } = await query;
-    if (error || !data) return storage.getWorkouts();
+    const localCached = storage.getWorkouts();
+    if (error || !data) return localCached;
 
-    const workouts = data.map(rowToWorkout);
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
-    return workouts;
+    const fromSupabase = data.map(rowToWorkout);
+    const supabaseIds = new Set(fromSupabase.map(w => w.id));
+    const unsyncedLocals = localCached.filter(w => !supabaseIds.has(w.id));
+    const merged = [...fromSupabase, ...unsyncedLocals];
+    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(merged));
+    return merged;
   },
 
   saveWorkout: async (workout: Workout): Promise<void> => {
-    const { error: wError } = await supabase.from('workouts').upsert({
-      id: workout.id,
-      name: workout.name,
-      description: workout.description ?? null,
-      student_id: workout.studentId,
-    });
-    if (wError) throw wError;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workout.id);
+    const validWorkoutId = isUUID ? workout.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : workout.id);
+    workout.id = validWorkoutId;
 
-    await supabase.from('exercises').delete().eq('workout_id', workout.id);
+    try {
+      const { error: wError } = await supabase.from('workouts').upsert({
+        id: validWorkoutId,
+        name: workout.name,
+        description: workout.description ?? null,
+        student_id: workout.studentId,
+      });
+      if (wError) {
+        console.warn('saveWorkout Supabase error:', wError.message);
+        return;
+      }
 
-    if (workout.exercises.length > 0) {
-      const rows = workout.exercises.map((e, idx) => ({
-        id: e.id,
-        workout_id: workout.id,
-        name: e.name,
-        sets: e.sets,
-        reps: e.reps,
-        rest: e.rest ?? '60s',
-        notes: e.notes ?? null,
-        current_load: e.currentLoad ?? 0,
-        sort_order: idx,
-      }));
-      const { error: eError } = await supabase.from('exercises').insert(rows);
-      if (eError) throw eError;
+      await supabase.from('exercises').delete().eq('workout_id', validWorkoutId);
+
+      if (workout.exercises && workout.exercises.length > 0) {
+        const rows = workout.exercises.map((e, idx) => {
+          const exIsUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
+          const exUUID = exIsUUID ? e.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ex_${Date.now()}_${idx}`);
+          return {
+            id: exUUID,
+            workout_id: validWorkoutId,
+            name: e.name,
+            sets: e.sets,
+            reps: e.reps,
+            rest: e.rest ?? '60s',
+            notes: e.notes ?? null,
+            current_load: e.currentLoad ?? 0,
+            sort_order: idx,
+          };
+        });
+        const { error: eError } = await supabase.from('exercises').insert(rows);
+        if (eError) console.warn('saveWorkout exercises Supabase error:', eError.message);
+      }
+    } catch (err) {
+      console.warn('saveWorkout failed:', err);
     }
   },
 
   saveWorkouts: (workouts: Workout[]): void => {
     localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
     workouts.forEach(async (w) => {
-      try { await storage.saveWorkout(w); } catch { /* silent */ }
+      try { await storage.saveWorkout(w); } catch (e) { console.warn('saveWorkout silent error:', e); }
     });
   },
 
   deleteWorkout: async (workoutId: string): Promise<void> => {
-    const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
-    if (error) throw error;
+    const all = storage.getWorkouts().filter(w => w.id !== workoutId);
+    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(all));
+    try {
+      await supabase.from('workouts').delete().eq('id', workoutId);
+    } catch (e) {
+      console.warn('deleteWorkout Supabase error:', e);
+    }
   },
 
   // ── Progress ──────────────────────────────────────────────────────────────
@@ -483,6 +507,8 @@ export const storage = {
     // Local cache may have new-column data (dayOfWeek, muscleGroup, etc.)
     // that wasn't stored in Supabase yet (if columns don't exist).
     const localCached: AdminRoutine[] = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
+    const supabaseIds = new Set(routineRows.map(r => r.id as string));
+    const unsyncedLocals = localCached.filter(l => !supabaseIds.has(l.id));
 
     const routines = routineRows.map(row => {
       const fromSupabase = rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? []);
@@ -502,8 +528,9 @@ export const storage = {
       return fromSupabase;
     });
 
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
-    return routines;
+    const merged = [...routines, ...unsyncedLocals];
+    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(merged));
+    return merged;
   },
 
   /** Returns cached routines (sync, used while async fetch is in-flight). */
