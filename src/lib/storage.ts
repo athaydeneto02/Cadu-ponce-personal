@@ -294,17 +294,16 @@ export const storage = {
 
     const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
     const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
-    const isDeleted = (id?: string, name?: string) => {
+    const isDeleted = (id?: string) => {
       if (id && deletedSet.has(id.toLowerCase().trim())) return true;
-      if (name && deletedSet.has(name.toLowerCase().trim())) return true;
       return false;
     };
 
     const fromSupabase = data
       .map(rowToWorkout)
-      .filter(w => !isDeleted(w.id, w.name));
+      .filter(w => !isDeleted(w.id));
 
-    const validLocals = localCached.filter(w => !isDeleted(w.id, w.name));
+    const validLocals = localCached.filter(w => !isDeleted(w.id));
     const supabaseIds = new Set(fromSupabase.map(w => w.id));
     const unsyncedLocals = validLocals.filter(w => !supabaseIds.has(w.id));
     const merged = [...fromSupabase, ...unsyncedLocals];
@@ -555,14 +554,14 @@ export const storage = {
     const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
     const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
-    const isDeleted = (id?: string, name?: string) => {
+    // ONLY check unique ID — NEVER block by routine name!
+    const isDeleted = (id?: string) => {
       if (id && deletedSet.has(id.toLowerCase().trim())) return true;
-      if (name && deletedSet.has(name.toLowerCase().trim())) return true;
       return false;
     };
 
-    const validLocals = localCached.filter(l => !isDeleted(l.id, l.name));
-    const validSupabaseRows = routineRows.filter(r => !isDeleted(r.id as string, r.name as string));
+    const validLocals = localCached.filter(l => !isDeleted(l.id));
+    const validSupabaseRows = routineRows.filter(r => !isDeleted(r.id as string));
     const supabaseIds = new Set(validSupabaseRows.map(r => r.id as string));
     const unsyncedLocals = validLocals.filter(l => !supabaseIds.has(l.id));
 
@@ -596,7 +595,7 @@ export const storage = {
       if (cloudEvents && cloudEvents.length > 0) {
         for (const ev of cloudEvents) {
           if (ev.type === 'deleted_routine') {
-            if (ev.title) deletedSet.add(ev.title.toLowerCase().trim());
+            // ONLY track the unique deleted routine ID stored in notes
             if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
           }
         }
@@ -606,8 +605,8 @@ export const storage = {
           if (ev.type === 'assigned_routine' && ev.notes) {
             try {
               const parsed: AdminRoutine = JSON.parse(ev.notes);
-              if (parsed && parsed.name && !isDeleted(parsed.id, parsed.name)) {
-                const existingIdx = merged.findIndex(r => r.name.toLowerCase().trim() === parsed.name.toLowerCase().trim());
+              if (parsed && parsed.name && !isDeleted(parsed.id)) {
+                const existingIdx = merged.findIndex(r => r.id === parsed.id || r.name.toLowerCase().trim() === parsed.name.toLowerCase().trim());
                 if (existingIdx === -1) {
                   merged.push(parsed);
                 } else {
@@ -623,10 +622,10 @@ export const storage = {
     }
 
     // Clean out deleted routines and workouts from local caches
-    const finalRoutines = merged.filter(r => !isDeleted(r.id, r.name));
+    const finalRoutines = merged.filter(r => !isDeleted(r.id));
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
 
-    const cleanWorkouts = storage.getWorkouts().filter(w => !isDeleted(w.id, w.name));
+    const cleanWorkouts = storage.getWorkouts().filter(w => !isDeleted(w.id));
     localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
 
     return finalRoutines;
@@ -646,13 +645,23 @@ export const storage = {
     if (idx >= 0) all[idx] = routine; else all.unshift(routine);
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
 
+    // Remove any deleted tombstone for this routine ID or name from local cache
+    try {
+      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
+      const filteredDeleted = deletedList.filter(item => 
+        item.toLowerCase().trim() !== (routine.id || '').toLowerCase().trim() &&
+        item.toLowerCase().trim() !== (routine.name || '').toLowerCase().trim()
+      );
+      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(filteredDeleted));
+    } catch {}
+
     // Cloud sync via agenda_events (works on all devices seamlessly)
     try {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(routine.id);
       const eventId = isUUID ? routine.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`);
 
-      // Delete any previous tombstone for this routine name
-      await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').ilike('title', routine.name);
+      // Delete any previous tombstone for this routine ID or name
+      await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').or(`notes.eq.${routine.id},title.ilike.${routine.name}`);
 
       await supabase.from('agenda_events').upsert({
         id: eventId,
@@ -744,19 +753,15 @@ export const storage = {
     const remaining = all.filter(r => r.id !== id);
     localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(remaining));
 
-    // Track in deleted list so it's never restored by sync
+    // Track ONLY ID in deleted list (NEVER routine name!)
     try {
       const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
       if (!deletedList.includes(id)) deletedList.push(id);
-      if (routineName && !deletedList.includes(routineName)) deletedList.push(routineName);
       localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
     } catch {}
 
     // Cloud sync tombstone via agenda_events
     try {
-      if (routineName) {
-        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', routineName);
-      }
       await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').eq('id', id);
 
       const tombstoneId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
@@ -769,7 +774,7 @@ export const storage = {
         start_time: '00:00',
         end_time: '23:59',
         type: 'deleted_routine',
-        notes: id
+        notes: id // Unique routine ID
       });
     } catch (e) {
       console.warn('deleteAdminRoutine cloud sync tombstone error:', e);
