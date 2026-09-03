@@ -653,7 +653,8 @@ export const storage = {
       const { data: cloudEvents } = await supabase
         .from('agenda_events')
         .select('*')
-        .in('type', ['assigned_routine', 'deleted_routine']);
+        .in('type', ['assigned_routine', 'deleted_routine'])
+        .order('created_at', { ascending: true });
 
       if (cloudEvents && cloudEvents.length > 0) {
         for (const ev of cloudEvents) {
@@ -673,7 +674,14 @@ export const storage = {
                 if (existingIdx === -1) {
                   merged.push(parsed);
                 } else {
-                  merged[existingIdx] = { ...merged[existingIdx], ...parsed };
+                  // Never downgrade exercises array if the incoming or existing has more exercises
+                  const currentExsCount = merged[existingIdx]?.exercises?.length || 0;
+                  const newExsCount = parsed?.exercises?.length || 0;
+                  if (newExsCount >= currentExsCount) {
+                    merged[existingIdx] = { ...merged[existingIdx], ...parsed };
+                  } else {
+                    merged[existingIdx] = { ...parsed, ...merged[existingIdx], exercises: merged[existingIdx].exercises };
+                  }
                 }
               }
             } catch {}
@@ -720,11 +728,14 @@ export const storage = {
 
     // Cloud sync via agenda_events (works on all devices seamlessly)
     try {
+      // Delete any previous assigned_routine or tombstone event for this routine title to prevent stale duplicates
+      try {
+        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', routine.name.trim());
+        await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').or(`notes.eq.${routine.id},title.ilike.${routine.name}`);
+      } catch {}
+
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(routine.id);
       const eventId = isUUID ? routine.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`);
-
-      // Delete any previous tombstone for this routine ID or name
-      await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').or(`notes.eq.${routine.id},title.ilike.${routine.name}`);
 
       await supabase.from('agenda_events').upsert({
         id: eventId,
