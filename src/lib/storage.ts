@@ -1077,7 +1077,41 @@ export const storage = {
         }
       }
     } catch (apiErr) {
-      console.warn('/api/upload request failed, falling back to local IndexedDB:', apiErr);
+      console.warn('/api/upload request failed, trying Supabase Cloud Media:', apiErr);
+    }
+
+    // 2. Cloud Media Storage via Supabase (guaranteed cross-device sync to all phones/PCs!)
+    try {
+      const supaKey = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const base64 = reader.result as string;
+          const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
+          try {
+            const { error } = await supabase.from('agenda_events').upsert({
+              id,
+              title: file.name || `${exerciseId}.${ext}`,
+              student_id: 'all',
+              type: 'media_storage',
+              date: new Date().toISOString().split('T')[0],
+              start_time: '00:00',
+              end_time: '00:00',
+              notes: base64
+            });
+            if (error) reject(error);
+            else resolve(`supamedia:${id}`);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      if (supaKey) return supaKey;
+    } catch (cloudErr) {
+      console.warn('Supabase cloud media storage failed, falling back to local IndexedDB:', cloudErr);
     }
 
     // 3. Fallback: Local IndexedDB (safe local storage, never base64 in localStorage!)

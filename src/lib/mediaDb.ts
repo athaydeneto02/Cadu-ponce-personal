@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { supabase } from './supabase';
 
 const DB_NAME = 'cadu_ponce_media_db';
 const DB_VERSION = 1;
@@ -103,12 +104,50 @@ export async function getLocalBlob(idbKey: string): Promise<Blob | null> {
  */
 export async function resolveMediaUrl(url: string | undefined | null): Promise<string> {
   if (!url) return '';
-  if (!url.startsWith('idb:')) return url;
+  if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) return url;
 
   // Check cache first
   const cached = blobUrlCache.get(url);
   if (cached) return cached;
 
+  // 1. Resolve from Supabase Cloud Media
+  if (url.startsWith('supamedia:')) {
+    const id = url.replace(/^supamedia:/, '');
+    try {
+      const { data, error } = await supabase
+        .from('agenda_events')
+        .select('notes')
+        .eq('id', id)
+        .single();
+
+      if (!error && data?.notes) {
+        let objectUrl = '';
+        if (data.notes.startsWith('data:')) {
+          const parts = data.notes.split(',');
+          const mime = parts[0].match(/:(.*?);/)?.[1] || 'video/mp4';
+          const bstr = atob(parts[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const blob = new Blob([u8arr], { type: mime });
+          objectUrl = URL.createObjectURL(blob);
+        } else if (data.notes.startsWith('http')) {
+          objectUrl = data.notes.trim();
+        }
+        if (objectUrl) {
+          blobUrlCache.set(url, objectUrl);
+          return objectUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao resolver supamedia:', e);
+    }
+    return '';
+  }
+
+  // 2. Resolve from IndexedDB
   try {
     const blob = await getLocalBlob(url);
     if (!blob) return '';
@@ -122,12 +161,12 @@ export async function resolveMediaUrl(url: string | undefined | null): Promise<s
 }
 
 /**
- * React Hook para resolver URLs de mídia que podem estar no IndexedDB (`idb:...`).
+ * React Hook para resolver URLs de mídia que podem estar no IndexedDB (`idb:...`) ou Supabase (`supamedia:...`).
  */
 export function useMediaUrl(url?: string | null): string {
   const [resolved, setResolved] = useState<string>(() => {
     if (!url) return '';
-    if (!url.startsWith('idb:')) return url;
+    if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) return url;
     return blobUrlCache.get(url) || '';
   });
 
@@ -136,7 +175,7 @@ export function useMediaUrl(url?: string | null): string {
       setResolved('');
       return;
     }
-    if (!url.startsWith('idb:')) {
+    if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) {
       setResolved(url);
       return;
     }
