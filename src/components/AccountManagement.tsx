@@ -485,6 +485,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [newExDesc, setNewExDesc] = useState('');
   const [isUploadingExerciseImage, setIsUploadingExerciseImage] = useState(false);
   const [isUploadingExerciseVideo, setIsUploadingExerciseVideo] = useState(false);
+  const [uploadImageError, setUploadImageError] = useState<string | null>(null);
+  const [uploadVideoError, setUploadVideoError] = useState<string | null>(null);
+  const [uploadImageProgress, setUploadImageProgress] = useState<string>('');
+  const [uploadVideoProgress, setUploadVideoProgress] = useState<string>('');
 
   const [previewingExercise, setPreviewingExercise] = useState<{ title: string; group: string; category: string; image: string; isFavorite: boolean; isCustom: boolean; videoUrl?: string; description?: string; } | null>(null);
 
@@ -2001,98 +2005,157 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    </select>
                                                 </div>
                                              </div>
+                                                              <div>
+                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Imagem do Exercício (Opcional)</label>
+                                                 <div className="flex flex-col gap-2">
+                                                   <input
+                                                     type="url"
+                                                     value={newExImage}
+                                                     onChange={(e) => { setNewExImage(e.target.value); setUploadImageError(null); }}
+                                                     placeholder="URL da imagem (https://...)"
+                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
+                                                   />
 
-                                             <div>
-                                                <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Imagem do Exercício (Opcional)</label>
-                                                <div className="flex flex-col gap-2">
-                                                  <input 
-                                                    type="url" 
-                                                    value={newExImage} 
-                                                    onChange={(e) => setNewExImage(e.target.value)} 
-                                                    placeholder="URL da imagem (https://...)" 
-                                                    className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
-                                                  />
-                                                  <div className="flex items-center gap-2 w-full">
-                                                    <div className="h-px bg-slate-200 flex-1" />
-                                                    <span className="text-[9px] font-black italic uppercase text-slate-400">ou enviar arquivo</span>
-                                                    <div className="h-px bg-slate-200 flex-1" />
-                                                  </div>
-                                                  <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed border-slate-200 cursor-pointer hover:border-[#dc2626]/40 transition ${isUploadingExerciseImage ? 'opacity-50 pointer-events-none' : ''}`}>
-                                                    <input 
-                                                      type="file" 
-                                                      accept="image/*" 
-                                                      className="hidden"
-                                                      onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (!file) return;
-                                                        setIsUploadingExerciseImage(true);
-                                                        try {
-                                                          const url = await storage.uploadExerciseVideo(file, `img-${Date.now()}`);
-                                                          setNewExImage(url);
-                                                        } catch (err) {
-                                                          console.error('Erro no upload da imagem:', err);
-                                                        } finally {
-                                                          setIsUploadingExerciseImage(false);
-                                                        }
-                                                      }}
-                                                    />
-                                                    {isUploadingExerciseImage ? (
-                                                      <span className="text-[10px] font-black uppercase text-slate-400">Enviando...</span>
-                                                    ) : (
-                                                      <>
-                                                        <Plus className="w-4 h-4 text-slate-400" />
-                                                        <span className="text-[10px] font-black uppercase text-slate-500">Escolher Imagem</span>
-                                                      </>
-                                                    )}
-                                                  </label>
-                                                </div>
-                                             </div>
+                                                   {/* Preview */}
+                                                   {newExImage && (newExImage.startsWith('http') || newExImage.startsWith('data:image')) && (
+                                                     <div className="relative w-full h-28 rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                                                       <img src={newExImage} alt="Preview" className="w-full h-full object-cover" onError={() => {}} />
+                                                     </div>
+                                                   )}
 
-                                             <div>
-                                                <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Vídeo Demonstrativo (Opcional)</label>
-                                                <div className="flex flex-col gap-2">
-                                                  <input 
-                                                    type="url" 
-                                                    value={newExVideo} 
-                                                    onChange={(e) => setNewExVideo(e.target.value)} 
-                                                    placeholder="URL do vídeo (https://...)" 
-                                                    className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
-                                                  />
-                                                  <div className="flex items-center gap-2 w-full">
-                                                    <div className="h-px bg-slate-200 flex-1" />
-                                                    <span className="text-[9px] font-black italic uppercase text-slate-400">ou enviar arquivo</span>
-                                                    <div className="h-px bg-slate-200 flex-1" />
-                                                  </div>
-                                                  <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed border-slate-200 cursor-pointer hover:border-[#dc2626]/40 transition ${isUploadingExerciseVideo ? 'opacity-50 pointer-events-none' : ''}`}>
-                                                    <input 
-                                                      type="file" 
-                                                      accept="video/*" 
-                                                      className="hidden"
-                                                      onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (!file) return;
-                                                        setIsUploadingExerciseVideo(true);
-                                                        try {
-                                                          const url = await storage.uploadExerciseVideo(file, `vid-${Date.now()}`);
-                                                          setNewExVideo(url);
-                                                        } catch (err) {
-                                                          console.error('Erro no upload do vídeo:', err);
-                                                        } finally {
-                                                          setIsUploadingExerciseVideo(false);
-                                                        }
-                                                      }}
-                                                    />
-                                                    {isUploadingExerciseVideo ? (
-                                                      <span className="text-[10px] font-black uppercase text-slate-400">Enviando...</span>
-                                                    ) : (
-                                                      <>
-                                                        <Plus className="w-4 h-4 text-slate-400" />
-                                                        <span className="text-[10px] font-black uppercase text-slate-500">Escolher Vídeo</span>
-                                                      </>
-                                                    )}
-                                                  </label>
-                                                </div>
-                                             </div>
+                                                   <div className="flex items-center gap-2 w-full">
+                                                     <div className="h-px bg-slate-200 flex-1" />
+                                                     <span className="text-[9px] font-black italic uppercase text-slate-400">ou enviar arquivo</span>
+                                                     <div className="h-px bg-slate-200 flex-1" />
+                                                   </div>
+
+                                                   <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed cursor-pointer transition ${
+                                                     isUploadingExerciseImage
+                                                       ? 'border-blue-300 bg-blue-50 opacity-80 pointer-events-none'
+                                                       : uploadImageError
+                                                       ? 'border-red-300 bg-red-50'
+                                                       : newExImage && (newExImage.startsWith('data:image') || (newExImage.startsWith('http') && !newExImage.includes('unsplash')))
+                                                       ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-400'
+                                                       : 'border-slate-200 hover:border-[#dc2626]/40'
+                                                   }`}>
+                                                     <input
+                                                       type="file"
+                                                       accept="image/*"
+                                                       className="hidden"
+                                                       onChange={async (e) => {
+                                                         const file = e.target.files?.[0];
+                                                         if (!file) return;
+                                                         setIsUploadingExerciseImage(true);
+                                                         setUploadImageError(null);
+                                                         setUploadImageProgress(`Enviando ${file.name}…`);
+                                                         try {
+                                                           const url = await storage.uploadExerciseVideo(file, `img-${Date.now()}`);
+                                                           setNewExImage(url);
+                                                           setUploadImageProgress('✅ Imagem enviada com sucesso!');
+                                                         } catch (err: any) {
+                                                           setUploadImageError(err?.message ?? 'Erro ao enviar imagem.');
+                                                           setUploadImageProgress('');
+                                                         } finally {
+                                                           setIsUploadingExerciseImage(false);
+                                                         }
+                                                       }}
+                                                     />
+                                                     {isUploadingExerciseImage ? (
+                                                       <span className="text-[10px] font-black uppercase text-blue-500">⏳ {uploadImageProgress || 'Enviando…'}</span>
+                                                     ) : uploadImageError ? (
+                                                       <span className="text-[10px] font-bold text-red-500 text-center leading-snug">{uploadImageError}</span>
+                                                     ) : uploadImageProgress ? (
+                                                       <span className="text-[10px] font-black uppercase text-emerald-600">{uploadImageProgress}</span>
+                                                     ) : (
+                                                       <>
+                                                         <Plus className="w-4 h-4 text-slate-400" />
+                                                         <span className="text-[10px] font-black uppercase text-slate-500">Escolher Imagem</span>
+                                                       </>
+                                                     )}
+                                                   </label>
+                                                 </div>
+                                              </div>
+
+                                              <div>
+                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Vídeo Demonstrativo (Opcional)</label>
+                                                 <div className="flex flex-col gap-2">
+                                                   <input
+                                                     type="url"
+                                                     value={newExVideo}
+                                                     onChange={(e) => { setNewExVideo(e.target.value); setUploadVideoError(null); }}
+                                                     placeholder="URL do vídeo (https://youtube.com/...)"
+                                                     className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
+                                                   />
+
+                                                   {/* Video preview */}
+                                                   {newExVideo && newExVideo.startsWith('http') && !newExVideo.includes('youtube') && !newExVideo.includes('youtu.be') && (
+                                                     <video src={newExVideo} controls muted className="w-full max-h-32 rounded-lg border border-slate-200 bg-black" />
+                                                   )}
+                                                   {newExVideo && (newExVideo.includes('youtube') || newExVideo.includes('youtu.be')) && (() => {
+                                                     const m = newExVideo.match(/(?:v=|youtu\.be\/)([^&?/]+)/);
+                                                     const ytId = m ? m[1] : null;
+                                                     return ytId ? (
+                                                       <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="YouTube preview" className="w-full h-28 object-cover rounded-lg border border-slate-200" />
+                                                     ) : null;
+                                                   })()}
+
+                                                   <div className="flex items-center gap-2 w-full">
+                                                     <div className="h-px bg-slate-200 flex-1" />
+                                                     <span className="text-[9px] font-black italic uppercase text-slate-400">ou enviar arquivo</span>
+                                                     <div className="h-px bg-slate-200 flex-1" />
+                                                   </div>
+
+                                                   <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed cursor-pointer transition ${
+                                                     isUploadingExerciseVideo
+                                                       ? 'border-blue-300 bg-blue-50 opacity-80 pointer-events-none'
+                                                       : uploadVideoError
+                                                       ? 'border-red-300 bg-red-50'
+                                                       : uploadVideoProgress && !isUploadingExerciseVideo
+                                                       ? 'border-emerald-300 bg-emerald-50'
+                                                       : 'border-slate-200 hover:border-[#dc2626]/40'
+                                                   }`}>
+                                                     <input
+                                                       type="file"
+                                                       accept="video/*"
+                                                       className="hidden"
+                                                       onChange={async (e) => {
+                                                         const file = e.target.files?.[0];
+                                                         if (!file) return;
+                                                         setIsUploadingExerciseVideo(true);
+                                                         setUploadVideoError(null);
+                                                         setUploadVideoProgress(`Enviando ${file.name}…`);
+                                                         try {
+                                                           const url = await storage.uploadExerciseVideo(file, `vid-${Date.now()}`);
+                                                           setNewExVideo(url);
+                                                           setUploadVideoProgress('✅ Vídeo enviado com sucesso!');
+                                                         } catch (err: any) {
+                                                           setUploadVideoError(err?.message ?? 'Erro ao enviar vídeo.');
+                                                           setUploadVideoProgress('');
+                                                         } finally {
+                                                           setIsUploadingExerciseVideo(false);
+                                                         }
+                                                       }}
+                                                     />
+                                                     {isUploadingExerciseVideo ? (
+                                                       <span className="text-[10px] font-black uppercase text-blue-500">⏳ {uploadVideoProgress || 'Enviando…'}</span>
+                                                     ) : uploadVideoError ? (
+                                                       <span className="text-[10px] font-bold text-red-500 text-center leading-snug px-2">{uploadVideoError}</span>
+                                                     ) : uploadVideoProgress ? (
+                                                       <span className="text-[10px] font-black uppercase text-emerald-600">{uploadVideoProgress}</span>
+                                                     ) : (
+                                                       <>
+                                                         <Plus className="w-4 h-4 text-slate-400" />
+                                                         <span className="text-[10px] font-black uppercase text-slate-500">Escolher Vídeo</span>
+                                                       </>
+                                                     )}
+                                                   </label>
+
+                                                   <p className="text-[9px] text-slate-400 text-center leading-relaxed">
+                                                     Formatos aceitos: MP4, MOV, AVI · Recomendado: max 50MB via arquivo.<br />
+                                                     Para vídeos maiores, use uma URL do YouTube no campo acima.
+                                                   </p>
+                                                 </div>
+                                              </div>
 
                                              <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Descrição / Instrução de Execução</label>

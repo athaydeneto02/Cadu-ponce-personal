@@ -983,13 +983,63 @@ export const storage = {
   },
 
   uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
-    const ext = file.name.split('.').pop();
+    const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase();
     const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('exercise-videos').upload(path, file, { upsert: true });
-    if (error) throw error;
-    const { data: urlData } = supabase.storage.from('exercise-videos').getPublicUrl(path);
-    return urlData.publicUrl;
+    const BUCKET = 'exercise-videos';
+
+    // Helper: convert file to base64 data URL (fallback for images)
+    const toBase64 = (f: File): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+
+    // 1. Try uploading to Supabase storage
+    const tryUpload = async (): Promise<string | null> => {
+      try {
+        const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+        if (uploadErr) {
+          // If bucket doesn't exist, try creating it then retry once
+          if (uploadErr.message?.includes('Bucket not found') || (uploadErr as any).statusCode === 404) {
+            await supabase.storage.createBucket(BUCKET, { public: true });
+            const { error: retryErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+            if (retryErr) return null;
+          } else {
+            return null;
+          }
+        }
+        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        return urlData.publicUrl;
+      } catch {
+        return null;
+      }
+    };
+
+    const supabaseUrl = await tryUpload();
+    if (supabaseUrl) return supabaseUrl;
+
+    // 2. Fallback for images: base64 data URL (works locally, persists in localStorage)
+    const isImage = file.type.startsWith('image/');
+    if (isImage) {
+      return toBase64(file);
+    }
+
+    // 3. Fallback for videos: blob object URL (only valid for current session, but better than nothing)
+    // Store as base64 if small enough, otherwise warn
+    if (file.size < 10 * 1024 * 1024) { // < 10 MB: use base64
+      return toBase64(file);
+    }
+
+    // Large video: can't fallback without Supabase. Throw descriptive error.
+    throw new Error(
+      `Não foi possível fazer upload para o servidor. ` +
+      `Certifique-se que o bucket "exercise-videos" existe no Supabase Storage com acesso público. ` +
+      `Ou use uma URL direta do YouTube/Vimeo no campo de URL.`
+    );
   },
+
 
   // ── Legacy shims (kept for backward compat) ───────────────────────────────
   getUsersListSync: (): UserProfile[] => storage.getUsersList(),
