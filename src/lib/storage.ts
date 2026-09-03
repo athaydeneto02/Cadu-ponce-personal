@@ -10,6 +10,67 @@
 
 import { supabase } from './supabase';
 import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog } from '../types';
+import { storeLocalFile, compressImage, resolveMediaUrl } from './mediaDb';
+
+// ---------------------------------------------------------------------------
+// Safe localStorage helper - prevents QuotaExceededError crashes (white screen)
+// ---------------------------------------------------------------------------
+export function safeSetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`[storage] Quota exceeded on localStorage.setItem(${key}):`, err);
+    try {
+      if (key === 'cadu_ponce_exercises_v3') {
+        const parsed = JSON.parse(value);
+        const cleaned = parsed.map((ex: any) => ({
+          ...ex,
+          image: ex.image && ex.image.length > 30000 ? 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200' : ex.image,
+          videoUrl: ex.videoUrl && ex.videoUrl.length > 30000 ? '' : ex.videoUrl,
+        }));
+        localStorage.setItem(key, JSON.stringify(cleaned));
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+}
+
+// Boot-time auto-sanitizer: remove any oversized base64 items that caused white screens
+(() => {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('cadu_ponce_exercises_v3');
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        let changed = false;
+        const sanitized = list.map((ex: any) => {
+          let img = ex.image;
+          let vid = ex.videoUrl;
+          if (typeof img === 'string' && img.length > 50000) {
+            img = 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200';
+            changed = true;
+          }
+          if (typeof vid === 'string' && (vid.startsWith('data:video') || vid.length > 50000)) {
+            vid = '';
+            changed = true;
+          }
+          return { ...ex, image: img, videoUrl: vid };
+        });
+        if (changed) {
+          localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(sanitized));
+          console.log('[storage] Cleared oversized base64 exercises to prevent white screen');
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[storage] Error sanitizing exercises:', e);
+  }
+})();
 
 // ---------------------------------------------------------------------------
 // Local-storage cache keys (session cache only — NOT the source of truth)
@@ -901,37 +962,50 @@ export const storage = {
       description: 'Exercício personalizado adicionado pelo treinador.', // Default description
     }));
 
-    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
     return exercises;
   },
 
-  /** Upserts a custom exercise to Supabase. */
+  /** Upserts a custom exercise to Supabase and updates local cache safely. */
   saveCustomExercise: async (exercise: any): Promise<void> => {
-    const { error } = await supabase.from('custom_exercises').upsert({
-      id: exercise.id,
-      title: exercise.title,
-      group: exercise.group,
-      category: exercise.category,
-      video_url: exercise.videoUrl ?? null,
-      video_file_url: exercise.videoFileUrl ?? null,
-    });
-    if (error) console.error('saveCustomExercise error:', error.message);
+    // Upsert to Supabase
+    try {
+      const { error } = await supabase.from('custom_exercises').upsert({
+        id: exercise.id,
+        title: exercise.title,
+        group: exercise.group,
+        category: exercise.category,
+        video_url: exercise.videoUrl ?? null,
+        video_file_url: exercise.videoFileUrl ?? null,
+      });
+      if (error) console.error('saveCustomExercise error:', error.message);
+    } catch (err) {
+      console.warn('saveCustomExercise cloud error:', err);
+    }
 
-    // Always update local cache
-    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
-    const all: any[] = cached ? JSON.parse(cached) : [];
-    const idx = all.findIndex((e: any) => e.id === exercise.id);
-    if (idx >= 0) all[idx] = exercise; else all.unshift(exercise);
-    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(all));
+    // Always update local cache safely
+    try {
+      const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+      const all: any[] = cached ? JSON.parse(cached) : [];
+      const idx = all.findIndex((e: any) => e.id === exercise.id);
+      if (idx >= 0) all[idx] = exercise; else all.unshift(exercise);
+      safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all));
+    } catch (err) {
+      console.warn('saveCustomExercise local cache error:', err);
+    }
   },
 
   /** Deletes a custom exercise from Supabase. */
   deleteCustomExercise: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
-    if (error) console.error('deleteCustomExercise error:', error.message);
+    try {
+      const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
+      if (error) console.error('deleteCustomExercise error:', error.message);
+    } catch (err) {
+      console.warn('deleteCustomExercise error:', err);
+    }
     const cached = localStorage.getItem('cadu_ponce_exercises_v3');
     const all: any[] = cached ? JSON.parse(cached) : [];
-    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)));
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)));
   },
 
   // ── Muscle Groups & Categories ────────────────────────────────────────────
@@ -987,57 +1061,33 @@ export const storage = {
     const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
     const BUCKET = 'exercise-videos';
 
-    // Helper: convert file to base64 data URL (fallback for images)
-    const toBase64 = (f: File): Promise<string> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
-
-    // 1. Try uploading to Supabase storage
-    const tryUpload = async (): Promise<string | null> => {
-      try {
-        const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
-        if (uploadErr) {
-          // If bucket doesn't exist, try creating it then retry once
-          if (uploadErr.message?.includes('Bucket not found') || (uploadErr as any).statusCode === 404) {
-            await supabase.storage.createBucket(BUCKET, { public: true });
-            const { error: retryErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
-            if (retryErr) return null;
-          } else {
-            return null;
-          }
-        }
+    // 1. Try uploading to Supabase storage if bucket exists
+    try {
+      const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
+      if (!uploadErr) {
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-        return urlData.publicUrl;
-      } catch {
-        return null;
+        if (urlData?.publicUrl) return urlData.publicUrl;
       }
-    };
+    } catch {
+      // Ignore Supabase error, fall back to local IndexedDB
+    }
 
-    const supabaseUrl = await tryUpload();
-    if (supabaseUrl) return supabaseUrl;
-
-    // 2. Fallback for images: base64 data URL (works locally, persists in localStorage)
+    // 2. Safe local storage: IndexedDB (never base64 in localStorage!)
     const isImage = file.type.startsWith('image/');
     if (isImage) {
-      return toBase64(file);
+      try {
+        const compressed = await compressImage(file, 800, 0.85);
+        const idbKey = await storeLocalFile(compressed, `img_${exerciseId}`);
+        return idbKey;
+      } catch {
+        const idbKey = await storeLocalFile(file, `img_${exerciseId}`);
+        return idbKey;
+      }
     }
 
-    // 3. Fallback for videos: blob object URL (only valid for current session, but better than nothing)
-    // Store as base64 if small enough, otherwise warn
-    if (file.size < 10 * 1024 * 1024) { // < 10 MB: use base64
-      return toBase64(file);
-    }
-
-    // Large video: can't fallback without Supabase. Throw descriptive error.
-    throw new Error(
-      `Não foi possível fazer upload para o servidor. ` +
-      `Certifique-se que o bucket "exercise-videos" existe no Supabase Storage com acesso público. ` +
-      `Ou use uma URL direta do YouTube/Vimeo no campo de URL.`
-    );
+    // Video: Store safely in IndexedDB
+    const idbKey = await storeLocalFile(file, `vid_${exerciseId}`);
+    return idbKey;
   },
 
 

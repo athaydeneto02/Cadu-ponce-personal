@@ -73,7 +73,8 @@ import {
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import { UserProfile, Workout } from '../types';
-import { storage } from '../lib/storage';
+import { storage, safeSetItem } from '../lib/storage';
+import { useMediaUrl, resolveMediaUrl } from '../lib/mediaDb';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
 
 interface AccountManagementProps {
@@ -181,6 +182,53 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     createdAt: new Date().toISOString()
   }
 ];
+
+function ExerciseVideoPlayer({ url, className }: { url?: string; className?: string }) {
+  const resolved = useMediaUrl(url);
+  const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
+  const ytId = isYt ? (resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1] ?? null) : null;
+
+  if (!resolved) {
+    return (
+      <div className={`flex items-center justify-center bg-slate-900 text-slate-500 text-xs ${className || ''}`}>
+        Sem vídeo demonstrativo
+      </div>
+    );
+  }
+
+  if (isYt && ytId) {
+    return (
+      <iframe
+        src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+        className={className}
+        allow="autoplay; encrypted-media"
+        allowFullScreen
+      />
+    );
+  }
+
+  return (
+    <video
+      src={resolved}
+      className={className}
+      loop
+      autoPlay
+      muted
+      controls
+      playsInline
+    />
+  );
+}
+
+function ExerciseImagePreview({ url }: { url?: string }) {
+  const resolved = useMediaUrl(url);
+  if (!resolved) return null;
+  return (
+    <div className="relative w-full h-28 rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+      <img src={resolved} alt="Preview" className="w-full h-full object-cover" onError={() => {}} />
+    </div>
+  );
+}
 
 export default function AccountManagement({ onClose, isDark }: AccountManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -467,7 +515,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         storage.saveCustomExercise(ex);
       }
     });
-    localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
   }, [exercises, isDataLoaded]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
@@ -1888,17 +1936,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                           {/* Video demonstration container */}
                                           <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
-                                             <video 
+                                             <ExerciseVideoPlayer 
                                                key={previewingExercise.title}
-                                               src={previewingExercise.videoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'} 
+                                               url={previewingExercise.videoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'} 
                                                className="w-full h-full object-cover" 
-                                               loop 
-                                               autoPlay 
-                                               muted 
-                                               controls
-                                               playsInline
                                              />
-                                             <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1.5">
+                                             <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1.5 pointer-events-none">
                                                 <span className="relative flex h-1.5 w-1.5">
                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
@@ -2017,11 +2060,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    />
 
                                                    {/* Preview */}
-                                                   {newExImage && (newExImage.startsWith('http') || newExImage.startsWith('data:image')) && (
-                                                     <div className="relative w-full h-28 rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-                                                       <img src={newExImage} alt="Preview" className="w-full h-full object-cover" onError={() => {}} />
-                                                     </div>
-                                                   )}
+                                                   {newExImage && <ExerciseImagePreview url={newExImage} />}
 
                                                    <div className="flex items-center gap-2 w-full">
                                                      <div className="h-px bg-slate-200 flex-1" />
@@ -2088,16 +2127,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    />
 
                                                    {/* Video preview */}
-                                                   {newExVideo && newExVideo.startsWith('http') && !newExVideo.includes('youtube') && !newExVideo.includes('youtu.be') && (
-                                                     <video src={newExVideo} controls muted className="w-full max-h-32 rounded-lg border border-slate-200 bg-black" />
+                                                   {newExVideo && (
+                                                     <div className="w-full rounded-lg overflow-hidden border border-slate-200 bg-black flex items-center justify-center max-h-36">
+                                                       <ExerciseVideoPlayer url={newExVideo} className="w-full max-h-36 object-contain" />
+                                                     </div>
                                                    )}
-                                                   {newExVideo && (newExVideo.includes('youtube') || newExVideo.includes('youtu.be')) && (() => {
-                                                     const m = newExVideo.match(/(?:v=|youtu\.be\/)([^&?/]+)/);
-                                                     const ytId = m ? m[1] : null;
-                                                     return ytId ? (
-                                                       <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="YouTube preview" className="w-full h-28 object-cover rounded-lg border border-slate-200" />
-                                                     ) : null;
-                                                   })()}
 
                                                    <div className="flex items-center gap-2 w-full">
                                                      <div className="h-px bg-slate-200 flex-1" />

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
+import { useMediaUrl } from '../lib/mediaDb';
 import confetti from 'canvas-confetti';
 
 interface AdminWorkoutSessionProps {
@@ -40,6 +41,98 @@ const fmtDate = (date: Date): string =>
 // S T Q Q S S D (Segunda→Domingo)
 const WEEKDAY_LETTERS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
 const jsDayToIdx = (jsDay: number): number => (jsDay === 0 ? 6 : jsDay - 1);
+
+function VideoModalInner({ name, url, onClose }: { name: string; url?: string; onClose: () => void }) {
+  const resolved = useMediaUrl(url);
+  const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
+  const m = resolved ? resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/) : null;
+  const ytId = m ? m[1] : null;
+
+  return (
+    <div className="absolute inset-0 z-40 bg-black/92 flex flex-col">
+      <div className="flex items-center justify-between px-5 pt-6 pb-4">
+        <p className="text-white font-bold text-sm">{name}</p>
+        <button onClick={onClose} className="p-2 text-white/60 hover:text-white cursor-pointer">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-4">
+        {isYt && ytId ? (
+          <iframe
+            src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+            className="w-full rounded-2xl"
+            style={{ aspectRatio: '16/9' }}
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+          />
+        ) : resolved ? (
+          <video
+            src={resolved}
+            controls
+            autoPlay
+            className="w-full rounded-2xl"
+            style={{ maxHeight: '60vh' }}
+          />
+        ) : (
+          <p className="text-slate-400 text-sm">Vídeo não disponível</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VideoThumbnailButton({
+  url,
+  name,
+  widthClass = "w-[130px] h-[78px]",
+  onClick
+}: {
+  url?: string;
+  name: string;
+  widthClass?: string;
+  onClick: () => void;
+}) {
+  const resolved = useMediaUrl(url);
+  if (!resolved) {
+    return (
+      <div className={`${widthClass} rounded-lg bg-slate-100 flex items-center justify-center shrink-0`}>
+        <Dumbbell className="w-7 h-7 text-slate-300" />
+      </div>
+    );
+  }
+
+  const isYt = resolved.includes('youtube') || resolved.includes('youtu.be');
+  const ytId = isYt ? (resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1] ?? null) : null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative ${widthClass} rounded-lg overflow-hidden bg-slate-900 shrink-0 cursor-pointer`}
+    >
+      {ytId ? (
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+          alt={name}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <video
+          src={resolved}
+          muted
+          playsInline
+          preload="metadata"
+          className="w-full h-full object-cover pointer-events-none"
+        />
+      )}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+        <div className="w-9 h-9 rounded-full bg-white/75 flex items-center justify-center shadow">
+          <Play className="w-4 h-4 text-slate-900 ml-0.5" />
+        </div>
+      </div>
+    </button>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -236,38 +329,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     const ex = exercises[exIdx];
     if (!ex) return null;
     const vUrl = ex.videoFileUrl || ex.videoUrl;
-    if (!vUrl) return null;
-    const isYt = vUrl.includes('youtube') || vUrl.includes('youtu.be');
-    const ytId = getYtId(vUrl);
-    return (
-      <div className="absolute inset-0 z-40 bg-black/92 flex flex-col">
-        <div className="flex items-center justify-between px-5 pt-6 pb-4">
-          <p className="text-white font-bold text-sm">{ex.name}</p>
-          <button onClick={closeVideo} className="p-2 text-white/60 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-4">
-          {isYt && ytId ? (
-            <iframe
-              src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-              className="w-full rounded-2xl"
-              style={{ aspectRatio: '16/9' }}
-              allow="autoplay; encrypted-media"
-              allowFullScreen
-            />
-          ) : (
-            <video
-              src={vUrl}
-              controls
-              autoPlay
-              className="w-full rounded-2xl"
-              style={{ maxHeight: '60vh' }}
-            />
-          )}
-        </div>
-      </div>
-    );
+    return <VideoModalInner name={ex.name} url={vUrl} onClose={closeVideo} />;
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -320,7 +382,6 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         <div className="flex-1 overflow-y-auto bg-white">
           {exercises.map((ex, i) => {
             const videoSrc = ex.videoFileUrl || ex.videoUrl;
-            const ytId = videoSrc ? getYtId(videoSrc) : null;
             return (
               <div key={ex.id} className="flex items-center gap-3 px-4 py-4 border-b border-gray-100 last:border-0">
                 <div className="flex-1 min-w-0">
@@ -329,28 +390,12 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                     Carga: <span className="font-semibold text-slate-700">{fmtLoad(ex)}</span>
                   </p>
                 </div>
-                {videoSrc ? (
-                  <button
-                    type="button"
-                    onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
-                    className="relative w-[130px] h-[78px] rounded-lg overflow-hidden bg-slate-900 shrink-0 cursor-pointer"
-                  >
-                    {ytId ? (
-                      <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt={ex.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <video src={videoSrc} muted playsInline preload="metadata" className="w-full h-full object-cover pointer-events-none" />
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/25">
-                      <div className="w-10 h-10 rounded-full bg-white/75 flex items-center justify-center shadow">
-                        <Play className="w-4 h-4 text-slate-900 ml-0.5" />
-                      </div>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="w-[130px] h-[78px] rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                    <Dumbbell className="w-7 h-7 text-slate-300" />
-                  </div>
-                )}
+                <VideoThumbnailButton
+                  url={videoSrc}
+                  name={ex.name}
+                  widthClass="w-[130px] h-[78px]"
+                  onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
+                />
               </div>
             );
           })}
@@ -626,32 +671,12 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
               {/* Video thumbnail (only when not completed) */}
               {!done && videoSrc && (
-                <button
-                  type="button"
+                <VideoThumbnailButton
+                  url={videoSrc}
+                  name={ex.name}
+                  widthClass="w-[110px] h-[66px]"
                   onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
-                  className="relative w-[110px] h-[66px] rounded-lg overflow-hidden bg-slate-900 shrink-0 cursor-pointer"
-                >
-                  {ytId ? (
-                    <img
-                      src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-                      alt={ex.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <video
-                      src={videoSrc}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="w-full h-full object-cover pointer-events-none"
-                    />
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                    <div className="w-9 h-9 rounded-full bg-white/75 flex items-center justify-center">
-                      <Play className="w-4 h-4 text-slate-900 ml-0.5" />
-                    </div>
-                  </div>
-                </button>
+                />
               )}
             </div>
           );
