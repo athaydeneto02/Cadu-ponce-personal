@@ -84,6 +84,8 @@ export interface AdminExercise {
   videoUrl?: string;      // YouTube link or any URL
   videoFileUrl?: string;  // Supabase Storage public URL
   prescribedLoads?: number[];
+  combinedWithNext?: boolean; // Se combina com o próximo exercício (Bi-set / Exercício Combinado)
+  combinedGroup?: string;     // Identificador de grupo combinado
 }
 
 export interface AdminRoutine {

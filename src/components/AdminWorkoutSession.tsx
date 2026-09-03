@@ -5,7 +5,7 @@
  * Fluxo: intro (visualização) → session (checklist + timer) → modal de conclusão → finish (cards deslizáveis)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, ChevronLeft, Check, Trophy, Dumbbell, Clock,
   Play, Home, MessageCircle, Menu, Instagram, Calendar
@@ -41,6 +41,52 @@ const fmtDate = (date: Date): string =>
 // S T Q Q S S D (Segunda→Domingo)
 const WEEKDAY_LETTERS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
 const jsDayToIdx = (jsDay: number): number => (jsDay === 0 ? 6 : jsDay - 1);
+
+export interface ChecklistItem {
+  type: 'single' | 'combined';
+  ex?: AdminExercise;
+  index?: number;
+  items?: { ex: AdminExercise; index: number }[];
+}
+
+export const buildChecklistItems = (exList: AdminExercise[]): ChecklistItem[] => {
+  const result: ChecklistItem[] = [];
+  for (let i = 0; i < exList.length; i++) {
+    const current = exList[i];
+    const isCombinedWithNext = !!(
+      current.combinedWithNext ||
+      (current.combinedGroup && exList[i + 1]?.combinedGroup === current.combinedGroup) ||
+      current.notes?.toLowerCase().includes('bi-set') ||
+      current.notes?.toLowerCase().includes('biset') ||
+      current.notes?.toLowerCase().includes('combinad') ||
+      current.name?.toLowerCase().includes('bi-set') ||
+      current.name?.toLowerCase().includes('biset')
+    );
+
+    if (isCombinedWithNext && i + 1 < exList.length) {
+      const group: { ex: AdminExercise; index: number }[] = [{ ex: current, index: i }];
+      let nextIdx = i + 1;
+      while (nextIdx < exList.length) {
+        const nextEx = exList[nextIdx];
+        group.push({ ex: nextEx, index: nextIdx });
+        const alsoCombines = !!(
+          nextEx.combinedWithNext ||
+          (current.combinedGroup && exList[nextIdx + 1]?.combinedGroup === current.combinedGroup)
+        );
+        if (alsoCombines && nextIdx + 1 < exList.length) {
+          nextIdx++;
+        } else {
+          break;
+        }
+      }
+      result.push({ type: 'combined', items: group });
+      i = nextIdx;
+    } else {
+      result.push({ type: 'single', ex: current, index: i });
+    }
+  }
+  return result;
+};
 
 export const getExerciseVideo = (ex: AdminExercise): string => {
   const direct = (ex.videoFileUrl || ex.videoUrl || '').trim();
@@ -194,6 +240,7 @@ function VideoThumbnailButton({
 export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: AdminWorkoutSessionProps) {
   const exercises = routine.exercises;
   const total = exercises.length;
+  const checklistItems = useMemo(() => buildChecklistItems(exercises), [exercises]);
 
   // ── Screen state ──────────────────────────────────────────────────────────
   const [screen, setScreen] = useState<'intro' | 'session' | 'finish'>('intro');
@@ -438,7 +485,61 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
         {/* Exercise list */}
         <div className="flex-1 overflow-y-auto bg-white">
-          {exercises.map((ex, i) => {
+          {checklistItems.map((item, itemIdx) => {
+            if (item.type === 'combined' && item.items) {
+              return (
+                <div key={`intro-comb-${itemIdx}`} className="py-4 border-b border-gray-100 bg-white">
+                  <div className="px-4 mb-2.5">
+                    <h3 className="font-bold text-slate-900 text-[15px] leading-tight">
+                      Exercícios combinados
+                    </h3>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      Alterne esses exercícios
+                    </p>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2" style={{ scrollbarWidth: 'none' }}>
+                    {item.items.map((sub, subIdx) => {
+                      const subEx = sub.ex;
+                      const subVideoSrc = getExerciseVideo(subEx);
+                      const letter = String.fromCharCode(65 + subIdx);
+                      return (
+                        <div
+                          key={subEx.id}
+                          className="snap-start shrink-0 w-[78vw] max-w-[300px] bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-3">
+                            <h4 className="font-bold text-slate-900 text-sm leading-snug line-clamp-2">
+                              {subEx.name}
+                            </h4>
+                            <span className="w-6 h-6 rounded-full bg-[#1976D2] text-white text-xs font-black flex items-center justify-center shrink-0 shadow-xs">
+                              {letter}
+                            </span>
+                          </div>
+                          <div className="flex items-end justify-between gap-2 pt-2">
+                            <div>
+                              <p className="text-slate-600 text-xs">
+                                Carga: <span className="font-semibold text-slate-800">{fmtLoad(subEx)}</span>
+                              </p>
+                            </div>
+                            {subVideoSrc && (
+                              <VideoThumbnailButton
+                                url={subVideoSrc}
+                                name={subEx.name}
+                                widthClass="w-[72px] h-[100px] rounded-xl"
+                                onClick={() => { setVideoExIdx(sub.index); setShowVideo(true); }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
+            const ex = item.ex!;
+            const i = item.index!;
             const videoSrc = getExerciseVideo(ex);
             return (
               <div key={ex.id} className="flex items-center gap-3 px-4 py-4 border-b border-gray-100 last:border-0">
@@ -448,12 +549,14 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                     Carga: <span className="font-semibold text-slate-700">{fmtLoad(ex)}</span>
                   </p>
                 </div>
-                <VideoThumbnailButton
-                  url={videoSrc}
-                  name={ex.name}
-                  widthClass="w-[130px] h-[78px]"
-                  onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
-                />
+                {videoSrc && (
+                  <VideoThumbnailButton
+                    url={videoSrc}
+                    name={ex.name}
+                    widthClass="w-[75px] h-[110px] rounded-xl"
+                    onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
+                  />
+                )}
               </div>
             );
           })}
@@ -774,7 +877,142 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
       {/* ── Exercise checklist ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto bg-white">
-        {exercises.map((ex, i) => {
+        {checklistItems.map((item, itemIdx) => {
+          if (item.type === 'combined' && item.items) {
+            const allDone = item.items.every(it => completedExs.has(it.ex.id));
+
+            return (
+              <div key={`session-comb-${itemIdx}`} className="py-4 border-b border-gray-100 bg-white">
+                {/* Header row with master checkbox */}
+                <div className="flex items-center gap-3 px-4 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompletedExs(prev => {
+                        const next = new Set(prev);
+                        item.items!.forEach(it => {
+                          if (allDone) next.delete(it.ex.id);
+                          else next.add(it.ex.id);
+                        });
+                        return next;
+                      });
+                    }}
+                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                      allDone
+                        ? 'bg-[#2DA44E] border-[#2DA44E] text-white shadow-md shadow-green-200'
+                        : 'border-slate-300 bg-white hover:border-[#1976D2]'
+                    }`}
+                  >
+                    {allDone && <Check className="w-4 h-4 stroke-[2.5]" />}
+                  </button>
+
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-[15px] leading-tight">
+                      Exercícios combinados
+                    </h3>
+                    <p className="text-slate-500 text-xs mt-0.5 font-medium">
+                      Alterne esses exercícios
+                    </p>
+                  </div>
+                </div>
+
+                {/* Horizontal swipeable cards (MFIT style) */}
+                <div 
+                  className="flex gap-3 overflow-x-auto snap-x snap-mandatory pl-15 pr-4 pb-2" 
+                  style={{ scrollbarWidth: 'none' }}
+                >
+                  {item.items.map((sub, subIdx) => {
+                    const subEx = sub.ex;
+                    const subVideoSrc = getExerciseVideo(subEx);
+                    const subDone = completedExs.has(subEx.id);
+                    const letter = String.fromCharCode(65 + subIdx);
+                    const isEditingSub = editingExId === subEx.id;
+
+                    return (
+                      <div
+                        key={subEx.id}
+                        className="snap-start shrink-0 w-[78vw] max-w-[300px] bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between"
+                      >
+                        {/* Top: Name + Badge */}
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <h4 className={`font-bold text-sm leading-snug line-clamp-2 ${subDone ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                            {subEx.name}
+                          </h4>
+                          <span className="w-6 h-6 rounded-full bg-[#1976D2] text-white text-xs font-black flex items-center justify-center shrink-0 shadow-xs">
+                            {letter}
+                          </span>
+                        </div>
+
+                        {/* Bottom: Carga + Thumbnail */}
+                        <div className="flex items-end justify-between gap-2 pt-2">
+                          <div className="min-w-0 flex-1">
+                            {isEditingSub ? (
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <input
+                                  type="number"
+                                  value={editLoadInput}
+                                  onChange={e => setEditLoadInput(e.target.value)}
+                                  className="w-16 border border-slate-300 rounded-lg px-2 py-0.5 text-xs text-slate-900 focus:outline-none focus:border-[#1976D2]"
+                                  autoFocus
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') confirmEdit();
+                                    if (e.key === 'Escape') setEditingExId(null);
+                                  }}
+                                />
+                                <span className="text-slate-500 text-xs">kg</span>
+                                <button onClick={confirmEdit} className="text-[#1976D2] text-xs font-bold hover:underline cursor-pointer">
+                                  OK
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-slate-500 text-xs mb-1">
+                                Carga:{' '}
+                                <span className="font-semibold text-slate-800">{fmtLoad(subEx)}</span>{' '}
+                                <button
+                                  onClick={() => startEditing(subEx)}
+                                  className="text-[#1976D2] italic font-semibold hover:underline cursor-pointer ml-1"
+                                >
+                                  Editar
+                                </button>
+                              </p>
+                            )}
+
+                            {subVideoSrc && (
+                              <button
+                                type="button"
+                                onClick={() => { setVideoExIdx(sub.index); setShowVideo(true); }}
+                                className="flex items-center gap-1 text-[#1976D2] text-[11px] font-bold hover:underline cursor-pointer"
+                              >
+                                <Play className="w-3 h-3 fill-current" />
+                                <span>Ver vídeo</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {subVideoSrc ? (
+                            <VideoThumbnailButton
+                              url={subVideoSrc}
+                              name={subEx.name}
+                              widthClass="w-[72px] h-[100px] rounded-xl"
+                              onClick={() => { setVideoExIdx(sub.index); setShowVideo(true); }}
+                            />
+                          ) : (
+                            <div className="w-[72px] h-[100px] rounded-xl bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200/60">
+                              <Dumbbell className="w-6 h-6 text-slate-300" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+
+          // Single exercise
+          const ex = item.ex!;
+          const i = item.index!;
           const done = completedExs.has(ex.id);
           const videoSrc = getExerciseVideo(ex);
           const isEditing = editingExId === ex.id;
@@ -835,7 +1073,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                       <span className="font-medium text-slate-700">{fmtLoad(ex)}</span>{' '}
                       <button
                         onClick={() => startEditing(ex)}
-                        className="text-[#1976D2] font-semibold cursor-pointer hover:underline"
+                        className="text-[#1976D2] font-semibold cursor-pointer hover:underline ml-1"
                       >
                         Editar
                       </button>
@@ -861,7 +1099,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                 <VideoThumbnailButton
                   url={videoSrc}
                   name={ex.name}
-                  widthClass="w-[105px] min-h-[90px]"
+                  widthClass="w-[75px] h-[110px] rounded-xl"
                   onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
                 />
               )}

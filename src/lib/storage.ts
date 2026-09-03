@@ -136,6 +136,8 @@ function rowToAdminExercise(row: Record<string, unknown>): AdminExercise {
     notes: (row.notes as string) ?? undefined,
     videoUrl: (row.video_url as string) ?? undefined,
     videoFileUrl: (row.video_file_url as string) ?? undefined,
+    combinedWithNext: (row.combined_with_next as boolean) ?? (row.combinedWithNext as boolean) ?? undefined,
+    combinedGroup: (row.combined_group as string) ?? (row.combinedGroup as string) ?? undefined,
   };
 }
 

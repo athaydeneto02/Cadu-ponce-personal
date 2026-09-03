@@ -2543,24 +2543,45 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 {routineExercises.map((ex, idx) => (
                                   <div key={ex.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 space-y-3">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-[9px] font-black text-[#dc2626] uppercase tracking-widest">Exercício {idx + 1}</span>
-                                      <div className="flex items-center gap-3">
-                                        <button
-                                          onClick={() => setSelectingExerciseForIdx(idx)}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-[#dc2626] hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-tight transition cursor-pointer"
-                                        >
-                                          <Search className="w-3.5 h-3.5" /> Puxar da Biblioteca
-                                        </button>
-                                        <button
-                                          onClick={() => removeRoutineExercise(idx)}
-                                          className="text-slate-400 hover:text-red-500 transition cursor-pointer"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    </div>
+                                       <div className="flex items-center gap-2">
+                                         <span className="text-[9px] font-black text-[#dc2626] uppercase tracking-widest">Exercício {idx + 1}</span>
+                                         {(ex.combinedWithNext || (idx > 0 && routineExercises[idx - 1]?.combinedWithNext)) && (
+                                           <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[8px] font-black uppercase tracking-wider">
+                                             🔗 Combinado (Bi-set)
+                                           </span>
+                                         )}
+                                       </div>
+                                       <div className="flex items-center gap-2">
+                                         {idx < routineExercises.length - 1 && (
+                                           <button
+                                             type="button"
+                                             onClick={() => updateRoutineExercise(idx, 'combinedWithNext', !ex.combinedWithNext)}
+                                             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight transition cursor-pointer ${
+                                               ex.combinedWithNext
+                                                 ? 'bg-blue-600 text-white shadow-xs'
+                                                 : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                             }`}
+                                             title="Combinar este exercício com o próximo em bi-set / carrossel deslizável"
+                                           >
+                                             <LinkIcon className="w-3 h-3" />
+                                             {ex.combinedWithNext ? 'Combinado (Bi-set) ✓' : '+ Combinar (Bi-set)'}
+                                           </button>
+                                         )}
+                                         <button
+                                           onClick={() => setSelectingExerciseForIdx(idx)}
+                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-[#dc2626] hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-tight transition cursor-pointer"
+                                         >
+                                           <Search className="w-3.5 h-3.5" /> Puxar da Biblioteca
+                                         </button>
+                                         <button
+                                           onClick={() => removeRoutineExercise(idx)}
+                                           className="text-slate-400 hover:text-red-500 transition cursor-pointer"
+                                         >
+                                           <Trash2 className="w-3.5 h-3.5" />
+                                         </button>
+                                       </div>
+                                     </div>
 
-                                    {/* Exercise Name */}
                                     {/* Exercise Name */}
                                     <div>
                                       <input
