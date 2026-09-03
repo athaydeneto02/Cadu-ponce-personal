@@ -4,9 +4,48 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+function devUploadPlugin() {
+  return {
+    name: 'dev-upload-plugin',
+    configureServer(server: any) {
+      server.middlewares.use('/api/upload', async (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+        try {
+          const urlObj = new URL(req.url, 'http://localhost');
+          const filename = urlObj.searchParams.get('name') || `upload-${Date.now()}.mp4`;
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+          }
+          const buffer = Buffer.concat(chunks);
+          const fd = new FormData();
+          fd.append('reqtype', 'fileupload');
+          fd.append('fileToUpload', new Blob([buffer]), filename);
+          const catboxRes = await fetch('https://catbox.moe/user/api.php', {
+            method: 'POST',
+            body: fd,
+          });
+          const resultUrl = (await catboxRes.text()).trim();
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ url: resultUrl }));
+        } catch (e: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+    }
+  };
+}
+
 export default defineConfig(() => {
   return {
     plugins: [
+      devUploadPlugin(),
       react(), 
       tailwindcss(),
       VitePWA({

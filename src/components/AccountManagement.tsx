@@ -2120,6 +2120,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                          setIsUploadingExerciseImage(true);
                                                          setUploadImageError(null);
                                                          setUploadImageProgress(`Enviando ${file.name}…`);
+                                                          setNewExImage(URL.createObjectURL(file));
                                                          try {
                                                            const url = await storage.uploadExerciseVideo(file, `img-${Date.now()}`);
                                                            setNewExImage(url);
@@ -2191,6 +2192,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                          setIsUploadingExerciseVideo(true);
                                                          setUploadVideoError(null);
                                                          setUploadVideoProgress(`Enviando ${file.name}…`);
+                                                          setNewExVideo(URL.createObjectURL(file));
                                                          try {
                                                            const url = await storage.uploadExerciseVideo(file, `vid-${Date.now()}`);
                                                            setNewExVideo(url);

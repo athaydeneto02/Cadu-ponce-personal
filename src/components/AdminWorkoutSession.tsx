@@ -49,12 +49,19 @@ export const getExerciseVideo = (ex: AdminExercise): string => {
   // Lookup in custom library cache
   try {
     const rawLib = localStorage.getItem('cadu_ponce_exercises_v3');
-    if (rawLib) {
+    if (rawLib && ex.name) {
       const libList = JSON.parse(rawLib);
-      const match = libList.find((lib: any) =>
-        (lib.title && ex.name && lib.title.toLowerCase().trim() === ex.name.toLowerCase().trim()) ||
-        lib.id === ex.id
-      );
+      const exNameClean = ex.name.toLowerCase().trim();
+      const match = libList.find((lib: any) => {
+        if (!lib) return false;
+        if (lib.id && ex.id && typeof lib.id === 'string' && typeof ex.id === 'string' && lib.id.trim() && lib.id.trim() === ex.id.trim()) {
+          return true;
+        }
+        if (lib.title && typeof lib.title === 'string' && lib.title.toLowerCase().trim() === exNameClean) {
+          return true;
+        }
+        return false;
+      });
       if (match && match.videoUrl && !match.videoUrl.includes('mov_bbb.mp4')) {
         return match.videoUrl;
       }

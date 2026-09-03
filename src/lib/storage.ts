@@ -1061,34 +1061,23 @@ export const storage = {
     const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
     const BUCKET = 'exercise-videos';
 
-    // 1. Try uploading to Supabase storage if bucket exists
+    // 1. Try our same-origin /api/upload endpoint (works on Vercel and local dev, zero CORS!)
     try {
-      const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true });
-      if (!uploadErr) {
-        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-        if (urlData?.publicUrl) return urlData.publicUrl;
-      }
-    } catch {
-      // Ignore Supabase error, proceed to cloud upload
-    }
-
-    // 2. Cloud upload via Catbox (permanent, public, cross-device so phones can see it!)
-    try {
-      const fd = new FormData();
-      fd.append('reqtype', 'fileupload');
-      fd.append('fileToUpload', file, file.name || `file_${exerciseId}.${ext}`);
-      const res = await fetch('https://catbox.moe/user/api.php', {
+      const res = await fetch(`/api/upload?name=${encodeURIComponent(file.name || `${exerciseId}.${ext}`)}`, {
         method: 'POST',
-        body: fd,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
       });
       if (res.ok) {
-        const cloudUrl = (await res.text()).trim();
-        if (cloudUrl.startsWith('http')) {
-          return cloudUrl;
+        const data = await res.json();
+        if (data?.url && typeof data.url === 'string' && data.url.startsWith('http')) {
+          return data.url.trim();
         }
       }
-    } catch (err) {
-      console.warn('Cloud upload failed, falling back to local IndexedDB:', err);
+    } catch (apiErr) {
+      console.warn('/api/upload request failed, falling back to local IndexedDB:', apiErr);
     }
 
     // 3. Fallback: Local IndexedDB (safe local storage, never base64 in localStorage!)
