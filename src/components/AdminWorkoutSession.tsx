@@ -472,6 +472,45 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     const start = startTimestamp ?? new Date(today.getTime() - sessionTime * 1000);
     const end = endTimestamp ?? today;
 
+    // Month and calendar calculations
+    const MONTH_NAMES = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const currentMonthName = MONTH_NAMES[today.getMonth()];
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDayJs = new Date(currentYear, currentMonth, 1).getDay();
+    const startOffset = jsDayToIdx(firstDayJs); // 0=Segunda ... 6=Domingo
+
+    // Get real trained days from workout logs + today
+    const logs = storage.getWorkoutLogs();
+    const trainedDaysMonth = new Set<number>();
+    trainedDaysMonth.add(today.getDate());
+
+    const trainedWeekdays = new Set<number>();
+    trainedWeekdays.add(todayIdx);
+
+    // Compute start of current week (Monday)
+    const mondayDate = new Date(today);
+    mondayDate.setDate(today.getDate() - todayIdx);
+    mondayDate.setHours(0, 0, 0, 0);
+
+    logs.forEach(l => {
+      if (!l.completedAt) return;
+      const d = new Date(l.completedAt);
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        trainedDaysMonth.add(d.getDate());
+      }
+      if (d >= mondayDate && d <= today) {
+        trainedWeekdays.add(jsDayToIdx(d.getDay()));
+      }
+    });
+
+    const daysCountMonth = trainedDaysMonth.size;
+    const daysCountWeek = trainedWeekdays.size;
+
     return (
       <div className="fixed inset-0 z-50 bg-[#1c2b3e] flex flex-col">
         {/* Header */}
@@ -492,103 +531,172 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto flex flex-col items-center px-4 pt-8 space-y-6 pb-4">
+        <div className="flex-1 overflow-y-auto flex flex-col items-center px-2 pt-6 space-y-4 pb-4">
           {/* Title */}
           <div className="text-center">
             <h1 className="text-white text-3xl font-black italic">Parabéns!</h1>
             <p className="text-white/70 text-base mt-1">Você concluiu o seu treino!</p>
           </div>
 
-          {/* Swipeable cards */}
-          <div className="flex gap-4 overflow-x-auto w-full snap-x snap-mandatory pb-2" style={{ scrollbarWidth: 'none' }}>
-            {/* Card 1: Summary with timer */}
-            <div className="snap-center shrink-0 w-[calc(100%-24px)] bg-white rounded-2xl p-5 shadow-lg">
-              <div className="flex items-center justify-between pb-4 mb-5 border-b border-gray-100">
+          {/* Swipeable cards carousel */}
+          <div 
+            className="flex gap-4 overflow-x-auto w-full snap-x snap-mandatory px-4 pb-2" 
+            style={{ scrollbarWidth: 'none' }}
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              const idx = Math.round(target.scrollLeft / (target.clientWidth * 0.8));
+              setFinishCardIdx(Math.min(2, Math.max(0, idx)));
+            }}
+          >
+            {/* Card 1: Tempo de Treino (Imagem 1) */}
+            <div className="snap-center shrink-0 w-[84vw] max-w-[340px] bg-white rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[380px]">
+              <div className="flex items-center justify-between pb-4 border-b border-gray-100">
                 <div className="flex items-center gap-1.5">
                   <Dumbbell className="w-4 h-4 text-[#1565C0]" />
                   <span className="text-[#1565C0] font-black text-xs tracking-wide">CADU PONCE PERSONAL</span>
                 </div>
-                <div className="flex items-center gap-1 text-slate-500 text-xs">
+                <div className="flex items-center gap-1 text-slate-500 text-xs font-semibold">
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{fmtDate(today)}</span>
                 </div>
               </div>
 
-              <div className="flex justify-center mb-4">
-                <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center border-4 border-[#1976D2]/20">
+              <div className="my-auto flex flex-col items-center text-center py-4">
+                <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center border-4 border-[#1976D2]/20 mb-3">
                   <Dumbbell className="w-7 h-7 text-[#1976D2]" />
+                </div>
+
+                <h2 className="text-slate-900 font-black text-xl mb-4">Treino Concluído!</h2>
+
+                <p className="text-slate-500 text-sm mb-1">Tempo de treino:</p>
+                <p className="text-slate-900 font-black text-4xl mb-4">{fmtDuration(sessionTime)}</p>
+
+                <div className="flex items-center justify-center gap-4 text-xs text-slate-600">
+                  <span><strong className="text-slate-800">Início:</strong> {fmtTimeWithSec(start)}</span>
+                  <span><strong className="text-slate-800">Fim:</strong> {fmtTimeWithSec(end)}</span>
                 </div>
               </div>
 
-              <h2 className="text-center text-slate-900 font-black text-lg mb-1">Treino Concluído!</h2>
-
-              <p className="text-center text-slate-500 text-sm mt-3 mb-1">Tempo de treino:</p>
-              <p className="text-center text-slate-900 font-black text-4xl mb-4">{fmtDuration(sessionTime)}</p>
-
-              <div className="flex items-center justify-center gap-6 text-sm text-slate-600 mb-6">
-                <span><strong className="text-slate-800">Início:</strong> {fmtTimeWithSec(start)}</span>
-                <span><strong className="text-slate-800">Fim:</strong> {fmtTimeWithSec(end)}</span>
-              </div>
-
-              {/* Day circles */}
-              <div className="flex justify-center gap-2.5">
-                {WEEKDAY_LETTERS.map((letter, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-1">
-                    <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
-                      idx === todayIdx
-                        ? 'bg-[#1976D2] border-[#1976D2] text-white'
-                        : 'border-slate-300'
-                    }`}>
-                      {idx === todayIdx && <Check className="w-4 h-4" />}
-                    </div>
-                    <span className="text-xs text-slate-500 font-medium">{letter}</span>
-                  </div>
-                ))}
-              </div>
+              <div className="h-2" />
             </div>
 
-            {/* Card 2: Weekly summary */}
-            <div className="snap-center shrink-0 w-[calc(100%-24px)] bg-white rounded-2xl p-5 shadow-lg">
-              <div className="flex items-center justify-between pb-4 mb-5 border-b border-gray-100">
+            {/* Card 2: Semana Atual (S T Q Q S S D) (Imagem 2) */}
+            <div className="snap-center shrink-0 w-[84vw] max-w-[340px] bg-white rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[380px]">
+              <div className="flex items-center justify-between pb-4 border-b border-gray-100">
                 <div className="flex items-center gap-1.5">
                   <Dumbbell className="w-4 h-4 text-[#1565C0]" />
                   <span className="text-[#1565C0] font-black text-xs tracking-wide">CADU PONCE PERSONAL</span>
                 </div>
-                <div className="flex items-center gap-1 text-slate-500 text-xs">
+                <div className="flex items-center gap-1 text-slate-500 text-xs font-semibold">
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{fmtDate(today)}</span>
                 </div>
               </div>
 
-              <div className="flex justify-center mb-4">
-                <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center border-4 border-[#1976D2]/20">
+              <div className="my-auto flex flex-col items-center text-center py-4">
+                <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center border-4 border-[#1976D2]/20 mb-3">
                   <Dumbbell className="w-7 h-7 text-[#1976D2]" />
+                </div>
+
+                <h2 className="text-slate-900 font-black text-xl mb-6">Treino Concluído!</h2>
+
+                <div className="flex justify-center gap-2 mb-8">
+                  {WEEKDAY_LETTERS.map((letter, idx) => {
+                    const isTrained = trainedWeekdays.has(idx);
+                    return (
+                      <div key={idx} className="flex flex-col items-center gap-1.5">
+                        <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
+                          isTrained
+                            ? 'bg-[#1976D2] border-[#1976D2] text-white shadow-sm'
+                            : 'border-[#1976D2] bg-white'
+                        }`}>
+                          {isTrained && <Check className="w-4 h-4 stroke-[3]" />}
+                        </div>
+                        <span className="text-xs text-slate-700 font-medium">{letter}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-slate-800 text-sm font-semibold">
+                  Você treinou{' '}
+                  <span className="text-[#1976D2] font-black">{daysCountWeek} {daysCountWeek === 1 ? 'dia' : 'dias'}</span>
+                  {' '}essa semana
+                </p>
+              </div>
+
+              <div className="h-2" />
+            </div>
+
+            {/* Card 3: Calendário do Mês (Imagem 3) */}
+            <div className="snap-center shrink-0 w-[84vw] max-w-[340px] bg-white rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[380px]">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-1.5">
+                  <Dumbbell className="w-4 h-4 text-[#1565C0]" />
+                  <span className="text-[#1565C0] font-black text-xs tracking-wide">CADU PONCE PERSONAL</span>
+                </div>
+                <div className="flex items-center gap-1 text-slate-500 text-xs font-semibold">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>{fmtDate(today)}</span>
                 </div>
               </div>
 
-              <h2 className="text-center text-slate-900 font-black text-lg mb-6">Treino Concluído!</h2>
+              <div className="flex flex-col items-center py-2">
+                <h2 className="text-slate-900 font-black text-base mb-3 capitalize">{currentMonthName}</h2>
 
-              <div className="flex justify-center gap-2.5 mb-5">
-                {WEEKDAY_LETTERS.map((letter, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-1">
-                    <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center ${
-                      idx === todayIdx
-                        ? 'bg-[#1976D2] border-[#1976D2] text-white'
-                        : 'border-slate-300'
-                    }`}>
-                      {idx === todayIdx && <Check className="w-4 h-4" />}
-                    </div>
-                    <span className="text-xs text-slate-500 font-medium">{letter}</span>
-                  </div>
-                ))}
+                {/* Weekday headers */}
+                <div className="grid grid-cols-7 gap-1 w-full text-center mb-2">
+                  {['Seg.', 'Ter.', 'Qua.', 'Qui.', 'Sex.', 'Sáb.', 'Dom.'].map((w, idx) => (
+                    <span key={idx} className="text-[10px] text-slate-600 font-bold">{w}</span>
+                  ))}
+                </div>
+
+                {/* Day grid */}
+                <div className="grid grid-cols-7 gap-1.5 w-full">
+                  {/* Empty cells before day 1 */}
+                  {Array.from({ length: startOffset }).map((_, idx) => (
+                    <div key={`empty-${idx}`} className="w-7 h-7" />
+                  ))}
+
+                  {/* Days 1..daysInMonth */}
+                  {Array.from({ length: daysInMonth }).map((_, idx) => {
+                    const dayNum = idx + 1;
+                    const isTrained = trainedDaysMonth.has(dayNum);
+                    return (
+                      <div key={dayNum} className="flex items-center justify-center">
+                        <div className={`w-7 h-7 rounded-full text-[11px] flex items-center justify-center transition-all ${
+                          isTrained
+                            ? 'bg-[#1976D2] text-white font-black shadow-sm'
+                            : 'bg-slate-100 text-slate-600 font-medium'
+                        }`}>
+                          {dayNum}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-slate-800 text-sm font-semibold mt-4 text-center">
+                  Você treinou{' '}
+                  <span className="text-[#1976D2] font-black">{daysCountMonth} {daysCountMonth === 1 ? 'dia' : 'dias'}</span>
+                  {' '}esse mês
+                </p>
               </div>
 
-              <p className="text-center text-slate-700 text-sm font-medium">
-                Você treinou{' '}
-                <span className="text-[#1976D2] font-bold">1 dia</span>
-                {' '}essa semana
-              </p>
+              <div className="h-1" />
             </div>
+          </div>
+
+          {/* Carousel Dots */}
+          <div className="flex justify-center items-center gap-1.5 pt-1">
+            {[0, 1, 2].map(idx => (
+              <div
+                key={idx}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  finishCardIdx === idx ? 'bg-white w-5' : 'bg-white/40 w-2'
+                }`}
+              />
+            ))}
           </div>
         </div>
 
@@ -596,13 +704,13 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         <div className="px-4 pb-3 space-y-3 shrink-0">
           <button
             onClick={handleShare}
-            className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-4 rounded-xl text-base transition cursor-pointer"
+            className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-3.5 rounded-xl text-base transition cursor-pointer shadow-md"
           >
             Compartilhar
           </button>
           <button
             onClick={onClose}
-            className="w-full bg-white text-slate-700 font-bold py-4 rounded-xl text-base border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
+            className="w-full bg-transparent text-white font-bold py-3.5 rounded-xl text-base border border-white/40 hover:bg-white/10 transition cursor-pointer"
           >
             Fechar
           </button>
