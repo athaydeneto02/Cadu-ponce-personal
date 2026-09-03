@@ -42,6 +42,27 @@ const fmtDate = (date: Date): string =>
 const WEEKDAY_LETTERS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
 const jsDayToIdx = (jsDay: number): number => (jsDay === 0 ? 6 : jsDay - 1);
 
+export const getExerciseVideo = (ex: AdminExercise): string => {
+  const direct = (ex.videoFileUrl || ex.videoUrl || '').trim();
+  if (direct && !direct.includes('mov_bbb.mp4')) return direct;
+
+  // Lookup in custom library cache
+  try {
+    const rawLib = localStorage.getItem('cadu_ponce_exercises_v3');
+    if (rawLib) {
+      const libList = JSON.parse(rawLib);
+      const match = libList.find((lib: any) =>
+        (lib.title && ex.name && lib.title.toLowerCase().trim() === ex.name.toLowerCase().trim()) ||
+        lib.id === ex.id
+      );
+      if (match && match.videoUrl && !match.videoUrl.includes('mov_bbb.mp4')) {
+        return match.videoUrl;
+      }
+    }
+  } catch {}
+  return '';
+};
+
 function VideoModalInner({ name, url, onClose }: { name: string; url?: string; onClose: () => void }) {
   const resolved = useMediaUrl(url);
   const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
@@ -328,7 +349,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const VideoModal = ({ exIdx, onClose: closeVideo }: { exIdx: number; onClose: () => void }) => {
     const ex = exercises[exIdx];
     if (!ex) return null;
-    const vUrl = ex.videoFileUrl || ex.videoUrl;
+    const vUrl = getExerciseVideo(ex);
     return <VideoModalInner name={ex.name} url={vUrl} onClose={closeVideo} />;
   };
 
@@ -381,7 +402,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         {/* Exercise list */}
         <div className="flex-1 overflow-y-auto bg-white">
           {exercises.map((ex, i) => {
-            const videoSrc = ex.videoFileUrl || ex.videoUrl;
+            const videoSrc = getExerciseVideo(ex);
             return (
               <div key={ex.id} className="flex items-center gap-3 px-4 py-4 border-b border-gray-100 last:border-0">
                 <div className="flex-1 min-w-0">
@@ -602,8 +623,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
       <div className="flex-1 overflow-y-auto bg-white">
         {exercises.map((ex, i) => {
           const done = completedExs.has(ex.id);
-          const videoSrc = ex.videoFileUrl || ex.videoUrl;
-          const ytId = videoSrc ? getYtId(videoSrc) : null;
+          const videoSrc = getExerciseVideo(ex);
           const isEditing = editingExId === ex.id;
 
           return (

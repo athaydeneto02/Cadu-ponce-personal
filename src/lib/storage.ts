@@ -1069,10 +1069,29 @@ export const storage = {
         if (urlData?.publicUrl) return urlData.publicUrl;
       }
     } catch {
-      // Ignore Supabase error, fall back to local IndexedDB
+      // Ignore Supabase error, proceed to cloud upload
     }
 
-    // 2. Safe local storage: IndexedDB (never base64 in localStorage!)
+    // 2. Cloud upload via Catbox (permanent, public, cross-device so phones can see it!)
+    try {
+      const fd = new FormData();
+      fd.append('reqtype', 'fileupload');
+      fd.append('fileToUpload', file, file.name || `file_${exerciseId}.${ext}`);
+      const res = await fetch('https://catbox.moe/user/api.php', {
+        method: 'POST',
+        body: fd,
+      });
+      if (res.ok) {
+        const cloudUrl = (await res.text()).trim();
+        if (cloudUrl.startsWith('http')) {
+          return cloudUrl;
+        }
+      }
+    } catch (err) {
+      console.warn('Cloud upload failed, falling back to local IndexedDB:', err);
+    }
+
+    // 3. Fallback: Local IndexedDB (safe local storage, never base64 in localStorage!)
     const isImage = file.type.startsWith('image/');
     if (isImage) {
       try {

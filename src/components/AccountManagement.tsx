@@ -1573,28 +1573,61 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               if (!newExName.trim()) return;
 
                               const valImg = newExImage.trim() || 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200';
-                              const valVid = newExVideo.trim() || 'https://www.w3schools.com/html/mov_bbb.mp4';
+                              const valVid = newExVideo.trim();
                               const valDesc = newExDesc.trim() || 'Exercício personalizado adicionado pelo treinador Cadu Ponce.';
 
                               const newExObj = {
                                  id: editingExerciseOriginalTitle 
-                                      ? exercises.find(ex => ex.title === editingExerciseOriginalTitle)?.id || crypto.randomUUID()
+                                      ? exercises.find((ex: any) => ex.title === editingExerciseOriginalTitle)?.id || crypto.randomUUID()
                                       : crypto.randomUUID(),
                                  title: newExName.trim(),
                                  group: newExGroup,
                                  category: newExCategory,
                                  image: valImg,
-                                 isFavorite: editingExerciseOriginalTitle ? exercises.find(ex => ex.title === editingExerciseOriginalTitle)?.isFavorite || false : false,
+                                 isFavorite: editingExerciseOriginalTitle ? exercises.find((ex: any) => ex.title === editingExerciseOriginalTitle)?.isFavorite || false : false,
                                  isCustom: true,
                                  videoUrl: valVid,
                                  description: valDesc
                               };
 
                               if (editingExerciseOriginalTitle) {
-                                setExercises(prev => prev.map(ex => ex.title === editingExerciseOriginalTitle ? newExObj : ex));
+                                const origTitle = editingExerciseOriginalTitle;
+                                setExercises((prev: any[]) => prev.map(ex => ex.title === origTitle ? newExObj : ex));
+
+                                // Sync the new video/details to any routines that contain this exercise!
+                                setAdminRoutines((prev: any[]) => {
+                                  return prev.map(routine => {
+                                    let changed = false;
+                                    const updatedExs = routine.exercises.map((ex: any) => {
+                                      if (
+                                        (ex.name && ex.name.toLowerCase().trim() === origTitle.toLowerCase().trim()) ||
+                                        ex.id === newExObj.id
+                                      ) {
+                                        changed = true;
+                                        const isMp4 = valVid.includes('.mp4') || valVid.includes('.mov') || valVid.includes('supabase.co') || valVid.includes('files.catbox');
+                                        return {
+                                          ...ex,
+                                          name: newExObj.title,
+                                          videoUrl: isMp4 ? '' : valVid,
+                                          videoFileUrl: isMp4 ? valVid : '',
+                                          notes: newExObj.description || ex.notes,
+                                        };
+                                      }
+                                      return ex;
+                                    });
+
+                                    if (changed) {
+                                      const updatedRoutine = { ...routine, exercises: updatedExs };
+                                      storage.saveAdminRoutine(updatedRoutine);
+                                      return updatedRoutine;
+                                    }
+                                    return routine;
+                                  });
+                                });
+
                                 setEditingExerciseOriginalTitle(null);
                               } else {
-                                setExercises(prev => [newExObj, ...prev]);
+                                setExercises((prev: any[]) => [newExObj, ...prev]);
                                 // Auto switch to "Seus exercícios" tab so the new exercise is visible immediately
                                 setExerciseFilter('mine');
                                 setSelectedGroupFilter(null);
@@ -1938,7 +1971,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
                                              <ExerciseVideoPlayer 
                                                key={previewingExercise.title}
-                                               url={previewingExercise.videoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4'} 
+                                               url={previewingExercise.videoUrl || ''} 
                                                className="w-full h-full object-cover" 
                                              />
                                              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1.5 pointer-events-none">
