@@ -190,7 +190,7 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   }, []);
 
   if (activeSession) {
-    return <AdminWorkoutSession routine={activeSession} onClose={() => setActiveSession(null)} />;
+    return <AdminWorkoutSession routine={activeSession} onClose={() => setActiveSession(null)} trainerPhone={trainerPhone} />;
   }
 
   const groups = groupRoutines(adminRoutines);
