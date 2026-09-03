@@ -233,6 +233,9 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const [showVideo, setShowVideo] = useState(false);
   const [videoExIdx, setVideoExIdx] = useState(0);
 
+  // ── Finish screen ──────────────────────────────────────────────────────────
+  const [finishCardIdx, setFinishCardIdx] = useState(0);
+
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!sessionActive) return;
@@ -485,7 +488,12 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     const startOffset = jsDayToIdx(firstDayJs); // 0=Segunda ... 6=Domingo
 
     // Get real trained days from workout logs + today
-    const logs = storage.getWorkoutLogs();
+    let logs: any[] = [];
+    try {
+      const rawLogs = storage.getWorkoutLogs();
+      if (Array.isArray(rawLogs)) logs = rawLogs;
+    } catch {}
+
     const trainedDaysMonth = new Set<number>();
     trainedDaysMonth.add(today.getDate());
 
@@ -498,14 +506,17 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     mondayDate.setHours(0, 0, 0, 0);
 
     logs.forEach(l => {
-      if (!l.completedAt) return;
-      const d = new Date(l.completedAt);
-      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
-        trainedDaysMonth.add(d.getDate());
-      }
-      if (d >= mondayDate && d <= today) {
-        trainedWeekdays.add(jsDayToIdx(d.getDay()));
-      }
+      if (!l || !l.completedAt) return;
+      try {
+        const d = new Date(l.completedAt);
+        if (isNaN(d.getTime())) return;
+        if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+          trainedDaysMonth.add(d.getDate());
+        }
+        if (d >= mondayDate && d <= today) {
+          trainedWeekdays.add(jsDayToIdx(d.getDay()));
+        }
+      } catch {}
     });
 
     const daysCountMonth = trainedDaysMonth.size;
