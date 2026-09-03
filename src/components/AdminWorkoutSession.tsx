@@ -70,33 +70,60 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
   const ytId = m ? m[1] : null;
 
   return (
-    <div className="absolute inset-0 z-40 bg-black/92 flex flex-col">
-      <div className="flex items-center justify-between px-5 pt-6 pb-4">
-        <p className="text-white font-bold text-sm">{name}</p>
-        <button onClick={onClose} className="p-2 text-white/60 hover:text-white cursor-pointer">
-          <X className="w-5 h-5" />
+    <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-white/10 shrink-0">
+        <div>
+          <span className="text-white/50 text-[10px] uppercase font-bold tracking-widest block">Execução do Exercício</span>
+          <p className="text-white font-black text-base">{name}</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition"
+          aria-label="Fechar vídeo"
+        >
+          <X className="w-6 h-6" />
         </button>
       </div>
-      <div className="flex-1 flex items-center justify-center p-4">
+
+      {/* Video Content */}
+      <div className="flex-1 flex flex-col items-center justify-center p-4 min-h-0">
         {isYt && ytId ? (
-          <iframe
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-            className="w-full rounded-2xl"
-            style={{ aspectRatio: '16/9' }}
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-          />
+          <div className="w-full max-w-lg aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
+            <iframe
+              src={`https://www.youtube.com/embed/${ytId}?autoplay=1&playsinline=1`}
+              className="w-full h-full"
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+            />
+          </div>
         ) : resolved ? (
-          <video
-            src={resolved}
-            controls
-            autoPlay
-            className="w-full rounded-2xl"
-            style={{ maxHeight: '60vh' }}
-          />
+          <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
+            <video
+              src={resolved}
+              controls
+              autoPlay
+              playsInline
+              className="w-full max-h-[65vh] object-contain"
+            />
+          </div>
         ) : (
-          <p className="text-slate-400 text-sm">Vídeo não disponível</p>
+          <div className="text-center py-12 px-6">
+            <Dumbbell className="w-12 h-12 text-white/30 mx-auto mb-3" />
+            <p className="text-white/80 font-bold text-base">Vídeo não disponível</p>
+            <p className="text-white/50 text-xs mt-1">Nenhum vídeo demonstrativo encontrado para este exercício.</p>
+          </div>
         )}
+      </div>
+
+      {/* Bottom return button */}
+      <div className="p-4 shrink-0 max-w-md w-full mx-auto">
+        <button
+          onClick={onClose}
+          className="w-full py-3.5 bg-[#1976D2] hover:bg-[#1565C0] text-white font-black text-sm uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg"
+        >
+          Voltar para o Treino
+        </button>
       </div>
     </div>
   );
@@ -629,24 +656,26 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
           return (
             <div
               key={ex.id}
-              className="flex items-start gap-3 px-4 py-4 border-b border-gray-100 last:border-0"
+              className={`flex items-stretch gap-3 px-4 py-4 border-b border-gray-100 last:border-0 ${
+                done ? 'bg-slate-50/60' : 'bg-white'
+              }`}
             >
               {/* Checkbox circle */}
               <button
                 type="button"
                 onClick={() => toggleExercise(ex.id)}
-                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all cursor-pointer ${
+                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-all cursor-pointer ${
                   done
                     ? 'bg-[#2DA44E] border-[#2DA44E] text-white shadow-md shadow-green-200'
-                    : 'border-slate-300 bg-white hover:border-slate-400'
+                    : 'border-slate-300 bg-white hover:border-[#1976D2]'
                 }`}
               >
                 {done && <Check className="w-4 h-4 stroke-[2.5]" />}
               </button>
 
               {/* Exercise info */}
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-slate-900 text-[15px] leading-tight">
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <h3 className={`font-bold text-[15px] leading-tight ${done ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
                   {ex.name}
                 </h3>
 
@@ -687,14 +716,26 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                     </p>
                   )
                 )}
+
+                {/* Direct "Ver vídeo" button */}
+                {videoSrc && (
+                  <button
+                    type="button"
+                    onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
+                    className="flex items-center gap-1.5 text-[#1976D2] text-xs font-bold mt-2 hover:underline cursor-pointer w-fit"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Ver vídeo do exercício</span>
+                  </button>
+                )}
               </div>
 
-              {/* Video thumbnail (only when not completed) */}
-              {!done && videoSrc && (
+              {/* Video thumbnail on the right */}
+              {videoSrc && (
                 <VideoThumbnailButton
                   url={videoSrc}
                   name={ex.name}
-                  widthClass="w-[110px] h-[66px]"
+                  widthClass="w-[105px] min-h-[90px]"
                   onClick={() => { setVideoExIdx(i); setShowVideo(true); }}
                 />
               )}
