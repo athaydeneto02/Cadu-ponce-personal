@@ -8,7 +8,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, ChevronLeft, Check, Trophy, Dumbbell, Clock,
-  Play, Home, MessageCircle, Menu, Instagram, Calendar
+  Play, Home, MessageCircle, Menu, Instagram, Calendar,
+  Share2, Download, Loader2
 } from 'lucide-react';
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
@@ -282,6 +283,8 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
   // ── Finish screen ──────────────────────────────────────────────────────────
   const [finishCardIdx, setFinishCardIdx] = useState(0);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -383,18 +386,276 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     setScreen('finish');
   };
 
+  const generateStoryBlob = async (params: {
+    routineName: string;
+    duration: string;
+    startTime: string;
+    endTime: string;
+    dateStr: string;
+    totalExercises: number;
+  }): Promise<Blob> => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas not supported');
+
+    // Background Gradient (Dark Navy Fitness Aesthetic)
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, 1920);
+    bgGrad.addColorStop(0, '#0d1b2a');
+    bgGrad.addColorStop(0.35, '#1b263b');
+    bgGrad.addColorStop(0.75, '#1565C0');
+    bgGrad.addColorStop(1, '#0b132b');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    // Radial ambient light
+    const glow = ctx.createRadialGradient(540, 960, 80, 540, 960, 560);
+    glow.addColorStop(0, 'rgba(25, 118, 210, 0.45)');
+    glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 400, 1080, 1120);
+
+    // Top header branding
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.font = '900 46px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('CADU PONCE PERSONAL', 540, 230);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.font = '600 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(params.dateStr, 540, 290);
+
+    // Center Main White Card
+    const cardX = 90;
+    const cardY = 380;
+    const cardW = 900;
+    const cardH = 1140;
+    const cardR = 48;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 20;
+
+    // Rounded rectangle
+    ctx.beginPath();
+    ctx.moveTo(cardX + cardR, cardY);
+    ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, cardR);
+    ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, cardR);
+    ctx.arcTo(cardX, cardY + cardH, cardX, cardY, cardR);
+    ctx.arcTo(cardX, cardY, cardX + cardW, cardY, cardR);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Badge Circle
+    ctx.fillStyle = '#E3F2FD';
+    ctx.beginPath();
+    ctx.arc(540, 530, 65, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dumbbell icon
+    ctx.fillStyle = '#1976D2';
+    ctx.font = '60px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🏋️‍♂️', 540, 530);
+
+    // "Treino Concluído!"
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 58px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('Treino Concluído!', 540, 680);
+
+    // Routine name
+    ctx.fillStyle = '#1565C0';
+    ctx.font = '800 38px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    const nameToDraw = params.routineName.length > 28 ? params.routineName.slice(0, 26) + '...' : params.routineName;
+    ctx.fillText(nameToDraw.toUpperCase(), 540, 755);
+
+    // Big Duration Display Pill
+    ctx.fillStyle = '#f8fafc';
+    const pillX = 170;
+    const pillY = 820;
+    const pillW = 740;
+    const pillH = 260;
+    const pillR = 32;
+
+    ctx.beginPath();
+    ctx.moveTo(pillX + pillR, pillY);
+    ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + pillH, pillR);
+    ctx.arcTo(pillX + pillW, pillY + pillH, pillX, pillY + pillH, pillR);
+    ctx.arcTo(pillX, pillY + pillH, pillX, pillY, pillR);
+    ctx.arcTo(pillX, pillY, pillX + pillW, pillY, pillR);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '700 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('TEMPO DE TREINO', 540, 890);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 88px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(params.duration, 540, 1010);
+
+    // Time details row: Início & Fim
+    ctx.fillStyle = '#64748b';
+    ctx.font = '600 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Início: ' + params.startTime, 180, 1190);
+
+    ctx.textAlign = 'right';
+    ctx.fillText('Fim: ' + params.endTime, 900, 1190);
+
+    // Divider
+    ctx.strokeStyle = '#f1f5f9';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(180, 1260);
+    ctx.lineTo(900, 1260);
+    ctx.stroke();
+
+    // Exercises completed
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#16a34a';
+    ctx.font = '800 38px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(`✔ ${params.totalExercises} ${params.totalExercises === 1 ? 'exercício concluído' : 'exercícios concluídos'}`, 540, 1370);
+
+    // Bottom text outside card: Motivational hashtag
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 52px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('TÁ PAGO! 💪🔥', 540, 1640);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = '600 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('@cadu_ponce_personal', 540, 1715);
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error('Canvas toBlob failed'));
+      }, 'image/png');
+    });
+  };
+
   const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const handleShareWhatsApp = () => {
     const end = endTimestamp ?? new Date();
     const start = startTimestamp ?? new Date(end.getTime() - sessionTime * 1000);
     const text =
       `*Treino Concluído! 💪*\n` +
-      `${routine.name}\n` +
-      `📅 ${fmtDate(end)}\n` +
-      `⏱ Tempo: ${fmtDuration(sessionTime)}\n` +
-      `Início: ${fmtTimeWithSec(start)} | Fim: ${fmtTimeWithSec(end)}\n\n` +
+      `🏋️‍♂️ *${routine.name}*\n` +
+      `📅 Data: ${fmtDate(end)}\n` +
+      `⏱ Tempo: *${fmtDuration(sessionTime)}*\n` +
+      `🕒 Início: ${fmtTimeWithSec(start)} | Fim: ${fmtTimeWithSec(end)}\n` +
+      `✅ ${exercises.length} ${exercises.length === 1 ? 'exercício concluído' : 'exercícios concluídos'}\n\n` +
       `_Via Cadu Ponce Personal_`;
-    const phone = (trainerPhone || '').replace(/\D/g, '') || '5511999999999';
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+    // Opening without a hardcoded phone number opens the WhatsApp contact/group picker
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleShareStories = async () => {
+    setIsGeneratingImage(true);
+    try {
+      const end = endTimestamp ?? new Date();
+      const start = startTimestamp ?? new Date(end.getTime() - sessionTime * 1000);
+      const blob = await generateStoryBlob({
+        routineName: routine.name,
+        duration: fmtDuration(sessionTime),
+        startTime: fmtTime(start),
+        endTime: fmtTime(end),
+        dateStr: fmtDate(end),
+        totalExercises: exercises.length,
+      });
+
+      const file = new File([blob], 'treino_cadu_ponce_stories.png', { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Treino Concluído!',
+          text: `Treino pago! 💪 ${routine.name}`,
+        });
+      } else {
+        // Fallback: Download high-res Story image and open Instagram
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'treino_cadu_ponce_stories.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setTimeout(() => {
+          window.open('https://instagram.com', '_blank');
+        }, 600);
+      }
+    } catch (err) {
+      console.error('Stories share error:', err);
+    } finally {
+      setIsGeneratingImage(false);
+      setShowShareModal(false);
+    }
+  };
+
+  const handleShareNative = async () => {
+    setIsGeneratingImage(true);
+    try {
+      const end = endTimestamp ?? new Date();
+      const start = startTimestamp ?? new Date(end.getTime() - sessionTime * 1000);
+      const text =
+        `*Treino Concluído! 💪*\n` +
+        `🏋️‍♂️ ${routine.name}\n` +
+        `⏱ Tempo: ${fmtDuration(sessionTime)}\n` +
+        `_Via Cadu Ponce Personal_`;
+
+      const blob = await generateStoryBlob({
+        routineName: routine.name,
+        duration: fmtDuration(sessionTime),
+        startTime: fmtTime(start),
+        endTime: fmtTime(end),
+        dateStr: fmtDate(end),
+        totalExercises: exercises.length,
+      });
+
+      const file = new File([blob], 'treino_cadu_ponce.png', { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Treino Concluído!',
+          text,
+        });
+      } else if (navigator.share) {
+        await navigator.share({
+          title: 'Treino Concluído!',
+          text,
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'treino_cadu_ponce.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingImage(false);
+      setShowShareModal(false);
+    }
   };
 
   // ── YouTube helper ─────────────────────────────────────────────────────────
@@ -818,9 +1079,10 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         <div className="px-4 pb-3 space-y-3 shrink-0">
           <button
             onClick={handleShare}
-            className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-3.5 rounded-xl text-base transition cursor-pointer shadow-md"
+            className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-3.5 rounded-xl text-base transition cursor-pointer shadow-md flex items-center justify-center gap-2"
           >
-            Compartilhar
+            <Share2 className="w-5 h-5" />
+            <span>Compartilhar</span>
           </button>
           <button
             onClick={onClose}
@@ -829,6 +1091,97 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
             Fechar
           </button>
         </div>
+
+        {/* ── Share Modal (WhatsApp & Instagram Stories) ────────────────────── */}
+        {showShareModal && (
+          <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div>
+                  <h3 className="text-slate-900 font-black text-lg">Compartilhar Treino</h3>
+                  <p className="text-slate-500 text-xs">Escolha como deseja compartilhar seu resultado</p>
+                </div>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                {/* WhatsApp Option (Choose ANY person or group) */}
+                <button
+                  onClick={() => {
+                    handleShareWhatsApp();
+                    setShowShareModal(false);
+                  }}
+                  className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl border border-emerald-100 bg-emerald-50/60 hover:bg-emerald-100/60 transition text-left cursor-pointer group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-[#25D366] flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <MessageCircle className="w-6 h-6 fill-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-slate-900 font-bold text-sm group-hover:text-emerald-700 transition">
+                      WhatsApp (Escolher contato)
+                    </h4>
+                    <p className="text-slate-500 text-xs">
+                      Envie o resumo para qualquer pessoa ou grupo
+                    </p>
+                  </div>
+                </button>
+
+                {/* Instagram Stories Option */}
+                <button
+                  onClick={handleShareStories}
+                  disabled={isGeneratingImage}
+                  className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50/60 via-purple-50/40 to-amber-50/40 hover:from-pink-100/60 transition text-left cursor-pointer group disabled:opacity-50"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#fd5949] via-[#d6249f] to-[#285AEB] flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Instagram className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-slate-900 font-bold text-sm group-hover:text-pink-700 transition flex items-center gap-1.5">
+                      <span>Instagram Stories</span>
+                      {isGeneratingImage && <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-600" />}
+                    </h4>
+                    <p className="text-slate-500 text-xs">
+                      Gera imagem vertical no formato Stories para postar
+                    </p>
+                  </div>
+                </button>
+
+                {/* Other Apps / Native Share Option */}
+                <button
+                  onClick={handleShareNative}
+                  disabled={isGeneratingImage}
+                  className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition text-left cursor-pointer group disabled:opacity-50"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-[#1976D2] flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Share2 className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-slate-900 font-bold text-sm group-hover:text-[#1976D2] transition">
+                      Outros aplicativos / Baixar imagem
+                    </h4>
+                    <p className="text-slate-500 text-xs">
+                      Compartilhe ou salve a imagem em alta resolução
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <BottomNav onHome={onClose} />
       </div>
