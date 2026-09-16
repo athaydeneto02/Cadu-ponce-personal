@@ -88,9 +88,9 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          // Fetch profile AND workouts in parallel — much faster than sequential
+          // Fetch profile AND workouts in parallel — session.user avoids extra getUser() round-trip
           const [profile, fetchedWorkouts] = await Promise.all([
-            storage.fetchCurrentProfile(),
+            storage.fetchCurrentProfile(session.user),
             storage.fetchWorkouts(session.user.id),
           ]);
 

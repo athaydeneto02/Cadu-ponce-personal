@@ -179,27 +179,33 @@ export const storage = {
     localStorage.setItem(CACHE_KEYS.USER, JSON.stringify(user));
   },
 
-  /** Fetches the full profile from Supabase for the currently authenticated user. */
-  fetchCurrentProfile: async (): Promise<UserProfile | null> => {
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData.user) return null;
+  /** Fetches the full profile from Supabase for the currently authenticated user.
+   *  Pass sessionUser from onAuthStateChange to skip an extra getUser() round-trip. */
+  fetchCurrentProfile: async (sessionUser?: { id: string; email?: string; created_at?: string; user_metadata?: Record<string, unknown> }): Promise<UserProfile | null> => {
+    // Use the provided session user or fall back to getUser() (slower)
+    let authUser = sessionUser;
+    if (!authUser) {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) return null;
+      authUser = authData.user;
+    }
 
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', authData.user.id)
+      .eq('id', authUser.id)
       .single();
 
     if (error || !data) {
-      const email = authData.user.email || '';
-      const isCaduAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno')) || authData.user.user_metadata?.role === 'admin';
+      const email = authUser.email || '';
+      const isCaduAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno')) || authUser.user_metadata?.role === 'admin';
       const fallbackProfile: UserProfile = {
-        uid: authData.user.id,
-        name: authData.user.user_metadata?.name || 'Cadu Ponce',
+        uid: authUser.id,
+        name: (authUser.user_metadata?.name as string) || 'Cadu Ponce',
         email,
         role: isCaduAdmin ? 'admin' : 'student',
         status: 'active',
-        createdAt: authData.user.created_at || new Date().toISOString()
+        createdAt: authUser.created_at || new Date().toISOString()
       };
       storage.saveUser(fallbackProfile);
       return fallbackProfile;
@@ -591,12 +597,16 @@ export const storage = {
 
   ADMIN_ROUTINES_KEY: 'cadu_ponce_admin_routines',
 
-  /** Fetches all admin routines with their exercises from Supabase. */
+  /** Fetches all admin routines with their exercises from Supabase.
+   *  Runs admin_routines, admin_exercises, and agenda_events in PARALLEL for speed. */
   fetchAdminRoutines: async (): Promise<AdminRoutine[]> => {
-    const { data: routineRows, error: rErr } = await supabase
-      .from('admin_routines')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Fire all 3 Supabase queries at the same time instead of waiting for each
+    const [routinesResult, agendaResult] = await Promise.all([
+      supabase.from('admin_routines').select('*').order('created_at', { ascending: false }),
+      supabase.from('agenda_events').select('*').in('type', ['assigned_routine', 'deleted_routine']).order('created_at', { ascending: true }),
+    ]);
+
+    const { data: routineRows, error: rErr } = routinesResult;
 
     if (rErr || !routineRows) {
       console.warn('fetchAdminRoutines fallback to local:', rErr?.message);
@@ -604,6 +614,7 @@ export const storage = {
       return cached ? JSON.parse(cached) : [];
     }
 
+    // Fetch exercises for all routines in parallel with the agenda query (already done above)
     const routineIds = routineRows.map(r => r.id as string);
     const exercisesByRoutine: Record<string, AdminExercise[]> = {};
 
@@ -624,8 +635,6 @@ export const storage = {
     }
 
     // Merge Supabase data with local cache:
-    // Local cache may have new-column data (dayOfWeek, muscleGroup, etc.)
-    // that wasn't stored in Supabase yet (if columns don't exist).
     const localCached: AdminRoutine[] = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
     const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
     const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
@@ -661,18 +670,13 @@ export const storage = {
 
     const merged = [...routines, ...unsyncedLocals];
 
-    // Cloud sync via agenda_events (seamless cross-device sync with no RLS hurdles)
+    // Process agenda_events (already fetched in parallel above)
     try {
-      const { data: cloudEvents } = await supabase
-        .from('agenda_events')
-        .select('*')
-        .in('type', ['assigned_routine', 'deleted_routine'])
-        .order('created_at', { ascending: true });
+      const { data: cloudEvents } = agendaResult;
 
       if (cloudEvents && cloudEvents.length > 0) {
         for (const ev of cloudEvents) {
           if (ev.type === 'deleted_routine') {
-            // ONLY track the unique deleted routine ID stored in notes
             if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
           }
         }
@@ -714,6 +718,7 @@ export const storage = {
 
     return finalRoutines;
   },
+
 
   /** Returns cached routines (sync, used while async fetch is in-flight). */
   getAdminRoutines: (): AdminRoutine[] => {
