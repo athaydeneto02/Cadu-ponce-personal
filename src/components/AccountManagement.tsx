@@ -1162,7 +1162,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <div className="flex-1 overflow-y-auto pb-4 scrollbar-none">
                     
                     {/* CONDITIONAL RENDERING: LOADING VS WELCOME VS DASHBOARD VS STUDENT LIST */}
-                    {isLoadingUsers ? (
+                    {isLoadingUsers && users.filter(u => u.role === 'student').length === 0 ? (
                        /* LOADING VIEW */
                        <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
                           <div className="w-10 h-10 border-4 border-[#E23737] border-t-transparent rounded-full animate-spin mb-4" />

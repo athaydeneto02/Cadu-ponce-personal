@@ -152,6 +152,8 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   const [evolutionRoutine, setEvolutionRoutine] = useState<AdminRoutine | null>(null);
   const [feedbackRoutine, setFeedbackRoutine] = useState<AdminRoutine | null>(null);
 
+  const [isLoadingRoutines, setIsLoadingRoutines] = useState(() => storage.getAdminRoutines().length === 0);
+
   useEffect(() => {
     const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
     const allUsers = storage.getUsersList();
@@ -181,12 +183,14 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
     };
 
     // 1. Initial cached filter
-    setAdminRoutines(loadAndFilter(storage.getAdminRoutines()));
+    const cachedRoutines = storage.getAdminRoutines();
+    setAdminRoutines(loadAndFilter(cachedRoutines));
+    if (cachedRoutines.length > 0) setIsLoadingRoutines(false);
 
     // 2. Fetch fresh from cloud and apply updated deletion filters
     storage.fetchAdminRoutines().then(freshAll => {
       setAdminRoutines(loadAndFilter(freshAll));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setIsLoadingRoutines(false));
   }, []);
 
   if (activeSession) {
@@ -227,7 +231,12 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
 
       {/* ── Main Content Area ────────────────────────────────────────────── */}
       <div className="p-4 space-y-4 max-w-lg mx-auto w-full">
-        {groups.length === 0 ? (
+        {isLoadingRoutines ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-slate-500 font-medium animate-pulse">Buscando seus treinos...</p>
+          </div>
+        ) : groups.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center space-y-4 my-8">
             <div className="w-16 h-16 rounded-full bg-blue-50 text-[#0070f3] flex items-center justify-center mx-auto">
               <Dumbbell className="w-8 h-8" />

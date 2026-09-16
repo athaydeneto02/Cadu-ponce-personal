@@ -88,28 +88,56 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          // Fetch profile AND workouts in parallel — session.user avoids extra getUser() round-trip
-          const [profile, fetchedWorkouts] = await Promise.all([
-            storage.fetchCurrentProfile(session.user),
-            storage.fetchWorkouts(session.user.id),
-          ]);
-
-          if (profile) {
-            setUser(profile);
-            storage.saveUser(profile); // keep cache fresh
+          // ── INSTANT: show UI right away from session + localStorage cache ──
+          // Don't wait for Supabase DB queries before rendering the app
+          const cached = storage.getUser();
+          if (cached && cached.uid === session.user.id) {
+            // Returning user — render immediately from cache
+            setUser(cached);
+            setWorkouts(storage.getWorkouts());
             setIsAuthenticated(true);
-            setWorkouts(fetchedWorkouts);
-
-
+            setIsLoading(false);
+          } else {
+            // First login — build a quick profile from session metadata (no DB needed)
+            const email = session.user.email || '';
+            const isAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno'))
+              || session.user.user_metadata?.role === 'admin';
+            const quickProfile: UserProfile = {
+              uid: session.user.id,
+              email,
+              name: (session.user.user_metadata?.name as string) || email.split('@')[0] || 'Usuário',
+              role: isAdmin ? 'admin' : 'student',
+              status: 'active',
+              createdAt: session.user.created_at || new Date().toISOString(),
+            };
+            storage.saveUser(quickProfile);
+            setUser(quickProfile);
+            setWorkouts(storage.getWorkouts());
+            setIsAuthenticated(true);
+            setIsLoading(false);
           }
+
+          // ── BACKGROUND: fetch full profile + workouts silently ──
+          // Update UI when fresh data arrives without blocking login
+          storage.fetchCurrentProfile(session.user).then(profile => {
+            if (profile) {
+              setUser(profile);
+              storage.saveUser(profile);
+            }
+          }).catch(() => {});
+
+          storage.fetchWorkouts(session.user.id).then(fetchedWorkouts => {
+            setWorkouts(fetchedWorkouts);
+          }).catch(() => {});
+
         } else {
           // Signed out — clear everything
           setUser(null);
           setIsAuthenticated(false);
           setWorkouts([]);
           setIsManagingAccounts(false);
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     );
 
