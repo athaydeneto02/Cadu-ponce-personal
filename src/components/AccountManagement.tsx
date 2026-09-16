@@ -232,6 +232,7 @@ function ExerciseImagePreview({ url }: { url?: string }) {
 
 export default function AccountManagement({ onClose, isDark }: AccountManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [studentTab, setStudentTab] = useState<'alunos' | 'grupos'>('alunos');
   const [studentGroupSearch, setStudentGroupSearch] = useState('');
@@ -794,6 +795,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       }
     }).catch(err => {
       console.error('Error fetching data for admin:', err);
+    }).finally(() => {
+      setIsLoadingUsers(false);
     });
   }, []);
 
@@ -1158,8 +1161,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   {/* SCROLLABLE SCENE CONTAINER */}
                   <div className="flex-1 overflow-y-auto pb-4 scrollbar-none">
                     
-                    {/* CONDITIONAL RENDERING: WELCOME VS DASHBOARD VS STUDENT LIST */}
-                    {users.filter(u => u.role === 'student').length === 0 ? (
+                    {/* CONDITIONAL RENDERING: LOADING VS WELCOME VS DASHBOARD VS STUDENT LIST */}
+                    {isLoadingUsers ? (
+                       /* LOADING VIEW */
+                       <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
+                          <div className="w-10 h-10 border-4 border-[#E23737] border-t-transparent rounded-full animate-spin mb-4" />
+                          <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Carregando...</span>
+                       </div>
+                    ) : users.filter(u => u.role === 'student').length === 0 ? (
                        /* WELCOME VIEW */
                        <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
                           <div className="w-24 h-24 bg-[#E23737] rounded-full flex items-center justify-center shadow-lg mb-8">
