@@ -607,15 +607,15 @@ export const storage = {
     ]);
 
     const { data: routineRows, error: rErr } = routinesResult;
+    let safeRoutineRows = routineRows;
 
-    if (rErr || !routineRows) {
-      console.warn('fetchAdminRoutines fallback to local:', rErr?.message);
-      const cached = localStorage.getItem('cadu_ponce_admin_routines');
-      return cached ? JSON.parse(cached) : [];
+    if (rErr || !safeRoutineRows) {
+      console.warn('fetchAdminRoutines fallback for admin_routines table:', rErr?.message);
+      safeRoutineRows = []; // Proceed with empty array so agenda_events can still be parsed!
     }
 
     // Fetch exercises for all routines in parallel with the agenda query (already done above)
-    const routineIds = routineRows.map(r => r.id as string);
+    const routineIds = safeRoutineRows.map(r => r.id as string);
     const exercisesByRoutine: Record<string, AdminExercise[]> = {};
 
     if (routineIds.length > 0) {
@@ -646,7 +646,7 @@ export const storage = {
     };
 
     const validLocals = localCached.filter(l => !isDeleted(l.id));
-    const validSupabaseRows = routineRows.filter(r => !isDeleted(r.id as string));
+    const validSupabaseRows = safeRoutineRows.filter(r => !isDeleted(r.id as string));
     const supabaseIds = new Set(validSupabaseRows.map(r => r.id as string));
     const unsyncedLocals = validLocals.filter(l => !supabaseIds.has(l.id));
 
