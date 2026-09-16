@@ -976,12 +976,16 @@ export const storage = {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data) {
-      const cached = localStorage.getItem('cadu_ponce_exercises_v3');
-      return cached ? JSON.parse(cached) : [];
+    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const localExercises: any[] = cached ? JSON.parse(cached) : [];
+
+    if (error || !data || data.length === 0) {
+      if (error) console.warn('fetchCustomExercises error:', error.message);
+      // If DB is empty or fails, return local cache (do NOT overwrite it with [])
+      return localExercises;
     }
 
-    const exercises = data.map(row => ({
+    const dbExercises = data.map(row => ({
       id: row.id,
       title: row.title,
       group: row.group,
@@ -989,12 +993,17 @@ export const storage = {
       videoUrl: row.video_url ?? undefined,
       videoFileUrl: row.video_file_url ?? undefined,
       isCustom: true,
-      image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200', // Default image since it's not in DB
-      description: 'Exercício personalizado adicionado pelo treinador.', // Default description
+      image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200',
+      description: 'Exercício personalizado adicionado pelo treinador.',
     }));
 
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
-    return exercises;
+    // Merge DB exercises with local exercises
+    const dbIds = new Set(dbExercises.map(e => e.id));
+    const unsyncedLocals = localExercises.filter(e => !dbIds.has(e.id));
+    const merged = [...dbExercises, ...unsyncedLocals];
+
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(merged));
+    return merged;
   },
 
   /** Upserts a custom exercise to Supabase and updates local cache safely. */
