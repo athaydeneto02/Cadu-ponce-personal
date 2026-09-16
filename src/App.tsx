@@ -204,6 +204,22 @@ export default function App() {
     return <Login onLogin={handleLogin} onAcquireClick={() => setShowAcquire(true)} />;
   }
 
+  // PERSONAL TRAINER / ADMIN: Entra DIRETO no Painel do Administrador (não possui treinos de aluno)
+  if (user?.role === 'admin') {
+    return (
+      <AccountManagement 
+        isDark={theme === 'dark'}
+        onClose={async () => {
+          await supabase.auth.signOut();
+          localStorage.clear();
+          setIsAuthenticated(false);
+          setIsManagingAccounts(false);
+          setUser(null);
+        }}
+      />
+    );
+  }
+
   const renderContent = () => {
     if (activeWorkout) {
       return (

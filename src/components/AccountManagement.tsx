@@ -1116,9 +1116,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           </div>
           <button 
             onClick={onClose}
-            className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80"
+            className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
+            title="Encerrar sessão e sair da conta"
           >
-            Voltar ao App
+            <Lock className="w-3.5 h-3.5" /> Sair
           </button>
         </div>
 
@@ -3296,26 +3297,26 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   className="flex-1 flex flex-col justify-center px-5 space-y-5 text-left"
                 >
                   <div className="text-center space-y-1.5">
-                    <Sparkles className="w-10 h-10 text-red-600 mx-auto animate-bounce" />
-                    <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">SAIR DO CONSOLE</h3>
+                    <Lock className="w-10 h-10 text-red-500 mx-auto" />
+                    <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">SAIR DA CONTA</h3>
                     <p className="text-[10.5px] text-slate-400 font-bold uppercase tracking-wider max-w-xs mx-auto text-center">
-                      Deseja retornar para a sua visualização normal de aluno principal?
+                      Deseja encerrar sua sessão e desconectar do painel de administrador?
                     </p>
                   </div>
 
                   <div className="space-y-3">
                     <button 
                       onClick={onClose}
-                      className="w-full py-4 text-center bg-red-650 hover:bg-red-500 text-white font-black uppercase text-xs tracking-wider rounded-2xl shadow-md transition"
+                      className="w-full py-4 text-center bg-red-650 hover:bg-red-500 text-white font-black uppercase text-xs tracking-wider rounded-2xl shadow-md transition cursor-pointer"
                     >
-                      Voltar ao App de Aluno
+                      Sair da Conta (Logout)
                     </button>
                     
                     <button 
                       onClick={() => setActiveTab('home')}
-                      className="w-full py-4 text-center bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-black uppercase text-xs tracking-wider rounded-2xl transition"
+                      className="w-full py-4 text-center bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-black uppercase text-xs tracking-wider rounded-2xl transition cursor-pointer"
                     >
-                      Continuar no Painel Cadu
+                      Continuar no Painel
                     </button>
                   </div>
                 </motion.div>

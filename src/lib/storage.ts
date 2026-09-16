@@ -95,7 +95,7 @@ function rowToUserProfile(row: Record<string, unknown>): UserProfile {
     weight: (row.weight as number) ?? undefined,
     height: (row.height as number) ?? undefined,
     trainerPhone: (row.trainer_phone as string) ?? undefined,
-    role: row.role as 'admin' | 'student',
+    role: (row.role === 'admin' || (typeof row.email === 'string' && row.email.toLowerCase().includes('cadu') && !row.email.toLowerCase().includes('aluno'))) ? 'admin' : ((row.role as 'admin' | 'student') ?? 'student'),
     status: (row.status as UserProfile['status']) ?? 'active',
     modality: (row.modality as UserProfile['modality']) ?? undefined,
     metadata: (row.metadata as UserProfile['metadata']) ?? {},
@@ -190,7 +190,20 @@ export const storage = {
       .eq('id', authData.user.id)
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      const email = authData.user.email || '';
+      const isCaduAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno')) || authData.user.user_metadata?.role === 'admin';
+      const fallbackProfile: UserProfile = {
+        uid: authData.user.id,
+        name: authData.user.user_metadata?.name || 'Cadu Ponce',
+        email,
+        role: isCaduAdmin ? 'admin' : 'student',
+        status: 'active',
+        createdAt: authData.user.created_at || new Date().toISOString()
+      };
+      storage.saveUser(fallbackProfile);
+      return fallbackProfile;
+    }
     const profile = rowToUserProfile(data);
     storage.saveUser(profile);
     return profile;
