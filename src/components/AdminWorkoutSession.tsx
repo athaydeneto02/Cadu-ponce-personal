@@ -5,11 +5,11 @@
  * Fluxo: intro (visualização) → session (checklist + timer) → modal de conclusão → finish (cards deslizáveis)
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, ChevronLeft, Check, Trophy, Dumbbell, Clock,
   Play, Home, MessageCircle, Menu, Instagram, Calendar,
-  Share2, Download, Loader2
+  Share2, Download, Loader2, Volume2, VolumeX, RotateCcw
 } from 'lucide-react';
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
@@ -123,6 +123,34 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
   const m = resolved ? resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/) : null;
   const ytId = m ? m[1] : null;
 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setHasError(false);
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      videoRef.current.play().catch(() => {
+        // Autoplay may be restricted if user hasn't interacted yet
+      });
+    }
+  }, [resolved, reloadKey]);
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      const next = !videoRef.current.muted;
+      videoRef.current.muted = next;
+      setIsMuted(next);
+    } else {
+      setIsMuted(!isMuted);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col">
       {/* Header */}
@@ -152,14 +180,84 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
             />
           </div>
         ) : resolved ? (
-          <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
-            <video
-              src={resolved}
-              controls
-              autoPlay
-              playsInline
-              className="w-full max-h-[65vh] object-contain"
-            />
+          <div className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-black flex items-center justify-center min-h-[260px]">
+            {isLoading && !hasError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 z-10 pointer-events-none">
+                <Loader2 className="w-8 h-8 text-white animate-spin" />
+                <span className="text-white/80 text-xs font-bold tracking-wide">Carregando execução...</span>
+              </div>
+            )}
+
+            {hasError ? (
+              <div className="text-center py-10 px-6 space-y-3 z-10">
+                <Dumbbell className="w-12 h-12 text-white/40 mx-auto" />
+                <p className="text-white font-bold text-sm">Não foi possível reproduzir o vídeo</p>
+                <p className="text-white/50 text-xs max-w-xs mx-auto">
+                  Pode ser uma oscilação na conexão com o servidor do vídeo.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReloadKey(k => k + 1);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Tentar novamente
+                  </button>
+                  <a
+                    href={resolved}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#1976D2] hover:bg-[#1565C0] text-white rounded-xl text-xs font-bold transition"
+                  >
+                    Abrir vídeo direto
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <>
+                <video
+                  key={`${resolved}-${reloadKey}`}
+                  ref={videoRef}
+                  src={resolved}
+                  controls
+                  autoPlay
+                  muted={isMuted}
+                  loop
+                  playsInline
+                  preload="auto"
+                  onWaiting={() => setIsLoading(true)}
+                  onCanPlay={() => setIsLoading(false)}
+                  onPlaying={() => setIsLoading(false)}
+                  onLoadedData={() => setIsLoading(false)}
+                  onError={() => {
+                    setIsLoading(false);
+                    setHasError(true);
+                  }}
+                  className="w-full max-h-[65vh] object-contain"
+                />
+
+                {/* Floating Sound Toggle Button */}
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className="absolute top-3 right-3 z-20 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-sm transition cursor-pointer border border-white/10"
+                >
+                  {isMuted ? (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                      <span>Ativar Som</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Com Som</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="text-center py-12 px-6">
