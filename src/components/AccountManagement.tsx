@@ -1556,15 +1556,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                            const uniqueGroups = Array.from(new Set(exercises.map(e => e.group)));
                            const uniqueCategories = Array.from(new Set(exercises.map(e => e.category)));
 
+                           // Limit rendering to prevent UI freeze when there are hundreds of exercises
+                           const limitedExercises = filteredExercises.slice(0, 30);
+                           const hasMoreExercises = filteredExercises.length > 30;
+
                            // Group exercises by active tab ('grupos' or 'categorias')
-                           const grouped = {};
-                           filteredExercises.forEach(ex => {
+                           const grouped: Record<string, any[]> = {};
+                           limitedExercises.forEach(ex => {
                               const key = exerciseTab === 'grupos' ? ex.group : ex.category;
                               if (!grouped[key]) grouped[key] = [];
                               grouped[key].push(ex);
                            });
 
-                           const handleToggleFavorite = (title, e) => {
+                           const handleToggleFavorite = (title: string, e: any) => {
                               e.stopPropagation();
                               setExercises(prev => prev.map(ex => 
                                  ex.title === title ? { ...ex, isFavorite: !ex.isFavorite } : ex
