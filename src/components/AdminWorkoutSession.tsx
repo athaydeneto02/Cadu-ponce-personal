@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
-import { useMediaUrl } from '../lib/mediaDb';
+import { useMediaUrl, getCachedVideoBlobUrl } from '../lib/mediaDb';
 import confetti from 'canvas-confetti';
 
 interface AdminWorkoutSessionProps {
@@ -124,22 +124,44 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
   const ytId = m ? m[1] : null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoSrc, setVideoSrc] = useState<string>(resolved || '');
   const [isMuted, setIsMuted] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (!resolved || isYt) {
+      setVideoSrc(resolved || '');
+      setIsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
     setIsLoading(true);
     setHasError(false);
+
+    // Fast download & cache in device memory/IndexedDB (bypasses range throttles)
+    getCachedVideoBlobUrl(resolved).then((blobUrl) => {
+      if (!isMounted) return;
+      setVideoSrc(blobUrl);
+      setIsLoading(false);
+    }).catch(() => {
+      if (!isMounted) return;
+      setVideoSrc(resolved);
+      setIsLoading(false);
+    });
+
+    return () => { isMounted = false; };
+  }, [resolved, isYt, reloadKey]);
+
+  useEffect(() => {
     if (videoRef.current) {
       videoRef.current.defaultMuted = true;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(() => {
-        // Autoplay may be restricted if user hasn't interacted yet
-      });
+      videoRef.current.muted = isMuted;
+      videoRef.current.play().catch(() => {});
     }
-  }, [resolved, reloadKey]);
+  }, [videoSrc, isMuted]);
 
   const toggleMute = () => {
     if (videoRef.current) {
@@ -218,9 +240,9 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
             ) : (
               <>
                 <video
-                  key={`${resolved}-${reloadKey}`}
+                  key={`${videoSrc}-${reloadKey}`}
                   ref={videoRef}
-                  src={resolved}
+                  src={videoSrc}
                   controls
                   autoPlay
                   muted={isMuted}
@@ -409,6 +431,17 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
       setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 50, origin: { x: 1 } }), 700);
     }
   }, [screen]);
+
+  // Pre-carrega em segundo plano os vídeos dos exercícios da rotina para o celular rodar instantâneo
+  useEffect(() => {
+    if (!exercises || exercises.length === 0) return;
+    exercises.forEach(ex => {
+      const v = getExerciseVideo(ex);
+      if (v && !v.includes('youtube') && !v.includes('youtu.be')) {
+        getCachedVideoBlobUrl(v).catch(() => {});
+      }
+    });
+  }, [exercises]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const toggleExercise = (exId: string) => {
