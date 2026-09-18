@@ -1101,6 +1101,28 @@ export const storage = {
     const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
     const BUCKET = 'exercise-videos';
 
+    // 0. Try direct Supabase Storage bucket (fastest, secure, 100% native Supabase!)
+    try {
+      const { data: uploadData, error: sErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, file, {
+          cacheControl: '31536000',
+          upsert: true,
+          contentType: file.type || 'video/mp4',
+        });
+
+      if (!sErr && uploadData) {
+        const { data: publicData } = supabase.storage
+          .from(BUCKET)
+          .getPublicUrl(path);
+        if (publicData?.publicUrl) {
+          return publicData.publicUrl;
+        }
+      }
+    } catch (storageErr) {
+      console.warn('Supabase storage upload failed, trying /api/upload:', storageErr);
+    }
+
     // 1. Try our same-origin /api/upload endpoint (works on Vercel and local dev, zero CORS!)
     try {
       const res = await fetch(`/api/upload?name=${encodeURIComponent(file.name || `${exerciseId}.${ext}`)}`, {
