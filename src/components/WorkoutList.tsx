@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Workout, AdminRoutine } from '../types';
 import { storage } from '../lib/storage';
+import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import AdminWorkoutSession from './AdminWorkoutSession';
 
 interface WorkoutListProps {
@@ -490,7 +491,7 @@ function FeedbackModal({
 
   const handleSubmit = () => {
     const text = `*Feedback de Treino - Cadu Ponce Personal*\nTreino: ${routine.name}\nAvaliação: ${'⭐'.repeat(rating)}\nMensagem: ${feedbackText || 'Sem observações adicionais.'}`;
-    const phone = (trainerPhone || '5511999999999').replace(/\D/g, '');
+    const phone = (trainerPhone || TRAINER_CONFIG.phone).replace(/\D/g, '');
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
     setSubmitted(true);

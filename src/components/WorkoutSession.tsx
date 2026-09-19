@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, Timer, ChevronLeft, ChevronRight, Info, Trophy, Target, Dumbbell, Star, Flame, Download } from 'lucide-react';
+import { X, Check, Timer, ChevronLeft, ChevronRight, Info, Trophy, Target, Dumbbell, Star, Flame, Download, MessageCircle } from 'lucide-react';
 import { Workout, Exercise } from '../types';
 import { storage } from '../lib/storage';
+import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
@@ -229,6 +230,15 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         const updatedNotifs = [newNotifItem, ...adminNotifs];
         localStorage.setItem(adminNotifsKey, JSON.stringify(updatedNotifs));
         
+        // Dispatch to Supabase cloud so the trainer's phone receives it immediately
+        storage.notifyTrainerWorkoutCompleted({
+          studentName: currentStudentName,
+          studentId: 'student',
+          routineName: workout.name || 'Treino do Dia',
+          durationFormatted: `${Math.round(timer / 60)} min` || '35 min',
+          durationSeconds: timer,
+        });
+
         // Dispatch custom event to let the rest of the application know a new workout completion happened of student!
         window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: newNotifItem }));
       } catch (err) {
@@ -343,9 +353,19 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
             </p>
           </div>
 
+          <a 
+            href={`https://wa.me/${TRAINER_CONFIG.phone}?text=${encodeURIComponent(`Olá Cadu! Concluí o treino "${workout.name}" (${Math.round(timer / 60)} min) pelo app! 💪🔥`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full max-w-sm mb-3 bg-[#25D366] hover:bg-[#1EBE5D] text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all uppercase italic tracking-tighter flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <MessageCircle className="w-5 h-5 fill-white" />
+            <span>Avisar o Cadu no WhatsApp</span>
+          </a>
+
           <button 
             onClick={onClose}
-            className="w-full max-w-sm bg-white text-slate-950 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all uppercase italic tracking-tighter"
+            className="w-full max-w-sm bg-white text-slate-950 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all uppercase italic tracking-tighter cursor-pointer"
           >
             VOLTAR PARA O INÍCIO
           </button>

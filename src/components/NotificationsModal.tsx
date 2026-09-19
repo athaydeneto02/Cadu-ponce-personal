@@ -23,10 +23,13 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { storage } from '../lib/storage';
 
 interface NotificationItem {
   id: string;
   studentName: string;
+  studentId?: string;
+  studentPhone?: string;
   workoutTitle: string;
   duration?: string;
   intensity?: 'high' | 'medium' | 'low';
@@ -145,16 +148,39 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
     localStorage.setItem(`cadu_notifs_${userRole}`, JSON.stringify(notifications));
   }, [notifications, userRole]);
 
+  // Load live cloud notifications for admin
+  useEffect(() => {
+    if (userRole === 'admin') {
+      storage.fetchTrainerNotifications().then((cloudItems: any[]) => {
+        if (cloudItems && cloudItems.length > 0) {
+          setNotifications(prev => {
+            const cloudIds = new Set(cloudItems.map((c: any) => c.id));
+            const remaining = prev.filter(p => !cloudIds.has(p.id));
+            return [...cloudItems, ...remaining];
+          });
+        }
+      });
+    }
+  }, [userRole]);
+
   // Mark single as read
   const toggleRead = (id: string) => {
     setNotifications(prev => prev.map(notif => 
       notif.id === id ? { ...notif, isRead: true } : notif
     ));
+    if (userRole === 'admin') {
+      storage.markTrainerNotificationRead(id);
+    }
   };
 
   // Mark all as read
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(notif => ({ ...notif, isRead: true })));
+    if (userRole === 'admin') {
+      notifications.forEach(n => {
+        if (!n.isRead) storage.markTrainerNotificationRead(n.id);
+      });
+    }
   };
 
   // Clear all notifications
@@ -427,19 +453,24 @@ export default function NotificationsModal({ onClose, isDark, userRole = 'studen
 
                     {/* Quick Interactive WhatsApp congratulation button (For Cadu) */}
                     {userRole === 'admin' && (
-                      <div className="shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="shrink-0 flex items-center justify-center">
                         <a
-                          href={`https://wa.me/5511999999999?text=Parabéns%20${encodeURIComponent(notif.studentName)}!%20Vi%20aqui%20no%20app%20que%20você%20concluiu%20o%20${encodeURIComponent(notif.workoutTitle)}.%20Excelente%20evolução!%20🔥`}
+                          href={
+                            (notif.studentPhone && notif.studentPhone.replace(/\D/g, ''))
+                              ? `https://wa.me/${notif.studentPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Parabéns ${notif.studentName}! Vi aqui no app que você concluiu o treino "${notif.workoutTitle}". Excelente evolução! 🔥💪`)}`
+                              : `https://api.whatsapp.com/send?text=${encodeURIComponent(`Parabéns ${notif.studentName}! Vi aqui no app que você concluiu o treino "${notif.workoutTitle}". Excelente evolução! 🔥💪`)}`
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-emerald-500/15 hover:bg-emerald-600 text-emerald-400 hover:text-white transition duration-200 active:scale-95 shadow-sm"
+                          className="px-2.5 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-sm cursor-pointer"
                           title="Parabenizar no WhatsApp"
                           onClick={(e) => {
                             e.stopPropagation(); // Avoid triggering read toggle on clicking button alone
                             toggleRead(notif.id);
                           }}
                         >
-                          <MessageCircle className="w-4.5 h-4.5 fill-current" />
+                          <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                          <span className="hidden sm:inline">Whats</span>
                         </a>
                       </div>
                     )}

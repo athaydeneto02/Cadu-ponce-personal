@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
@@ -72,14 +72,63 @@ import {
   Clipboard
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
+import NotificationsModal from './NotificationsModal';
 import { UserProfile, Workout } from '../types';
 import { storage, safeSetItem } from '../lib/storage';
+import { supabase } from '../lib/supabase';
 import { useMediaUrl, resolveMediaUrl } from '../lib/mediaDb';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
+import { TRAINER_CONFIG } from '../lib/trainerConfig';
 
 interface AccountManagementProps {
   onClose: () => void;
   isDark?: boolean;
+}
+
+// Audio chime function for workout completions
+function playNotificationChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.setValueAtTime(880, now + 0.09); // A5
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  } catch (e) {}
+}
+
+// System notification function for mobile/desktop
+function triggerSystemPush(title: string, body: string) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body, icon: '/favicon.ico' });
+    } catch {}
+  } else if (Notification.permission === 'default') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        try {
+          new Notification(title, { body, icon: '/favicon.ico' });
+        } catch {}
+      }
+    });
+  }
+}
+
+// Vibration function for phone
+function triggerVibration() {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try { navigator.vibrate([200, 100, 200]); } catch {}
+  }
 }
 
 // Ensure initial list has the students in the screenshot
@@ -267,30 +316,114 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [faturasTab, setFaturasTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
   const [faturasSearch, setFaturasSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
+
   const [adminNotifs, setAdminNotifs] = useState<any[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [bannerNotif, setBannerNotif] = useState<{ title: string; message: string; workoutTitle?: string; studentPhone?: string } | null>(null);
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef(true);
+
+  const handleIncomingNotifs = (notifs: any[]) => {
+    if (!notifs || !Array.isArray(notifs)) return;
+    setAdminNotifs(notifs);
+
+    let hasNewCompletion = false;
+    let latestNewNotif: any = null;
+
+    notifs.forEach(n => {
+      if (!seenNotifIdsRef.current.has(n.id)) {
+        seenNotifIdsRef.current.add(n.id);
+        if (!n.isRead && !isInitialLoadRef.current) {
+          hasNewCompletion = true;
+          latestNewNotif = n;
+        }
+      }
+    });
+
+    if (hasNewCompletion && latestNewNotif) {
+      playNotificationChime();
+      triggerVibration();
+      triggerSystemPush(
+        'Treino Concluído! 🏋️‍♂️',
+        `${latestNewNotif.studentName} concluiu "${latestNewNotif.workoutTitle}"!`
+      );
+      setBannerNotif({
+        title: latestNewNotif.studentName,
+        message: latestNewNotif.detailMessage || `${latestNewNotif.studentName} concluiu o treino!`,
+        workoutTitle: latestNewNotif.workoutTitle,
+        studentPhone: latestNewNotif.studentPhone,
+      });
+    }
+
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+    }
+  };
 
   useEffect(() => {
-    const loadNotifs = () => {
-      try {
-        const stored = localStorage.getItem('cadu_notifs_admin');
-        if (stored) setAdminNotifs(JSON.parse(stored));
-      } catch {}
+    storage.fetchTrainerNotifications().then(notifs => {
+      handleIncomingNotifs(notifs);
+    });
+
+    const interval = setInterval(() => {
+      storage.fetchTrainerNotifications().then(notifs => {
+        handleIncomingNotifs(notifs);
+      });
+    }, 10000);
+
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel('admin-workout-notifs')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'agenda_events',
+            filter: 'type=eq.trainer_notification'
+          },
+          () => {
+            storage.fetchTrainerNotifications().then(notifs => {
+              handleIncomingNotifs(notifs);
+            });
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription error:', e);
+    }
+
+    const onLocalNotif = () => {
+      storage.fetchTrainerNotifications().then(notifs => {
+        handleIncomingNotifs(notifs);
+      });
     };
-    loadNotifs();
-    window.addEventListener('cadu_new_notification', loadNotifs);
-    return () => window.removeEventListener('cadu_new_notification', loadNotifs);
+    window.addEventListener('cadu_new_notification', onLocalNotif);
+
+    return () => {
+      clearInterval(interval);
+      if (channel) supabase.removeChannel(channel);
+      window.removeEventListener('cadu_new_notification', onLocalNotif);
+    };
   }, []);
+
+  useEffect(() => {
+    if (bannerNotif) {
+      const t = setTimeout(() => setBannerNotif(null), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [bannerNotif]);
+
+  const unreadNotifCount = adminNotifs.filter(n => !n.isRead).length;
+
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
       const student = users.find(u => u.uid === uid);
       if (student) {
         const updatedStudent = { ...student, status: 'excluded' as const };
-        
         try {
-          // Update local state immediately for better UX
           setUsers(users.map(u => u.uid === uid ? updatedStudent : u));
-          
-          // Actually persist
           await storage.updateProfile(updatedStudent);
         } catch (err) {
           console.error("Failed to exclude student", err);
@@ -978,7 +1111,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           password: formPassword || '123456',
           status: 'active',
           modality: formModality as 'Presencial' | 'Online',
-          trainerPhone: formPhone || '5511999999999',
+          trainerPhone: formPhone || TRAINER_CONFIG.phone,
           metadata: {
             group: formGroup,
             birthDate: formBirthDate,
@@ -1117,14 +1250,81 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               Painel Admin
             </span>
           </div>
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
-            title="Encerrar sessão e sair da conta"
-          >
-            <Lock className="w-3.5 h-3.5" /> Sair
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Bell notification button with unread badge counter */}
+            <button
+              onClick={() => setIsNotificationsOpen(true)}
+              className="relative p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white transition active:scale-95 cursor-pointer"
+              title="Notificações de treinos concluídos"
+            >
+              <Bell className="w-5 h-5 text-white" />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] bg-[#E23737] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-md animate-pulse">
+                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            <button 
+              onClick={onClose}
+              className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
+              title="Encerrar sessão e sair da conta"
+            >
+              <Lock className="w-3.5 h-3.5" /> Sair
+            </button>
+          </div>
         </div>
+
+        {/* Real-time Workout Completion Banner Toast */}
+        <AnimatePresence>
+          {bannerNotif && (
+            <motion.div
+              initial={{ opacity: 0, y: -60 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -60 }}
+              onClick={() => {
+                setIsNotificationsOpen(true);
+                setBannerNotif(null);
+              }}
+              className="absolute top-16 left-3 right-3 sm:left-6 sm:right-6 max-w-md mx-auto z-[120] bg-[#141C2C] border-2 border-[#E23737] p-4 rounded-2xl shadow-2xl flex items-start gap-3.5 text-white cursor-pointer active:scale-98 transition-all"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#E23737] text-white flex items-center justify-center shrink-0 shadow-md">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-black italic uppercase text-[11px] text-[#E23737] tracking-wider">Treino Concluído! 🏋️‍♂️</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Agora</span>
+                </div>
+                <p className="font-bold text-sm text-white truncate mt-0.5">{bannerNotif.title}</p>
+                <p className="text-slate-300 text-xs mt-0.5 line-clamp-2">{bannerNotif.message}</p>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBannerNotif(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Notifications Modal */}
+        <AnimatePresence>
+          {isNotificationsOpen && (
+            <NotificationsModal
+              onClose={() => {
+                setIsNotificationsOpen(false);
+                storage.fetchTrainerNotifications().then(notifs => setAdminNotifs(notifs));
+              }}
+              isDark={true}
+              userRole="admin"
+            />
+          )}
+        </AnimatePresence>
 
         {/* APP BODY WORK AREA - INTERACTIVE NAVIGATION MAP */}
         <div className="flex-1 overflow-hidden flex flex-col relative">
@@ -1218,18 +1418,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Atualizações</span>
                               </button>
                               <button 
-                                 onClick={() => {
-                                    setIsNotifyingByCategory(true);
-                                    setNotifyView('list');
-                                    setSelectedUidsForNotify([]);
-                                    setSendComplete(false);
-                                    setNotifyTitle('');
-                                    setNotifyMessage('');
-                                 }}
-                                 className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
+                                 onClick={() => setIsNotificationsOpen(true)}
+                                 className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer relative"
                               >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
+                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10 relative">
                                    <Bell className="w-5 h-5" />
+                                   {unreadNotifCount > 0 && (
+                                     <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] bg-[#dc2626] text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white shadow px-1 animate-pulse">
+                                       {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                                     </span>
+                                   )}
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Notificações</span>
                               </button>
@@ -3934,7 +4132,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             </div>
 
                             <a
-                              href={`https://wa.me/5511999999999?text=Olá%20${item.name},%20vi%20seu%20feedback%20no%20sistema%20da%2520consultoria.%20Vamos%20ajustar%20isso%20agora.`}
+                              href={`https://wa.me/${TRAINER_CONFIG.phone}?text=Olá%20${item.name},%20vi%20seu%20feedback%20no%20sistema%20da%2520consultoria.%20Vamos%20ajustar%20isso%20agora.`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 hover:bg-emerald-600 hover:text-white flex items-center justify-center transition shrink-0"
@@ -5699,7 +5897,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {/* Option List Card */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                       <a
-                        href={`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!`}
+                        href={`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer"
@@ -5812,7 +6010,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
                         onClick={() => {
                           const msg = `Olá ${selectedStudent.name}, não esqueça de registrar seu progresso no app!`;
-                          window.open(`https://wa.me/${selectedStudent.trainerPhone || '5511999999999'}?text=${encodeURIComponent(msg)}`, '_blank');
+                          window.open(`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=${encodeURIComponent(msg)}`, '_blank');
                         }}
                       >
                         Enviar lembrete

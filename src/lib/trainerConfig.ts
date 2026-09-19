@@ -8,8 +8,7 @@ export const TRAINER_CONFIG = {
   name: 'Cadu Ponce',
   role: 'Personal Trainer',
   // Telefone para contato com DDD (apenas números, iniciando com 55)
-  // Exemplo: '5511999999999'
-  phone: '5511999999999',
+  phone: '554384639369',
   // Instagram oficial do personal
   instagramHandle: 'caduponce.personal',
   instagramUrl: 'https://instagram.com/caduponce.personal',

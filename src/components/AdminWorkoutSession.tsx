@@ -14,6 +14,7 @@ import {
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
 import { useMediaUrl, getCachedVideoBlobUrl } from '../lib/mediaDb';
+import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import confetti from 'canvas-confetti';
 
 interface AdminWorkoutSessionProps {
@@ -497,17 +498,14 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
       storage.saveWorkoutLog(log);
 
-      const notif = {
-        id: `notif_${Date.now()}`,
-        type: 'treinos',
-        title: 'Treino Concluído',
-        body: `${log.studentName ?? 'Aluno'} concluiu "${routine.name}" em ${fmtDuration(sessionTime)}`,
-        date: new Date().toISOString(),
-        read: false,
-      };
-      const existing = JSON.parse(localStorage.getItem('cadu_notifs_admin') ?? '[]');
-      localStorage.setItem('cadu_notifs_admin', JSON.stringify([notif, ...existing]));
-      window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notif }));
+      storage.notifyTrainerWorkoutCompleted({
+        studentName: user.name || log.studentName || 'Aluno',
+        studentId: user.uid || log.studentId || 'unknown',
+        studentPhone: user.trainerPhone || '',
+        routineName: routine.name,
+        durationFormatted: fmtDuration(sessionTime),
+        durationSeconds: sessionTime,
+      });
     } catch { /* silent */ }
   };
 
@@ -797,7 +795,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
   const fmtLoad = (ex: AdminExercise): string => `${loads[ex.id] ?? 0}kg`;
 
-  const whatsappPhone = (trainerPhone || '').replace(/\D/g, '') || '5511999999999';
+  const whatsappPhone = (trainerPhone || TRAINER_CONFIG.phone).replace(/\D/g, '');
 
   // ── Bottom Nav ─────────────────────────────────────────────────────────────
   const BottomNav = ({ onHome }: { onHome: () => void }) => (
@@ -806,7 +804,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         <Home className="w-5 h-5" />
         <span className="text-[10px] font-medium">Início</span>
       </button>
-      <a href="https://instagram.com/caduponce.personal" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-0.5 py-1.5 text-slate-500">
+      <a href={TRAINER_CONFIG.instagramUrl} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-0.5 py-1.5 text-slate-500">
         <Instagram className="w-5 h-5" />
         <span className="text-[10px] font-medium">Instagram</span>
       </a>
@@ -1207,17 +1205,26 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         </div>
 
         {/* Action buttons */}
-        <div className="px-4 pb-3 space-y-3 shrink-0">
+        <div className="px-4 pb-3 space-y-2.5 shrink-0">
+          <a
+            href={`https://wa.me/${TRAINER_CONFIG.phone}?text=${encodeURIComponent(`Olá Cadu! Acabei de concluir o treino "${routine.name}" (${fmtDuration(sessionTime)}) pelo app! 💪🔥`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full bg-[#25D366] hover:bg-[#1EBE5D] active:scale-[0.99] text-white font-black py-3.5 rounded-xl text-sm uppercase tracking-wider transition cursor-pointer shadow-lg flex items-center justify-center gap-2"
+          >
+            <MessageCircle className="w-5 h-5 fill-white" />
+            <span>Avisar o Cadu no WhatsApp</span>
+          </a>
           <button
             onClick={handleShare}
             className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-3.5 rounded-xl text-base transition cursor-pointer shadow-md flex items-center justify-center gap-2"
           >
             <Share2 className="w-5 h-5" />
-            <span>Compartilhar</span>
+            <span>Compartilhar (Stories / Outros)</span>
           </button>
           <button
             onClick={onClose}
-            className="w-full bg-transparent text-white font-bold py-3.5 rounded-xl text-base border border-white/40 hover:bg-white/10 transition cursor-pointer"
+            className="w-full bg-transparent text-white font-bold py-3 rounded-xl text-sm border border-white/30 hover:bg-white/10 transition cursor-pointer"
           >
             Fechar
           </button>

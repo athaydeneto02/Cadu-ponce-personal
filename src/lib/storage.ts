@@ -1272,4 +1272,128 @@ export const storage = {
       return storage.getWorkoutLogs();
     }
   },
+
+  /**
+   * Envia uma notificação em tempo real para a nuvem do Supabase avisando que um aluno concluiu o treino.
+   * O celular do personal recebe essa notificação instantaneamente!
+   */
+  notifyTrainerWorkoutCompleted: async (details: {
+    studentName: string;
+    studentId: string;
+    studentPhone?: string;
+    routineName: string;
+    durationFormatted: string;
+    durationSeconds: number;
+  }): Promise<void> => {
+    const notifId = `notif_${Date.now()}`;
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const notifPayload = {
+      id: notifId,
+      studentName: details.studentName,
+      studentId: details.studentId,
+      studentPhone: details.studentPhone || '',
+      workoutTitle: details.routineName,
+      duration: details.durationFormatted,
+      durationSeconds: details.durationSeconds,
+      timestamp: timeStr,
+      fullDate: now.toISOString(),
+      isRead: false,
+      type: 'completion',
+      detailMessage: `${details.studentName} finalizou "${details.routineName}" em ${details.durationFormatted}.`
+    };
+
+    // 1. Salva no Supabase agenda_events (nuvem compartilhada entre todos os aparelhos)
+    try {
+      await supabase.from('agenda_events').insert({
+        id: notifId,
+        student_id: details.studentId,
+        student_name: details.studentName,
+        title: `${details.studentName} concluiu "${details.routineName}"`,
+        date: dateStr,
+        start_time: timeStr,
+        end_time: timeStr,
+        type: 'trainer_notification',
+        notes: JSON.stringify(notifPayload)
+      });
+    } catch (err) {
+      console.warn('Erro ao salvar notificação do treino no Supabase:', err);
+    }
+
+    // 2. Salva no cache local para atualização imediata se for o mesmo aparelho
+    try {
+      const existing = JSON.parse(localStorage.getItem('cadu_notifs_admin') ?? '[]');
+      localStorage.setItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing]));
+      window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notifPayload }));
+    } catch {}
+  },
+
+  /**
+   * Busca todas as notificações de treinos concluídos pelos alunos diretamente do Supabase.
+   */
+  fetchTrainerNotifications: async (): Promise<any[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('agenda_events')
+        .select('*')
+        .eq('type', 'trainer_notification')
+        .order('created_at', { ascending: false })
+        .limit(40);
+
+      if (!error && data && data.length > 0) {
+        const parsed = data.map(row => {
+          try {
+            const n = JSON.parse(row.notes || '{}');
+            return {
+              id: row.id,
+              studentName: row.student_name || n.studentName || 'Aluno',
+              studentId: row.student_id || n.studentId || '',
+              studentPhone: n.studentPhone || '',
+              workoutTitle: n.workoutTitle || row.title,
+              duration: n.duration || '0m',
+              timestamp: n.timestamp || new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              fullDate: n.fullDate || row.created_at,
+              isRead: n.isRead ?? false,
+              type: 'completion',
+              detailMessage: n.detailMessage || `${row.student_name} concluiu o treino!`
+            };
+          } catch {
+            return {
+              id: row.id,
+              studentName: row.student_name || 'Aluno',
+              workoutTitle: row.title,
+              duration: '0m',
+              timestamp: new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              isRead: false,
+              type: 'completion',
+              detailMessage: row.title
+            };
+          }
+        });
+        localStorage.setItem('cadu_notifs_admin', JSON.stringify(parsed));
+        return parsed;
+      }
+    } catch (err) {
+      console.warn('Erro ao buscar notificações do personal no Supabase:', err);
+    }
+
+    try {
+      const stored = localStorage.getItem('cadu_notifs_admin');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  },
+
+  /** Marca notificação como lida no Supabase */
+  markTrainerNotificationRead: async (notifId: string): Promise<void> => {
+    try {
+      const { data } = await supabase.from('agenda_events').select('notes').eq('id', notifId).single();
+      if (data?.notes) {
+        const parsed = JSON.parse(data.notes);
+        parsed.isRead = true;
+        await supabase.from('agenda_events').update({ notes: JSON.stringify(parsed) }).eq('id', notifId);
+      }
+    } catch {}
+  },
 };
