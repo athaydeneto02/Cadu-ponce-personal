@@ -1285,13 +1285,13 @@ export const storage = {
     durationFormatted: string;
     durationSeconds: number;
   }): Promise<void> => {
-    const notifId = `notif_${Date.now()}`;
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    // We do NOT generate a notifId ourselves — let Supabase auto-generate a UUID
+    // (the id column is type UUID, so string-format IDs like "notif_123" would fail)
 
-    const notifPayload = {
-      id: notifId,
+    const notifPayload: Record<string, unknown> = {
       studentName: details.studentName,
       studentId: details.studentId,
       studentPhone: details.studentPhone || '',
@@ -1305,10 +1305,11 @@ export const storage = {
       detailMessage: `${details.studentName} finalizou "${details.routineName}" em ${details.durationFormatted}.`
     };
 
-    // 1. Salva no Supabase agenda_events (nuvem compartilhada entre todos os aparelhos)
+    // 1. Salva no Supabase agenda_events — NÃO mandamos o id, deixa o Supabase gerar o UUID
+    let supabaseId: string | null = null;
     try {
-      await supabase.from('agenda_events').insert({
-        id: notifId,
+      const { data: insertedRow, error } = await supabase.from('agenda_events').insert({
+        // id: omitido — Supabase gera automaticamente um UUID válido
         student_id: details.studentId,
         student_name: details.studentName,
         title: `${details.studentName} concluiu "${details.routineName}"`,
@@ -1317,13 +1318,21 @@ export const storage = {
         end_time: timeStr,
         type: 'trainer_notification',
         notes: JSON.stringify(notifPayload)
-      });
+      }).select('id').single();
+
+      if (error) {
+        console.warn('Erro ao salvar notificação do treino no Supabase:', error.message, error.code);
+      } else if (insertedRow?.id) {
+        supabaseId = insertedRow.id;
+        notifPayload.id = supabaseId;
+      }
     } catch (err) {
       console.warn('Erro ao salvar notificação do treino no Supabase:', err);
     }
 
-    // 2. Salva no cache local para atualização imediata se for o mesmo aparelho
+    // 2. Salva no cache local para atualização imediata (mesmo aparelho)
     try {
+      if (!notifPayload.id) notifPayload.id = `local_${Date.now()}`;
       const existing = JSON.parse(localStorage.getItem('cadu_notifs_admin') ?? '[]');
       localStorage.setItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing]));
       window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notifPayload }));

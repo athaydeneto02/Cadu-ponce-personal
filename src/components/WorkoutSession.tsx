@@ -203,15 +203,16 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           ];
         }
 
-        // Get currently logged-in student name
-        let currentStudentName = 'Felippe Leitao';
-        const userStr = localStorage.getItem('cadu_user');
+        // Get currently logged-in student name from correct localStorage keys
+        let currentStudentName = 'Aluno';
+        let currentStudentId = 'student';
+        // Try cadu_ponce_user first (primary key used by the app)
+        const userStr = localStorage.getItem('cadu_ponce_user') || localStorage.getItem('cadu_user');
         if (userStr) {
           try {
             const parsedUser = JSON.parse(userStr);
-            if (parsedUser && parsedUser.name) {
-              currentStudentName = parsedUser.name;
-            }
+            if (parsedUser && parsedUser.name) currentStudentName = parsedUser.name;
+            if (parsedUser && parsedUser.uid) currentStudentId = parsedUser.uid;
           } catch (e) {}
         }
 
@@ -233,9 +234,9 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         // Dispatch to Supabase cloud so the trainer's phone receives it immediately
         storage.notifyTrainerWorkoutCompleted({
           studentName: currentStudentName,
-          studentId: 'student',
+          studentId: currentStudentId,
           routineName: workout.name || 'Treino do Dia',
-          durationFormatted: `${Math.round(timer / 60)} min` || '35 min',
+          durationFormatted: `${Math.round(timer / 60)} min`,
           durationSeconds: timer,
         });
 
