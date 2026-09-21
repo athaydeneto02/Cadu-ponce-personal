@@ -68,12 +68,16 @@ import {
   SlidersHorizontal,
   Camera,
   RefreshCw,
-  FilePlus,
-  Clipboard
+  Clipboard,
+  Settings,
+  CreditCard,
+  QrCode,
+  AlertCircle,
+  MessageCircle,
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
 import NotificationsModal from './NotificationsModal';
-import { UserProfile, Workout } from '../types';
+import { UserProfile, Workout, FinancialInvoice, TrainerPaymentSettings } from '../types';
 import { storage, safeSetItem } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import { useMediaUrl, resolveMediaUrl } from '../lib/mediaDb';
@@ -340,6 +344,158 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [faturasSearch, setFaturasSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'excluded'>('active');
 
+  // ── Financial / Faturamento & Pendências Manuais 100% Editáveis ──
+  const [financialInvoices, setFinancialInvoices] = useState<FinancialInvoice[]>([]);
+  const [invoicesFilter, setInvoicesFilter] = useState<'pending' | 'paid' | 'overdue' | 'all'>('pending');
+  const [invoicesSearch, setInvoicesSearch] = useState('');
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<FinancialInvoice | null>(null);
+
+  const [invoiceStudentName, setInvoiceStudentName] = useState('');
+  const [invoiceStudentId, setInvoiceStudentId] = useState('');
+  const [invoiceStudentPhone, setInvoiceStudentPhone] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceDueDate, setInvoiceDueDate] = useState('');
+  const [invoicePaymentMethod, setInvoicePaymentMethod] = useState('PIX');
+  const [invoiceDescription, setInvoiceDescription] = useState('Mensalidade Consultoria');
+  const [invoiceStatus, setInvoiceStatus] = useState<'pending' | 'paid'>('pending');
+
+  // ── Payment Settings / Formas de Pagamento para os Alunos ──
+  const [paymentSettings, setPaymentSettings] = useState<TrainerPaymentSettings>({
+    pixKey: '554384639369',
+    pixType: 'Telefone',
+    pixHolder: 'Carlos Eduardo Ponce',
+    bankName: '',
+    cardLink: '',
+    instructions: 'Envie o comprovante no WhatsApp após realizar o pagamento.',
+  });
+  const [paymentSettingsSavedToast, setPaymentSettingsSavedToast] = useState(false);
+  const [isSavingPaymentSettings, setIsSavingPaymentSettings] = useState(false);
+
+  const isOverdue = (dueDate: string, status: string) => {
+    if (status === 'paid') return false;
+    const today = new Date().toISOString().split('T')[0];
+    return dueDate < today;
+  };
+
+  const openNewInvoiceModal = () => {
+    setEditingInvoice(null);
+    setInvoiceStudentName('');
+    setInvoiceStudentId('');
+    setInvoiceStudentPhone('');
+    setInvoiceAmount('');
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    setInvoiceDueDate(d.toISOString().split('T')[0]);
+    setInvoicePaymentMethod('PIX');
+    setInvoiceDescription('Mensalidade Consultoria');
+    setInvoiceStatus('pending');
+    setIsInvoiceModalOpen(true);
+  };
+
+  const openEditInvoiceModal = (inv: FinancialInvoice) => {
+    setEditingInvoice(inv);
+    setInvoiceStudentName(inv.studentName);
+    setInvoiceStudentId(inv.studentId || '');
+    setInvoiceStudentPhone(inv.studentPhone || '');
+    setInvoiceAmount(String(inv.amount));
+    setInvoiceDueDate(inv.dueDate);
+    setInvoicePaymentMethod(inv.paymentMethod);
+    setInvoiceDescription(inv.description);
+    setInvoiceStatus(inv.status);
+    setIsInvoiceModalOpen(true);
+  };
+
+  const handleSaveInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoiceStudentName.trim()) {
+      alert('Informe o nome do aluno.');
+      return;
+    }
+    const val = parseFloat(invoiceAmount.replace(',', '.'));
+    if (isNaN(val) || val <= 0) {
+      alert('Informe um valor válido em R$.');
+      return;
+    }
+    if (!invoiceDueDate) {
+      alert('Informe a data de vencimento.');
+      return;
+    }
+
+    const newInv: FinancialInvoice = {
+      id: editingInvoice ? editingInvoice.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'inv_' + Date.now()),
+      studentId: invoiceStudentId || undefined,
+      studentName: invoiceStudentName.trim(),
+      studentPhone: invoiceStudentPhone.trim(),
+      amount: val,
+      dueDate: invoiceDueDate,
+      paymentMethod: invoicePaymentMethod,
+      status: invoiceStatus,
+      description: invoiceDescription.trim() || 'Mensalidade Consultoria',
+      paidAt: invoiceStatus === 'paid' ? (editingInvoice?.paidAt || new Date().toISOString()) : undefined,
+      createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
+    };
+
+    await storage.saveFinancialInvoice(newInv);
+    setFinancialInvoices(prev => {
+      const filtered = prev.filter(i => i.id !== newInv.id);
+      return [...filtered, newInv].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    });
+    setIsInvoiceModalOpen(false);
+  };
+
+  const handleToggleInvoiceStatus = async (inv: FinancialInvoice) => {
+    const updated: FinancialInvoice = {
+      ...inv,
+      status: inv.status === 'paid' ? 'pending' : 'paid',
+      paidAt: inv.status === 'pending' ? new Date().toISOString() : undefined,
+    };
+    await storage.saveFinancialInvoice(updated);
+    setFinancialInvoices(prev => prev.map(i => i.id === inv.id ? updated : i));
+  };
+
+  const handleDeleteInvoice = async (id: string) => {
+    if (window.confirm('Deseja realmente excluir esta pendência/fatura?')) {
+      await storage.deleteFinancialInvoice(id);
+      setFinancialInvoices(prev => prev.filter(i => i.id !== id));
+    }
+  };
+
+  const handleSendInvoiceWhatsApp = (inv: FinancialInvoice) => {
+    const phone = (inv.studentPhone || '').replace(/\D/g, '');
+    const dateFormatted = inv.dueDate.split('-').reverse().join('/');
+    const valFormatted = inv.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    let text = `Olá ${inv.studentName}! Tudo bem? 💪\nPassando para lembrar da cobrança da sua consultoria Cadu Ponce Personal:\n\n📌 *${inv.description}*\n💰 *Valor:* R$ ${valFormatted}\n📅 *Vencimento:* ${dateFormatted}\n\n`;
+
+    if (paymentSettings.pixKey) {
+      text += `🔑 *Chave PIX (${paymentSettings.pixType}):* ${paymentSettings.pixKey}\n👤 *Titular:* ${paymentSettings.pixHolder}\n`;
+    }
+    if (paymentSettings.cardLink) {
+      text += `💳 *Link Cartão:* ${paymentSettings.cardLink}\n`;
+    }
+    if (paymentSettings.instructions) {
+      text += `\n_${paymentSettings.instructions}_\n`;
+    }
+    text += `\nQualquer dúvida estou à disposição! 🔥`;
+
+    if (phone) {
+      const targetPhone = phone.startsWith('55') ? phone : '55' + phone;
+      window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    }
+  };
+
+  const handleSavePaymentSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPaymentSettings(true);
+    await storage.savePaymentSettings(paymentSettings);
+    setIsSavingPaymentSettings(false);
+    setPaymentSettingsSavedToast(true);
+    setTimeout(() => setPaymentSettingsSavedToast(false), 3500);
+  };
+
   const [adminNotifs, setAdminNotifs] = useState<any[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [bannerNotif, setBannerNotif] = useState<{ title: string; message: string; workoutTitle?: string; studentPhone?: string } | null>(null);
@@ -423,6 +579,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       });
     };
     window.addEventListener('cadu_new_notification', onLocalNotif);
+
+    // Carrega pendências financeiras e configurações de pagamento do personal
+    storage.fetchFinancialInvoices().then(invs => setFinancialInvoices(invs));
+    storage.fetchPaymentSettings().then(cfg => setPaymentSettings(cfg));
 
     return () => {
       clearInterval(interval);
@@ -1346,6 +1506,193 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               isDark={true}
               userRole="admin"
             />
+          )}
+        </AnimatePresence>
+
+        {/* MODAL: CRIAR / EDITAR PENDÊNCIA OU COBRANÇA */}
+        <AnimatePresence>
+          {isInvoiceModalOpen && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              >
+                {/* Header */}
+                <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 rounded-xl bg-red-950/40 text-red-500">
+                      <DollarSign className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-black italic uppercase tracking-tight text-lg text-white">
+                        {editingInvoice ? 'Editar Pendência' : 'Nova Cobrança / Pendência'}
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        Controle financeiro 100% manual
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsInvoiceModalOpen(false)}
+                    className="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Form body */}
+                <form onSubmit={handleSaveInvoice} className="p-5 space-y-4 overflow-y-auto flex-1 text-left">
+                  {/* Seleção de aluno ou nome livre */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                      Aluno *
+                    </label>
+                    <div className="space-y-2">
+                      <select
+                        value={invoiceStudentId}
+                        onChange={(e) => {
+                          const uid = e.target.value;
+                          setInvoiceStudentId(uid);
+                          const found = users.find(u => u.uid === uid);
+                          if (found) {
+                            setInvoiceStudentName(found.name);
+                            const p = found.phone || found.trainerPhone || '';
+                            if (p && !p.includes('84639369')) setInvoiceStudentPhone(p);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                      >
+                        <option value="">Selecionar aluno cadastrado (ou digite abaixo)...</option>
+                        {users.filter(u => u.status !== 'excluded').map(u => (
+                          <option key={u.uid} value={u.uid}>{u.name} ({u.email})</option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Nome do Aluno (ex: Aline Rocha)"
+                        value={invoiceStudentName}
+                        onChange={(e) => setInvoiceStudentName(e.target.value)}
+                        required
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Telefone do aluno */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                      WhatsApp do Aluno (para envio de cobrança)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 43 99999-9999"
+                      value={invoiceStudentPhone}
+                      onChange={(e) => setInvoiceStudentPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                    />
+                  </div>
+
+                  {/* Descrição / Referência */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                      Descrição / Referência *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Mensalidade Consultoria - Setembro"
+                      value={invoiceDescription}
+                      onChange={(e) => setInvoiceDescription(e.target.value)}
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                    />
+                  </div>
+
+                  {/* Valor & Vencimento */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                        Valor (R$) *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="150,00"
+                        value={invoiceAmount}
+                        onChange={(e) => setInvoiceAmount(e.target.value)}
+                        required
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-black text-emerald-400 focus:border-red-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                        Data Vencimento *
+                      </label>
+                      <input
+                        type="date"
+                        value={invoiceDueDate}
+                        onChange={(e) => setInvoiceDueDate(e.target.value)}
+                        required
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Forma de Pagamento & Status */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                        Forma de Pagamento
+                      </label>
+                      <select
+                        value={invoicePaymentMethod}
+                        onChange={(e) => setInvoicePaymentMethod(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                      >
+                        <option value="PIX">PIX</option>
+                        <option value="Cartão">Cartão de Crédito</option>
+                        <option value="Boleto">Boleto</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Transferência">Transferência</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                        Status
+                      </label>
+                      <select
+                        value={invoiceStatus}
+                        onChange={(e) => setInvoiceStatus(e.target.value as 'pending' | 'paid')}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                      >
+                        <option value="pending">Pendente</option>
+                        <option value="paid">Pago / Resolvido</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Footer buttons */}
+                  <div className="pt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsInvoiceModalOpen(false)}
+                      className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-3 bg-[#dc2626] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-red-900/30"
+                    >
+                      {editingInvoice ? 'Salvar Alterações' : 'Criar Pendência'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
@@ -3482,76 +3829,432 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 </motion.div>
                )}
 
-              {/* CURRENT VIEW 2: BILLING HUB */}
-              {activeTab === 'wallet' && (
-                <motion.div 
-                  key="wallet-tab"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: -20 }}
-                  className="flex-1 flex flex-col overflow-y-auto px-5 py-2 space-y-5 text-left"
-                >
-                  <div className="space-y-1">
-                    <span className="text-[9px] text-red-500 font-black tracking-widest uppercase">Estatísticas Financeiras</span>
-                    <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">FATURAMENTO</h3>
-                  </div>
+              {/* CURRENT VIEW 2: BILLING HUB (100% MANUAL E EDITÁVEL) */}
+              {activeTab === 'wallet' && (() => {
+                const totalPending = financialInvoices
+                  .filter(i => i.status === 'pending')
+                  .reduce((acc, curr) => acc + curr.amount, 0);
 
-                  {/* Removed Mocked Revenue Overview */}
+                const totalPaid = financialInvoices
+                  .filter(i => i.status === 'paid')
+                  .reduce((acc, curr) => acc + curr.amount, 0);
 
-                  {/* Pricing subscription lists */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Próximos Vencimentos</span>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-900 text-xs">
-                        <div>
-                          <span className="font-extrabold block">Aline Rocha</span>
-                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Pago via PIX</span>
-                        </div>
-                        <span className="font-black text-orange-400">R$ 119,90 (Vence em 22/06)</span>
+                const overdueInvoices = financialInvoices.filter(i => isOverdue(i.dueDate, i.status));
+                const totalOverdue = overdueInvoices.reduce((acc, curr) => acc + curr.amount, 0);
+
+                const filteredInvoices = financialInvoices.filter(inv => {
+                  if (invoicesFilter === 'pending' && inv.status !== 'pending') return false;
+                  if (invoicesFilter === 'paid' && inv.status !== 'paid') return false;
+                  if (invoicesFilter === 'overdue' && !isOverdue(inv.dueDate, inv.status)) return false;
+
+                  if (invoicesSearch.trim()) {
+                    const q = invoicesSearch.toLowerCase();
+                    const matchName = inv.studentName.toLowerCase().includes(q);
+                    const matchDesc = inv.description.toLowerCase().includes(q);
+                    const matchMethod = inv.paymentMethod.toLowerCase().includes(q);
+                    if (!matchName && !matchDesc && !matchMethod) return false;
+                  }
+
+                  return true;
+                });
+
+                return (
+                  <motion.div 
+                    key="wallet-tab"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: -20 }}
+                    className="flex-1 flex flex-col overflow-y-auto px-4 sm:px-6 py-4 space-y-4 text-left"
+                  >
+                    {/* Header com botão de nova cobrança */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <span className="text-[9px] text-red-500 font-black tracking-widest uppercase block">Controle Financeiro</span>
+                        <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">FATURAMENTO</h3>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-900 text-xs">
-                        <div>
-                          <span className="font-extrabold block">José Soares</span>
-                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Pago via CARTÃO</span>
-                        </div>
-                        <span className="font-black text-emerald-400">R$ 149,90 (Vence em 29/06)</span>
+
+                      <button
+                        onClick={openNewInvoiceModal}
+                        className="px-4 py-2.5 bg-[#dc2626] hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-red-900/40 transition active:scale-95 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Nova Pendência</span>
+                      </button>
+                    </div>
+
+                    {/* Cards de Métricas */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-left">
+                        <span className="text-[8.5px] font-black uppercase text-amber-400 tracking-wider block">A Receber</span>
+                        <span className="text-xs sm:text-base font-black text-amber-300 block mt-0.5">
+                          R$ {totalPending.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[8px] text-amber-400/80 font-bold block mt-0.5">
+                          {financialInvoices.filter(i => i.status === 'pending').length} pendente(s)
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-left">
+                        <span className="text-[8.5px] font-black uppercase text-emerald-400 tracking-wider block">Recebido</span>
+                        <span className="text-xs sm:text-base font-black text-emerald-300 block mt-0.5">
+                          R$ {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[8px] text-emerald-400/80 font-bold block mt-0.5">
+                          {financialInvoices.filter(i => i.status === 'paid').length} pago(s)
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-left">
+                        <span className="text-[8.5px] font-black uppercase text-red-400 tracking-wider block">Atrasadas</span>
+                        <span className="text-xs sm:text-base font-black text-red-300 block mt-0.5">
+                          R$ {totalOverdue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[8px] text-red-400/80 font-bold block mt-0.5">
+                          {overdueInvoices.length} vencida(s)
+                        </span>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )}
 
-              {/* CURRENT VIEW 4: QUICK OPTION MENU drawer */}
+                    {/* Barra de Filtros e Busca */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs overflow-x-auto">
+                        <button
+                          onClick={() => setInvoicesFilter('pending')}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase tracking-wider transition whitespace-nowrap cursor-pointer ${
+                            invoicesFilter === 'pending' ? 'bg-[#dc2626] text-white shadow' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Pendentes ({financialInvoices.filter(i => i.status === 'pending').length})
+                        </button>
+                        <button
+                          onClick={() => setInvoicesFilter('overdue')}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase tracking-wider transition whitespace-nowrap cursor-pointer ${
+                            invoicesFilter === 'overdue' ? 'bg-red-950 text-red-400 border border-red-800 shadow' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Atrasadas ({overdueInvoices.length})
+                        </button>
+                        <button
+                          onClick={() => setInvoicesFilter('paid')}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase tracking-wider transition whitespace-nowrap cursor-pointer ${
+                            invoicesFilter === 'paid' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Pagas ({financialInvoices.filter(i => i.status === 'paid').length})
+                        </button>
+                        <button
+                          onClick={() => setInvoicesFilter('all')}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase tracking-wider transition whitespace-nowrap cursor-pointer ${
+                            invoicesFilter === 'all' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Todas ({financialInvoices.length})
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Buscar por aluno, mensalidade ou forma de pagamento..."
+                          value={invoicesSearch}
+                          onChange={(e) => setInvoicesSearch(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs placeholder:text-slate-500 focus:border-red-500 outline-none"
+                        />
+                        <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      </div>
+                    </div>
+
+                    {/* Lista de Faturas */}
+                    <div className="space-y-2.5 pb-20">
+                      {filteredInvoices.length === 0 ? (
+                        <div className="py-12 text-center space-y-2 rounded-2xl bg-slate-900/40 border border-slate-900">
+                          <DollarSign className="w-8 h-8 text-slate-600 mx-auto" />
+                          <h4 className="font-extrabold text-sm uppercase text-slate-400">Nenhuma cobrança encontrada</h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                            {invoicesSearch ? 'Nenhum resultado para esta busca.' : 'Clique em "+ Nova Pendência" para cadastrar.'}
+                          </p>
+                        </div>
+                      ) : (
+                        filteredInvoices.map((inv) => {
+                          const overdue = isOverdue(inv.dueDate, inv.status);
+                          const isPaid = inv.status === 'paid';
+                          const dateBR = inv.dueDate.split('-').reverse().join('/');
+
+                          return (
+                            <div
+                              key={inv.id}
+                              className={`p-3.5 sm:p-4 rounded-2xl border transition text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                isPaid
+                                  ? 'bg-slate-900/40 border-slate-800/80'
+                                  : overdue
+                                  ? 'bg-red-950/20 border-red-900/40 shadow-sm'
+                                  : 'bg-slate-900/80 border-slate-800 shadow-sm'
+                              }`}
+                            >
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-black text-sm uppercase tracking-tight text-white truncate">
+                                    {inv.studentName}
+                                  </span>
+
+                                  {isPaid ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                      <Check className="w-2.5 h-2.5" /> Pago
+                                    </span>
+                                  ) : overdue ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1 animate-pulse">
+                                      <AlertCircle className="w-2.5 h-2.5" /> Vencida ({dateBR})
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                      Vence em {dateBR}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-300 font-semibold truncate">
+                                  {inv.description}
+                                </p>
+
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                  <span>{inv.paymentMethod}</span>
+                                  {inv.studentPhone && <span>• {inv.studentPhone}</span>}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
+                                <div className="text-left sm:text-right">
+                                  <span className={`text-base font-black block ${
+                                    isPaid ? 'text-emerald-400' : overdue ? 'text-red-400' : 'text-amber-400'
+                                  }`}>
+                                    R$ {inv.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleToggleInvoiceStatus(inv)}
+                                    className={`p-2 rounded-xl border transition active:scale-95 cursor-pointer ${
+                                      isPaid
+                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-emerald-400'
+                                    }`}
+                                    title={isPaid ? 'Marcar como Pendente' : 'Marcar como Pago'}
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleSendInvoiceWhatsApp(inv)}
+                                    className="p-2 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] transition active:scale-95 cursor-pointer"
+                                    title="Enviar cobrança / lembrete no WhatsApp"
+                                  >
+                                    <MessageCircle className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => openEditInvoiceModal(inv)}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition active:scale-95 cursor-pointer"
+                                    title="Editar pendência"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteInvoice(inv.id)}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-red-950/40 border border-slate-700 hover:border-red-900/50 text-slate-400 hover:text-red-400 transition active:scale-95 cursor-pointer"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
+              {/* CURRENT VIEW 4: QUICK OPTION MENU & CONFIGURAÇÕES */}
               {activeTab === 'menu' && (
                 <motion.div 
                   key="menu-tab"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: -15 }}
-                  className="flex-1 flex flex-col justify-center px-5 space-y-5 text-left"
+                  className="flex-1 flex flex-col overflow-y-auto px-4 sm:px-6 py-4 space-y-5 text-left pb-24"
                 >
-                  <div className="text-center space-y-1.5">
-                    <Lock className="w-10 h-10 text-red-500 mx-auto" />
-                    <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">SAIR DA CONTA</h3>
-                    <p className="text-[10.5px] text-slate-400 font-bold uppercase tracking-wider max-w-xs mx-auto text-center">
-                      Deseja encerrar sua sessão e desconectar do painel de administrador?
-                    </p>
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-red-500 font-black tracking-widest uppercase">Painel do Treinador</span>
+                    <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">CONFIGURAÇÕES</h3>
                   </div>
 
-                  <div className="space-y-3">
-                    <button 
-                      onClick={onClose}
-                      className="w-full py-4 text-center bg-red-650 hover:bg-red-500 text-white font-black uppercase text-xs tracking-wider rounded-2xl shadow-md transition cursor-pointer"
-                    >
-                      Sair da Conta (Logout)
-                    </button>
-                    
-                    <button 
-                      onClick={() => setActiveTab('home')}
-                      className="w-full py-4 text-center bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-black uppercase text-xs tracking-wider rounded-2xl transition cursor-pointer"
-                    >
-                      Continuar no Painel
-                    </button>
+                  {/* SEÇÃO 1: FORMAS DE PAGAMENTO PARA OS ALUNOS */}
+                  <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center space-x-2.5 pb-2 border-b border-slate-800">
+                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black uppercase text-white tracking-tight">Formas de Pagamento para os Alunos</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          Configure seu PIX e links que os alunos usarão para pagar
+                        </p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleSavePaymentSettings} className="space-y-3.5">
+                      {/* Tipo de Chave e Chave PIX */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                            Tipo de Chave PIX
+                          </label>
+                          <select
+                            value={paymentSettings.pixType}
+                            onChange={(e) => setPaymentSettings({ ...paymentSettings, pixType: e.target.value as any })}
+                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                          >
+                            <option value="Telefone">Telefone</option>
+                            <option value="CPF">CPF</option>
+                            <option value="CNPJ">CNPJ</option>
+                            <option value="Email">Email</option>
+                            <option value="Aleatória">Chave Aleatória</option>
+                          </select>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                            Chave PIX
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 554384639369 ou seu CPF/Email"
+                            value={paymentSettings.pixKey}
+                            onChange={(e) => setPaymentSettings({ ...paymentSettings, pixKey: e.target.value })}
+                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Nome do Titular e Banco */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                            Nome do Titular do PIX
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Carlos Eduardo Ponce"
+                            value={paymentSettings.pixHolder}
+                            onChange={(e) => setPaymentSettings({ ...paymentSettings, pixHolder: e.target.value })}
+                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                            Banco / Instituição (opcional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Nubank, Itaú, Inter..."
+                            value={paymentSettings.bankName || ''}
+                            onChange={(e) => setPaymentSettings({ ...paymentSettings, bankName: e.target.value })}
+                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Link Cartão de Crédito */}
+                      <div>
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                          Link de Pagamento no Cartão (opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: https://mpago.la/... ou link InfinitePay/PicPay/Asaas"
+                          value={paymentSettings.cardLink || ''}
+                          onChange={(e) => setPaymentSettings({ ...paymentSettings, cardLink: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-red-500 outline-none"
+                        />
+                      </div>
+
+                      {/* Instruções de Pagamento */}
+                      <div>
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                          Instruções aos Alunos
+                        </label>
+                        <textarea
+                          rows={2}
+                          placeholder="Ex: Envie o comprovante no WhatsApp após o pagamento para liberar seu próximo ciclo de treinos."
+                          value={paymentSettings.instructions || ''}
+                          onChange={(e) => setPaymentSettings({ ...paymentSettings, instructions: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-medium focus:border-red-500 outline-none resize-none"
+                        />
+                      </div>
+
+                      {/* Botão Salvar Formas de Pagamento */}
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-emerald-400 font-bold">
+                          {paymentSettingsSavedToast ? '✅ Formas de pagamento salvas com sucesso!' : ''}
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={isSavingPaymentSettings}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow transition active:scale-95 cursor-pointer disabled:opacity-50"
+                        >
+                          {isSavingPaymentSettings ? 'Salvando...' : 'Salvar Formas de Pagamento'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* SEÇÃO 2: DADOS DO PERSONAL */}
+                  <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-5 space-y-3">
+                    <div className="flex items-center space-x-2.5 pb-2 border-b border-slate-800">
+                      <div className="p-2 rounded-xl bg-red-500/10 text-red-400">
+                        <Phone className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black uppercase text-white tracking-tight">Dados de Contato do Personal</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          Informações visíveis aos alunos no app
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+                        <span className="text-[9px] text-slate-500 font-black uppercase tracking-wider block">WhatsApp de Atendimento</span>
+                        <span className="font-extrabold text-white block mt-0.5">+55 43 8463-9369</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+                        <span className="text-[9px] text-slate-500 font-black uppercase tracking-wider block">Instagram Oficial</span>
+                        <span className="font-extrabold text-red-400 block mt-0.5">@caduponce.personal</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SEÇÃO 3: SAIR DA CONTA */}
+                  <div className="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-4 sm:p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-black uppercase text-white tracking-tight">Encerrar Sessão</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          Desconectar deste dispositivo
+                        </p>
+                      </div>
+                      <button 
+                        onClick={onClose}
+                        className="px-4 py-2.5 bg-red-650 hover:bg-red-500 text-white font-black uppercase text-xs tracking-wider rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Lock className="w-3.5 h-3.5" /> Sair
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -5122,32 +5825,32 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               <span className="text-[8.5px] font-black uppercase tracking-wider">Início</span>
             </button>
 
-            {/* Tab 2: Assinatura/Carteira */}
+            {/* Tab 2: Faturamento / Pendências */}
             <button
               onClick={() => {
                 setActiveTab('wallet');
                 setActivePanel(null);
               }}
-              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
+              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none cursor-pointer ${
                 activeTab === 'wallet' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
               }`}
             >
               <DollarSign className="w-5 h-5 mx-auto" />
-              <span className="text-[8.5px] font-black uppercase tracking-wider">Assinatura</span>
+              <span className="text-[8.5px] font-black uppercase tracking-wider">Faturamento</span>
             </button>
 
-            {/* Tab 4: Menu / Fechar */}
+            {/* Tab 3: Configurações / Formas de Pagamento */}
             <button
               onClick={() => {
                 setActiveTab('menu');
                 setActivePanel(null);
               }}
-              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
+              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none cursor-pointer ${
                 activeTab === 'menu' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
               }`}
             >
-              <Menu className="w-5 h-5 mx-auto" />
-              <span className="text-[8.5px] font-black uppercase tracking-wider">Menu</span>
+              <Settings className="w-5 h-5 mx-auto" />
+              <span className="text-[8.5px] font-black uppercase tracking-wider">Configurações</span>
             </button>
 
           </nav>

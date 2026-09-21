@@ -9,7 +9,7 @@
  */
 
 import { supabase } from './supabase';
-import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog } from '../types';
+import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog, FinancialInvoice, TrainerPaymentSettings } from '../types';
 import { storeLocalFile, compressImage, resolveMediaUrl } from './mediaDb';
 
 // ---------------------------------------------------------------------------
@@ -1414,6 +1414,156 @@ export const storage = {
         parsed.isRead = true;
         await supabase.from('agenda_events').update({ notes: JSON.stringify(parsed) }).eq('id', notifId);
       }
+    } catch {}
+  },
+
+  // ── Financial / Pendências & Faturas 100% Manuais e Editáveis ───────────────
+
+  /** Busca todas as faturas e pendências financeiras registradas no Supabase */
+  fetchFinancialInvoices: async (): Promise<FinancialInvoice[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('agenda_events')
+        .select('*')
+        .eq('type', 'financial_invoice')
+        .order('date', { ascending: true });
+
+      if (!error && data) {
+        const invoices: FinancialInvoice[] = data.map(row => {
+          let extra: any = {};
+          try { extra = JSON.parse(row.notes || '{}'); } catch {}
+          return {
+            id: row.id,
+            studentId: row.student_id ?? extra.studentId,
+            studentName: row.student_name || extra.studentName || 'Aluno',
+            studentPhone: extra.studentPhone || '',
+            amount: Number(row.start_time) || Number(extra.amount) || 0,
+            dueDate: row.date,
+            paymentMethod: row.end_time || extra.paymentMethod || 'PIX',
+            status: extra.status === 'paid' ? 'paid' : 'pending',
+            description: row.title || extra.description || 'Mensalidade',
+            paidAt: extra.paidAt,
+            createdAt: row.created_at,
+          };
+        });
+        localStorage.setItem('cadu_financial_invoices', JSON.stringify(invoices));
+        return invoices;
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar faturas do Supabase:', e);
+    }
+
+    try {
+      const cached = localStorage.getItem('cadu_financial_invoices');
+      return cached ? JSON.parse(cached) : [];
+    } catch { return []; }
+  },
+
+  /** Salva ou atualiza uma fatura no Supabase com sincronização total */
+  saveFinancialInvoice: async (invoice: FinancialInvoice): Promise<void> => {
+    const payload = {
+      id: invoice.id,
+      studentId: invoice.studentId,
+      studentName: invoice.studentName,
+      studentPhone: invoice.studentPhone,
+      amount: invoice.amount,
+      dueDate: invoice.dueDate,
+      paymentMethod: invoice.paymentMethod,
+      status: invoice.status,
+      description: invoice.description,
+      paidAt: invoice.paidAt,
+    };
+
+    try {
+      await supabase.from('agenda_events').upsert({
+        id: invoice.id,
+        student_id: invoice.studentId || null,
+        student_name: invoice.studentName,
+        title: invoice.description,
+        date: invoice.dueDate,
+        start_time: String(invoice.amount),
+        end_time: invoice.paymentMethod,
+        type: 'financial_invoice',
+        notes: JSON.stringify(payload),
+      });
+    } catch (e) {
+      console.warn('Erro ao salvar fatura no Supabase:', e);
+    }
+
+    try {
+      const cached: FinancialInvoice[] = JSON.parse(localStorage.getItem('cadu_financial_invoices') || '[]');
+      const filtered = cached.filter(i => i.id !== invoice.id);
+      localStorage.setItem('cadu_financial_invoices', JSON.stringify([...filtered, invoice]));
+    } catch {}
+  },
+
+  /** Exclui uma fatura do Supabase e do cache */
+  deleteFinancialInvoice: async (id: string): Promise<void> => {
+    try {
+      await supabase.from('agenda_events').delete().eq('id', id);
+    } catch (e) {
+      console.warn('Erro ao deletar fatura no Supabase:', e);
+    }
+
+    try {
+      const cached: FinancialInvoice[] = JSON.parse(localStorage.getItem('cadu_financial_invoices') || '[]');
+      localStorage.setItem('cadu_financial_invoices', JSON.stringify(cached.filter(i => i.id !== id)));
+    } catch {}
+  },
+
+  // ── Formas de Pagamento Configuráveis pelo Personal ─────────────────────────
+
+  /** Busca as configurações de pagamento do personal */
+  fetchPaymentSettings: async (): Promise<TrainerPaymentSettings> => {
+    const defaultSettings: TrainerPaymentSettings = {
+      pixKey: '554384639369',
+      pixType: 'Telefone',
+      pixHolder: 'Carlos Eduardo Ponce',
+      bankName: '',
+      cardLink: '',
+      instructions: 'Envie o comprovante no WhatsApp após realizar o pagamento.',
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('agenda_events')
+        .select('notes')
+        .eq('id', '00000000-0000-4000-8000-000000000002')
+        .single();
+
+      if (!error && data?.notes) {
+        const parsed = JSON.parse(data.notes);
+        localStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(parsed));
+        return { ...defaultSettings, ...parsed };
+      }
+    } catch {}
+
+    try {
+      const cached = localStorage.getItem('cadu_trainer_payment_settings');
+      if (cached) return { ...defaultSettings, ...JSON.parse(cached) };
+    } catch {}
+
+    return defaultSettings;
+  },
+
+  /** Salva as configurações de pagamento do personal no Supabase */
+  savePaymentSettings: async (settings: TrainerPaymentSettings): Promise<void> => {
+    try {
+      await supabase.from('agenda_events').upsert({
+        id: '00000000-0000-4000-8000-000000000002',
+        title: 'Configurações de Pagamento',
+        date: '2026-01-01',
+        start_time: '00:00',
+        end_time: '00:00',
+        type: 'trainer_payment_settings',
+        notes: JSON.stringify(settings),
+      });
+    } catch (e) {
+      console.warn('Erro ao salvar formas de pagamento no Supabase:', e);
+    }
+
+    try {
+      localStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(settings));
     } catch {}
   },
 };

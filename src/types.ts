@@ -138,3 +138,25 @@ export interface WorkoutLog {
   exercisesSummary: WorkoutLogExercise[];
 }
 
+export interface FinancialInvoice {
+  id: string;
+  studentId?: string;
+  studentName: string;
+  studentPhone?: string;
+  amount: number;
+  dueDate: string; // YYYY-MM-DD
+  paymentMethod: string; // 'PIX' | 'Cartão' | 'Boleto' | 'Dinheiro' | 'Transferência'
+  status: 'pending' | 'paid';
+  description: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
+export interface TrainerPaymentSettings {
+  pixKey: string;
+  pixType: 'Telefone' | 'CPF' | 'CNPJ' | 'Email' | 'Aleatória';
+  pixHolder: string;
+  bankName?: string;
+  cardLink?: string;
+  instructions?: string;
+}
