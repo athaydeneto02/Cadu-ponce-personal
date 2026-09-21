@@ -1343,6 +1343,9 @@ export const storage = {
    * Busca todas as notificações de treinos concluídos pelos alunos diretamente do Supabase.
    */
   fetchTrainerNotifications: async (): Promise<any[]> => {
+    // Limpa o cache antigo que pode ter dados falsos
+    localStorage.removeItem('cadu_notifs_admin');
+
     try {
       const { data, error } = await supabase
         .from('agenda_events')
@@ -1351,8 +1354,11 @@ export const storage = {
         .order('created_at', { ascending: false })
         .limit(40);
 
-      if (!error && data && data.length > 0) {
-        const parsed = data.map(row => {
+      // Se Supabase respondeu (com ou sem registros), usamos só ele — sem fallback
+      if (!error) {
+        if (!data || data.length === 0) return [];
+
+        return data.map(row => {
           try {
             const n = JSON.parse(row.notes || '{}');
             return {
@@ -1361,7 +1367,7 @@ export const storage = {
               studentId: row.student_id || n.studentId || '',
               studentPhone: n.studentPhone || '',
               workoutTitle: n.workoutTitle || row.title,
-              duration: n.duration || '0m',
+              duration: n.duration || '',
               timestamp: n.timestamp || new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
               fullDate: n.fullDate || row.created_at,
               isRead: n.isRead ?? false,
@@ -1373,7 +1379,7 @@ export const storage = {
               id: row.id,
               studentName: row.student_name || 'Aluno',
               workoutTitle: row.title,
-              duration: '0m',
+              duration: '',
               timestamp: new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
               isRead: false,
               type: 'completion',
@@ -1381,17 +1387,15 @@ export const storage = {
             };
           }
         });
-        localStorage.setItem('cadu_notifs_admin', JSON.stringify(parsed));
-        return parsed;
       }
-    } catch (err) {
-      console.warn('Erro ao buscar notificações do personal no Supabase:', err);
-    }
 
-    try {
-      const stored = localStorage.getItem('cadu_notifs_admin');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
+      console.warn('Supabase retornou erro ao buscar notificações:', error?.message);
+      return [];
+    } catch (err) {
+      // Só chega aqui se não houver conexão com a internet
+      console.warn('Sem conexão ao buscar notificações:', err);
+      return [];
+    }
   },
 
   /** Marca notificação como lida no Supabase */
