@@ -106,21 +106,44 @@ function playNotificationChime() {
   } catch (e) {}
 }
 
-// System notification function for mobile/desktop
+// System notification function for mobile/desktop (ServiceWorker + window.Notification fallback)
 function triggerSystemPush(title: string, body: string) {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission === 'granted') {
-    try {
-      new Notification(title, { body, icon: '/favicon.ico' });
-    } catch {}
-  } else if (Notification.permission === 'default') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        try {
-          new Notification(title, { body, icon: '/favicon.ico' });
-        } catch {}
-      }
-    });
+  if (typeof window === 'undefined') return;
+
+  const showNotification = () => {
+    // 1. Tenta via ServiceWorker (obrigatório para Chrome Android e PWA iOS)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        if (reg && typeof reg.showNotification === 'function') {
+          reg.showNotification(title, {
+            body,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            vibrate: [200, 100, 200],
+            tag: 'cadu-workout-' + Date.now(),
+          } as any);
+        }
+      }).catch(() => {});
+    }
+
+    // 2. Fallback para browsers desktop
+    if ('Notification' in window) {
+      try {
+        new Notification(title, { body, icon: '/favicon.ico' });
+      } catch {}
+    }
+  };
+
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      showNotification();
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          showNotification();
+        }
+      }).catch(() => {});
+    }
   }
 }
 

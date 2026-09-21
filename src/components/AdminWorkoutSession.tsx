@@ -498,10 +498,16 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
       storage.saveWorkoutLog(log);
 
+      const studentPersonalPhone = (() => {
+        const p = user.phone || user.trainerPhone || '';
+        if (typeof p === 'string' && !p.includes('84639369')) return p;
+        return '';
+      })();
+
       storage.notifyTrainerWorkoutCompleted({
         studentName: user.name || log.studentName || 'Aluno',
         studentId: user.uid || log.studentId || 'unknown',
-        studentPhone: user.trainerPhone || '',
+        studentPhone: studentPersonalPhone,
         routineName: routine.name,
         durationFormatted: fmtDuration(sessionTime),
         durationSeconds: sessionTime,

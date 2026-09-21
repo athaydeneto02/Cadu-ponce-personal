@@ -203,9 +203,10 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           ];
         }
 
-        // Get currently logged-in student name from correct localStorage keys
+        // Get currently logged-in student name and phone from correct localStorage keys
         let currentStudentName = 'Aluno';
         let currentStudentId = 'student';
+        let currentStudentPhone = '';
         // Try cadu_ponce_user first (primary key used by the app)
         const userStr = localStorage.getItem('cadu_ponce_user') || localStorage.getItem('cadu_user');
         if (userStr) {
@@ -213,6 +214,10 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
             const parsedUser = JSON.parse(userStr);
             if (parsedUser && parsedUser.name) currentStudentName = parsedUser.name;
             if (parsedUser && parsedUser.uid) currentStudentId = parsedUser.uid;
+            const p = parsedUser?.phone || parsedUser?.trainerPhone;
+            if (p && typeof p === 'string' && !p.includes('84639369')) {
+              currentStudentPhone = p;
+            }
           } catch (e) {}
         }
 
@@ -235,6 +240,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         storage.notifyTrainerWorkoutCompleted({
           studentName: currentStudentName,
           studentId: currentStudentId,
+          studentPhone: currentStudentPhone,
           routineName: workout.name || 'Treino do Dia',
           durationFormatted: `${Math.round(timer / 60)} min`,
           durationSeconds: timer,

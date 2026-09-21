@@ -1288,10 +1288,21 @@ export const storage = {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    // We do NOT generate a notifId ourselves — let Supabase auto-generate a UUID
-    // (the id column is type UUID, so string-format IDs like "notif_123" would fail)
+    
+    // Gera UUID v4 válido compatível com a coluna UUID NOT NULL do Supabase
+    const notifUuid = (() => {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    })();
 
     const notifPayload: Record<string, unknown> = {
+      id: notifUuid,
       studentName: details.studentName,
       studentId: details.studentId,
       studentPhone: details.studentPhone || '',
@@ -1305,11 +1316,10 @@ export const storage = {
       detailMessage: `${details.studentName} finalizou "${details.routineName}" em ${details.durationFormatted}.`
     };
 
-    // 1. Salva no Supabase agenda_events — NÃO mandamos o id, deixa o Supabase gerar o UUID
-    let supabaseId: string | null = null;
+    // 1. Salva no Supabase agenda_events com UUID válido
     try {
-      const { data: insertedRow, error } = await supabase.from('agenda_events').insert({
-        // id: omitido — Supabase gera automaticamente um UUID válido
+      const { error } = await supabase.from('agenda_events').insert({
+        id: notifUuid,
         student_id: details.studentId,
         student_name: details.studentName,
         title: `${details.studentName} concluiu "${details.routineName}"`,
@@ -1318,13 +1328,10 @@ export const storage = {
         end_time: timeStr,
         type: 'trainer_notification',
         notes: JSON.stringify(notifPayload)
-      }).select('id').single();
+      });
 
       if (error) {
         console.warn('Erro ao salvar notificação do treino no Supabase:', error.message, error.code);
-      } else if (insertedRow?.id) {
-        supabaseId = insertedRow.id;
-        notifPayload.id = supabaseId;
       }
     } catch (err) {
       console.warn('Erro ao salvar notificação do treino no Supabase:', err);

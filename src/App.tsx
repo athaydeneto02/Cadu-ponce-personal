@@ -141,17 +141,8 @@ export default function App() {
       }
     );
 
-    // Simulate push notification after 8s
-    const timer = setTimeout(() => {
-      setNotification({
-        title: "Hora do Treino! 🔥",
-        body: "Bora pra cima! Seu treino A te espera hoje."
-      });
-    }, 8000);
-
     return () => {
       subscription.unsubscribe();
-      clearTimeout(timer);
     };
   }, []);
 
@@ -505,11 +496,10 @@ export default function App() {
             <img src={logoImg} alt="logo" className="w-auto h-8 object-contain" />
             <button
               onClick={() => setIsNotificationsOpen(true)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white transition"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white transition cursor-pointer"
             >
               <div className="relative flex items-center justify-center">
                 <Bell className="w-6 h-6" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center">2</span>
               </div>
             </button>
           </header>
