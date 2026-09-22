@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle } from 'lucide-react';
+import { storage } from '../lib/storage';
 import { Workout, UserProfile, Goal } from '../types';
 import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
 import { supabase } from '../lib/supabase';
@@ -185,6 +186,50 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
   const [showFaturas, setShowFaturas] = useState(false);
   const [showArquivos, setShowArquivos] = useState(false);
+
+  // Dias da semana atual com treino concluído (0=seg, 1=ter, ..., 6=dom)
+  const [weekCompletedDays, setWeekCompletedDays] = useState<boolean[]>([false, false, false, false, false, false, false]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    // Calcula o início e fim da semana atual (segunda a domingo)
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=dom, 1=seg..6=sab
+    const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    // Carrega do cache local primeiro (instantâneo), depois do Supabase
+    const localLogs = storage.getWorkoutLogs();
+    const completed = new Array(7).fill(false);
+    localLogs.forEach(log => {
+      const d = new Date(log.completedAt);
+      if (d >= monday && d <= sunday) {
+        const dow = d.getDay(); // 0=dom
+        const idx = dow === 0 ? 6 : dow - 1; // converte para 0=seg..6=dom
+        completed[idx] = true;
+      }
+    });
+    setWeekCompletedDays([...completed]);
+
+    // Atualiza do Supabase em background
+    storage.fetchWorkoutLogs(user.uid).then(logs => {
+      const fresh = new Array(7).fill(false);
+      logs.forEach(log => {
+        const d = new Date(log.completedAt);
+        if (d >= monday && d <= sunday) {
+          const dow = d.getDay();
+          const idx = dow === 0 ? 6 : dow - 1;
+          fresh[idx] = true;
+        }
+      });
+      setWeekCompletedDays([...fresh]);
+    });
+  }, [user?.uid]);
 
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
@@ -471,14 +516,32 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         >
           <h3 className="text-slate-800 font-bold text-[15px] mb-4">Frequência de Treinos</h3>
           <div className="flex justify-between items-center px-1">
-            {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, i) => (
-              <div key={i} className="flex flex-col items-center gap-2">
-                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${i === 0 ? 'border-red-500 text-red-500' : 'border-[#0070f3] text-[#0070f3]'}`}>
-                  {i === 0 && <span className="font-bold">!</span>}
+            {(['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const).map((day, i) => {
+              const today = new Date();
+              const todayIdx = today.getDay() === 0 ? 6 : today.getDay() - 1; // 0=seg..6=dom
+              const isDone = weekCompletedDays[i];
+              const isToday = i === todayIdx;
+              const isPendingToday = isToday && !isDone;
+              return (
+                <div key={i} className="flex flex-col items-center gap-2">
+                  {isDone ? (
+                    // ✓ Treino concluído — círculo azul preenchido com check
+                    <div className="w-8 h-8 rounded-full bg-[#0070f3] flex items-center justify-center shadow-sm">
+                      <Check className="w-4 h-4 text-white stroke-[3]" />
+                    </div>
+                  ) : isPendingToday ? (
+                    // ! Hoje pendente — círculo vermelho com exclamação
+                    <div className="w-8 h-8 rounded-full border-2 border-red-500 bg-red-50 flex items-center justify-center">
+                      <AlertCircle className="w-4 h-4 text-red-500" />
+                    </div>
+                  ) : (
+                    // Dia sem treino / futuro — círculo vazio azul
+                    <div className="w-8 h-8 rounded-full border-2 border-[#0070f3] flex items-center justify-center" />
+                  )}
+                  <span className={`text-[10px] font-bold ${isToday ? 'text-[#0070f3]' : 'text-slate-400'}`}>{day}</span>
                 </div>
-                <span className="text-[10px] font-bold text-slate-600">{day}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </button>
 
