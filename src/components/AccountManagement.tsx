@@ -592,16 +592,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   }, []);
 
   useEffect(() => {
-    if (selectedDetailTab === 'progresso' && selectedStudent?.uid) {
-      setTrainerLoadingPhotos(true);
-      storage.fetchPhotos(selectedStudent.uid)
-        .then(photos => setTrainerProgressPhotos(photos))
-        .catch(() => setTrainerProgressPhotos([]))
-        .finally(() => setTrainerLoadingPhotos(false));
-    }
-  }, [selectedDetailTab, selectedStudent?.uid]);
-
-  useEffect(() => {
     if (bannerNotif) {
       const t = setTimeout(() => setBannerNotif(null), 8000);
       return () => clearTimeout(t);
@@ -831,6 +821,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     if (!isDataLoaded) return;
     storage.saveCategories(appCategories as string[]);
   }, [appCategories, isDataLoaded]);
+
+  useEffect(() => {
+    if (selectedDetailTab === 'progresso' && selectedStudent?.uid) {
+      setTrainerLoadingPhotos(true);
+      storage.fetchPhotos(selectedStudent.uid)
+        .then(photos => setTrainerProgressPhotos(photos))
+        .catch(() => setTrainerProgressPhotos([]))
+        .finally(() => setTrainerLoadingPhotos(false));
+    }
+  }, [selectedDetailTab, selectedStudent?.uid]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
