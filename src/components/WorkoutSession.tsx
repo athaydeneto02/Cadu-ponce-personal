@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Check, Timer, ChevronLeft, ChevronRight, Info, Trophy, Target, Dumbbell, Star, Flame, Download, MessageCircle } from 'lucide-react';
-import { Workout, Exercise } from '../types';
+import { Workout, Exercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { motion, AnimatePresence } from 'motion/react';
@@ -151,92 +151,60 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
       }, 250);
 
-      // Save a persistent notification to localStorage for the trainer (admin role)
+      // Busca dados reais do aluno logado
+      let currentStudentName = 'Aluno';
+      let currentStudentId = 'student';
+      let currentStudentPhone = '';
       try {
-        const adminNotifsKey = 'cadu_notifs_admin';
-        const savedNotifsStr = localStorage.getItem(adminNotifsKey);
-        let adminNotifs: any[] = [];
-        if (savedNotifsStr) {
-          try {
-            adminNotifs = JSON.parse(savedNotifsStr);
-          } catch (e) {
-            adminNotifs = [];
-          }
-        }
-        
-        // If empty, pre-populate with default simulated historical notifications so there is a rich list
-        if (adminNotifs.length === 0) {
-          adminNotifs = [
-            {
-              id: 'notif_felippe',
-              studentName: 'Felippe Leitao',
-              workoutTitle: 'Treino D - Superiores Completo',
-              duration: '55 min',
-              intensity: 'high',
-              timestamp: 'Há 5 min',
-              isRead: false,
-              type: 'completion',
-              detailMessage: 'Treino concluído com foco em dorsal e bíceps. Solicitou ajuste de exercício para o ombro esquerdo.'
-            },
-            {
-              id: 'notif_mariana',
-              studentName: 'Mariana Costa',
-              workoutTitle: 'Treino A - Diário (Foco em Glúteos)',
-              duration: '48 min',
-              intensity: 'high',
-              timestamp: 'Há 45 min',
-              isRead: false,
-              type: 'completion',
-              detailMessage: 'Concluiu todas as séries de Elevação Pélvica com excelente contração muscular!'
-            },
-            {
-              id: 'notif_1',
-              studentName: 'Aline Rocha',
-              workoutTitle: 'Treino A - Diário (Inferiores com Foco em Quadríceps)',
-              duration: '52 min',
-              intensity: 'high',
-              timestamp: 'Há 2 horas',
-              isRead: false,
-              type: 'completion',
-              detailMessage: 'Completou todas as 5 séries de Agachamento Búlgaro com aumento de +2kg de sobrecarga!'
-            }
-          ];
-        }
-
-        // Get currently logged-in student name and phone from correct localStorage keys
-        let currentStudentName = 'Aluno';
-        let currentStudentId = 'student';
-        let currentStudentPhone = '';
-        // Try cadu_ponce_user first (primary key used by the app)
         const userStr = localStorage.getItem('cadu_ponce_user') || localStorage.getItem('cadu_user');
         if (userStr) {
-          try {
-            const parsedUser = JSON.parse(userStr);
-            if (parsedUser && parsedUser.name) currentStudentName = parsedUser.name;
-            if (parsedUser && parsedUser.uid) currentStudentId = parsedUser.uid;
-            const p = parsedUser?.phone || parsedUser?.trainerPhone;
-            if (p && typeof p === 'string' && !p.includes('84639369')) {
-              currentStudentPhone = p;
-            }
-          } catch (e) {}
+          const parsedUser = JSON.parse(userStr);
+          if (parsedUser?.name) currentStudentName = parsedUser.name;
+          if (parsedUser?.uid) currentStudentId = parsedUser.uid;
+          const p = parsedUser?.phone || parsedUser?.trainerPhone;
+          if (p && typeof p === 'string' && !p.includes('84639369')) {
+            currentStudentPhone = p;
+          }
         }
+      } catch (e) {}
 
+      // ✅ Salva o log do treino no Supabase (powera os círculos de frequência)
+      try {
+        const log: WorkoutLog = {
+          id: `log_${Date.now()}`,
+          studentId: currentStudentId,
+          studentName: currentStudentName,
+          routineId: workout.id || 'workout',
+          routineName: workout.name || 'Treino do Dia',
+          completedAt: new Date().toISOString(),
+          durationSeconds: timer,
+          rpe: 0,
+          exercisesSummary: workout.exercises?.map(ex => ({
+            name: ex.name,
+            setsCompleted: completedExercises.has(ex.id) ? (Number(ex.sets) || 1) : 0,
+            totalSets: Number(ex.sets) || 1,
+            loads: [0],
+          })) ?? [],
+        };
+        storage.saveWorkoutLog(log);
+      } catch (e) {
+        console.warn('Erro ao salvar log do treino:', e);
+      }
+
+      // Envia notificação real para o personal via Supabase
+      try {
         const newNotifItem = {
           id: 'notif_' + Date.now(),
           studentName: currentStudentName,
           workoutTitle: workout.name || 'Treino do Dia',
-          duration: `${Math.round(timer / 60)} min` || '35 min',
+          duration: `${Math.round(timer / 60)} min`,
           intensity: 'high',
           timestamp: 'Agora mesmo',
           isRead: false,
           type: 'completion',
-          detailMessage: 'Completou com sucesso o treino do dia e registrou nota de feedback na plataforma do Cadu.'
+          detailMessage: 'Completou com sucesso o treino do dia na plataforma Cadu Ponce Personal.'
         };
 
-        const updatedNotifs = [newNotifItem, ...adminNotifs];
-        localStorage.setItem(adminNotifsKey, JSON.stringify(updatedNotifs));
-        
-        // Dispatch to Supabase cloud so the trainer's phone receives it immediately
         storage.notifyTrainerWorkoutCompleted({
           studentName: currentStudentName,
           studentId: currentStudentId,
@@ -246,7 +214,6 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           durationSeconds: timer,
         });
 
-        // Dispatch custom event to let the rest of the application know a new workout completion happened of student!
         window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: newNotifItem }));
       } catch (err) {
         console.error('Error storing student completion notification:', err);
@@ -255,6 +222,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       return () => clearInterval(interval);
     }
   }, [isFinished]);
+
 
   const currentExercise = workout.exercises[currentIndex];
 
