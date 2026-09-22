@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle } from 'lucide-react';
+import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle, CreditCard, Copy } from 'lucide-react';
 import { storage } from '../lib/storage';
 import { Workout, UserProfile, Goal } from '../types';
 import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
@@ -186,6 +186,20 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
   const [showFaturas, setShowFaturas] = useState(false);
   const [showArquivos, setShowArquivos] = useState(false);
+
+  // Configurações de pagamento do personal (carregadas do Supabase)
+  const [paymentSettings, setPaymentSettings] = useState<{
+    pixKey: string; pixType: string; pixHolder: string;
+    cardLink?: string; instructions?: string;
+  }>({
+    pixKey: '554384639369', pixType: 'Telefone', pixHolder: 'Carlos Eduardo Ponce',
+    cardLink: '', instructions: 'Envie o comprovante no WhatsApp após realizar o pagamento.',
+  });
+  const [pixCopied, setPixCopied] = useState(false);
+
+  useEffect(() => {
+    storage.fetchPaymentSettings().then(cfg => setPaymentSettings(cfg as any));
+  }, []);
 
   // Dias da semana atual com treino concluído (0=seg, 1=ter, ..., 6=dom)
   const [weekCompletedDays, setWeekCompletedDays] = useState<boolean[]>([false, false, false, false, false, false, false]);
@@ -392,22 +406,142 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
+
   if (showFaturas) {
+    const handleCopyPix = () => {
+      navigator.clipboard.writeText(paymentSettings.pixKey).then(() => {
+        setPixCopied(true);
+        setTimeout(() => setPixCopied(false), 2500);
+      }).catch(() => {
+        // fallback para mobile
+        const el = document.createElement('textarea');
+        el.value = paymentSettings.pixKey;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        setPixCopied(true);
+        setTimeout(() => setPixCopied(false), 2500);
+      });
+    };
+
     return (
       <div className="flex flex-col min-h-full bg-[#1c2b3e]">
+        {/* Header */}
         <div className="px-4 pt-4 pb-2">
           <button onClick={() => setShowFaturas(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
             <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
           </button>
         </div>
-        <h2 className="text-white text-xl font-semibold px-4 pb-4">Planos e Faturas</h2>
-        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center justify-center py-16 px-6">
-          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
-            <DollarSign className="w-10 h-10 text-[#0070f3]" />
+        <h2 className="text-white text-xl font-bold px-4 pb-4">Formas de Pagamento</h2>
+
+        <div className="px-4 space-y-4 pb-8">
+
+          {/* Card PIX */}
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-[#0070f3] to-[#005cc5] px-5 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                {/* Ícone PIX */}
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.05 4.652a3.394 3.394 0 0 0-2.406.996l-2.116 2.116a1.13 1.13 0 0 1-1.598 0L8.82 5.648a3.394 3.394 0 0 0-2.406-.996H5.3l3.652 3.651a3.18 3.18 0 0 0 4.496 0l3.652-3.651h-2.054ZM5.3 19.348a3.394 3.394 0 0 0 2.406-.996l2.116-2.116a1.13 1.13 0 0 1 1.598 0l2.116 2.116a3.394 3.394 0 0 0 2.406.996h2.054l-3.652-3.651a3.18 3.18 0 0 0-4.496 0L5.3 19.348Z"/>
+                  <path d="M4.652 6.95a3.394 3.394 0 0 0-.996 2.406v5.288a3.394 3.394 0 0 0 .996 2.406l.996-.996V9.356L4.652 6.95Zm14.696 0-.996 2.406v6.698l.996.996a3.394 3.394 0 0 0 .996-2.406V9.356a3.394 3.394 0 0 0-.996-2.406Z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-white font-black text-[15px]">PIX</p>
+                <p className="text-white/75 text-[11px]">Transferência instantânea</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Tipo de chave</p>
+                <p className="text-slate-800 font-bold text-[15px]">{paymentSettings.pixType}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Chave PIX</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-slate-800 font-bold text-[15px] flex-1 break-all">{paymentSettings.pixKey}</p>
+                  <button
+                    onClick={handleCopyPix}
+                    className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all ${
+                      pixCopied
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-[#0070f3] text-white active:scale-95'
+                    }`}
+                  >
+                    {pixCopied ? (
+                      <><Check className="w-3.5 h-3.5" /> Copiado!</>
+                    ) : (
+                      <><Copy className="w-3.5 h-3.5" /> Copiar</>
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Titular</p>
+                <p className="text-slate-800 font-medium text-[14px]">{paymentSettings.pixHolder}</p>
+              </div>
+            </div>
           </div>
-          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
-            Seu professor ainda não lançou nenhum plano ou fatura
-          </p>
+
+          {/* Card Cartão de Crédito */}
+          {paymentSettings.cardLink ? (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-slate-700 to-slate-900 px-5 py-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-[15px]">Cartão de Crédito</p>
+                  <p className="text-white/75 text-[11px]">Parcelamento disponível</p>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-slate-500 text-[13px] mb-3">Clique no botão abaixo para ser redirecionado ao link de pagamento seguro.</p>
+                <a
+                  href={paymentSettings.cardLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 bg-slate-800 text-white font-bold text-[14px] rounded-xl py-3 active:scale-95 transition-all"
+                >
+                  <CreditCard className="w-4 h-4" /> Pagar com Cartão
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-slate-700 to-slate-900 px-5 py-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-[15px]">Cartão de Crédito</p>
+                  <p className="text-white/75 text-[11px]">Parcelamento disponível</p>
+                </div>
+              </div>
+              <div className="px-5 py-4 flex flex-col items-center py-6">
+                <p className="text-slate-400 text-[13px] text-center">Pagamento via cartão em breve. Entre em contato com seu professor.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Instrução do personal */}
+          {paymentSettings.instructions && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex gap-3">
+              <MessageSquare className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-amber-800 text-[13px] font-medium leading-snug">{paymentSettings.instructions}</p>
+            </div>
+          )}
+
+          {/* Contato WhatsApp */}
+          <a
+            href={`https://wa.me/${TRAINER_CONFIG.phone}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[14px] rounded-xl py-3.5 shadow-md active:scale-95 transition-all"
+          >
+            <MessageSquare className="w-4 h-4" /> Falar com o Professor
+          </a>
         </div>
       </div>
     );
@@ -595,7 +729,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
               <DollarSign className="w-5 h-5" />
             </div>
-            <span className="text-white font-medium text-sm leading-tight">Faturas</span>
+            <span className="text-white font-medium text-sm leading-tight">Pagamento</span>
           </button>
           
           <button
