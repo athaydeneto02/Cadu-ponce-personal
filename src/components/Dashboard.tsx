@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle, CreditCard, Copy } from 'lucide-react';
+import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle, CreditCard, Copy, Trash2, Edit2, Maximize2, User as UserIcon, Loader2, X as CloseIcon } from 'lucide-react';
 import { storage } from '../lib/storage';
 import { Workout, UserProfile, Goal } from '../types';
 import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
@@ -188,6 +188,27 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showFaturas, setShowFaturas] = useState(false);
   const [showArquivos, setShowArquivos] = useState(false);
 
+  // ── Meu Progresso ──
+  const [progressPhotos, setProgressPhotos] = useState<any[]>([]);
+  const [progressLoadingPhotos, setProgressLoadingPhotos] = useState(false);
+  const [progressSelectedFile, setProgressSelectedFile] = useState<File | null>(null);
+  const [progressPreview, setProgressPreview] = useState<string>('');
+  const [progressComment, setProgressComment] = useState('');
+  const [progressSending, setProgressSending] = useState(false);
+  const [progressSendError, setProgressSendError] = useState('');
+  const [progressEditingId, setProgressEditingId] = useState<string | null>(null);
+  const [progressEditComment, setProgressEditComment] = useState('');
+  const [progressLightbox, setProgressLightbox] = useState<string>('');
+
+  useEffect(() => {
+    if (!showMeuProgresso || !user?.uid) return;
+    setProgressLoadingPhotos(true);
+    storage.fetchPhotos(user.uid)
+      .then(photos => setProgressPhotos(photos))
+      .catch(() => setProgressPhotos(storage.getPhotos()))
+      .finally(() => setProgressLoadingPhotos(false));
+  }, [showMeuProgresso, user?.uid]);
+
   // Configurações de pagamento do personal (carregadas do Supabase)
   const [paymentSettings, setPaymentSettings] = useState<{
     pixKey: string; pixType: string; pixHolder: string;
@@ -344,6 +365,109 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   }
 
   if (showMeuProgresso) {
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        setProgressSelectedFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setProgressPreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+
+    const handleSendProgress = async () => {
+      if (!progressPreview || !user?.uid) return;
+      setProgressSending(true);
+      setProgressSendError('');
+      try {
+        const photoId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `photo_${Date.now()}`;
+        const newPhoto = {
+          id: photoId,
+          studentId: user.uid,
+          photoURL: progressPreview,
+          notes: progressComment.trim() || undefined,
+          date: new Date().toISOString(),
+        };
+
+        await storage.savePhoto(newPhoto, progressSelectedFile || undefined);
+
+        // Update list
+        setProgressPhotos(prev => [newPhoto, ...prev]);
+        setProgressSelectedFile(null);
+        setProgressPreview('');
+        setProgressComment('');
+      } catch (err: any) {
+        console.error('Erro ao enviar foto de progresso:', err);
+        // Fallback: save locally
+        try {
+          const photoId = `photo_${Date.now()}`;
+          const newPhoto = {
+            id: photoId,
+            studentId: user?.uid || 'guest',
+            photoURL: progressPreview,
+            notes: progressComment.trim() || undefined,
+            date: new Date().toISOString(),
+          };
+          const all = storage.getPhotos();
+          localStorage.setItem('cadu_ponce_photos', JSON.stringify([newPhoto, ...all]));
+          setProgressPhotos(prev => [newPhoto, ...prev]);
+          setProgressSelectedFile(null);
+          setProgressPreview('');
+          setProgressComment('');
+        } catch (localErr) {
+          setProgressSendError('Erro ao enviar. Tente uma foto menor.');
+        }
+      } finally {
+        setProgressSending(false);
+      }
+    };
+
+    const handleDeleteProgressPhoto = async (photoId: string) => {
+      if (!window.confirm('Tem certeza que deseja excluir esta foto de progresso?')) return;
+      try {
+        await storage.deletePhoto(photoId);
+      } catch (err) {
+        console.warn('Erro ao deletar do Supabase, removendo localmente:', err);
+      }
+      const updated = progressPhotos.filter(p => p.id !== photoId);
+      setProgressPhotos(updated);
+      localStorage.setItem('cadu_ponce_photos', JSON.stringify(updated));
+    };
+
+    const handleSaveEditComment = async (photoId: string) => {
+      try {
+        const target = progressPhotos.find(p => p.id === photoId);
+        if (target) {
+          const updatedPhoto = { ...target, notes: progressEditComment.trim() };
+          await supabase.from('evolution_photos').update({ notes: progressEditComment.trim() }).eq('id', photoId);
+          const updatedList = progressPhotos.map(p => p.id === photoId ? updatedPhoto : p);
+          setProgressPhotos(updatedList);
+          localStorage.setItem('cadu_ponce_photos', JSON.stringify(updatedList));
+        }
+      } catch (err) {
+        console.warn('Erro ao atualizar comentário:', err);
+      }
+      setProgressEditingId(null);
+      setProgressEditComment('');
+    };
+
+    const formatDateTime = (dateStr: string) => {
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        return { date: `${day}/${month}/${year}`, time: `${hours}:${mins}` };
+      } catch {
+        return { date: dateStr, time: '' };
+      }
+    };
+
     return (
       <div className="flex flex-col min-h-full bg-[#1c2b3e]">
         {/* Voltar */}
@@ -352,33 +476,233 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
           </button>
         </div>
-        <h2 className="text-white text-xl font-semibold px-4 pb-4">Meu Progresso</h2>
+        <h2 className="text-white text-xl font-bold px-4 pb-3">Meu Progresso</h2>
 
-        {/* Card */}
-        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center py-14 px-6">
-          {/* Photo icon */}
-          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-8">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <rect x="3" y="5" width="18" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="8.5" cy="10.5" r="1.5" fill="currentColor" stroke="none"/>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L7 19" />
-            </svg>
-          </div>
+        <div className="px-4 space-y-4 pb-12">
+          {/* Modal / Card de Envio se tiver foto selecionada */}
+          {progressPreview ? (
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden p-4 space-y-4 border border-slate-100">
+              {/* Preview da foto */}
+              <div className="relative w-full rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center max-h-[380px]">
+                <img src={progressPreview} alt="Foto selecionada" className="w-full h-auto max-h-[380px] object-contain" />
+              </div>
 
-          {/* Text with colored words */}
-          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug mb-8">
-            Envie uma{' '}
-            <span className="text-[#0070f3]">foto</span>
-            {' '}para o seu professor acompanhar seu{' '}
-            <span className="text-[#0070f3]">progresso</span>!
-          </p>
+              {/* Botão Trocar foto */}
+              <div className="flex justify-center">
+                <label className="text-[#0070f3] hover:text-[#005ccc] font-bold text-sm cursor-pointer py-1">
+                  Trocar foto
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+                </label>
+              </div>
 
-          {/* Enviar foto button */}
-          <label className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md flex items-center justify-center cursor-pointer transition text-sm">
-            Enviar foto
-            <input type="file" accept="image/*" className="hidden" />
-          </label>
+              {/* Comentário */}
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-slate-800 font-bold text-sm">Escreva um comentário</label>
+                  <span className="text-slate-400 text-xs font-semibold">{progressComment.length}/255</span>
+                </div>
+                <textarea
+                  value={progressComment}
+                  onChange={(e) => setProgressComment(e.target.value.slice(0, 255))}
+                  placeholder="Ex: Treino concluído com foco total, me sentindo mais definido..."
+                  rows={3}
+                  className="w-full rounded-xl border border-sky-300 focus:border-[#0070f3] focus:ring-2 focus:ring-sky-100 p-3 text-sm text-slate-800 outline-none resize-none transition"
+                />
+              </div>
+
+              {progressSendError && (
+                <p className="text-red-600 text-xs font-semibold">{progressSendError}</p>
+              )}
+
+              {/* Botões Enviar e Fechar */}
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={handleSendProgress}
+                  disabled={progressSending}
+                  className="w-full bg-[#0070f3] hover:bg-[#005ccc] disabled:opacity-60 text-white font-bold py-3.5 rounded-xl shadow-md transition text-sm flex items-center justify-center gap-2"
+                >
+                  {progressSending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    'Enviar'
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setProgressPreview('');
+                    setProgressSelectedFile(null);
+                    setProgressComment('');
+                  }}
+                  disabled={progressSending}
+                  className="w-full bg-white hover:bg-slate-50 border border-sky-300 text-[#0070f3] font-bold py-3.5 rounded-xl transition text-sm"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Botão Enviar Foto estilizado conforme MFIT */
+            <label className="w-full bg-white hover:bg-slate-50 border-2 border-[#0070f3] rounded-2xl p-4 flex items-center justify-center gap-2 cursor-pointer transition shadow-sm group">
+              <Plus className="w-5 h-5 text-[#0070f3] stroke-[2.5]" />
+              <span className="text-[#0070f3] font-bold text-base">Enviar foto</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+            </label>
+          )}
+
+          {/* Histórico / Feed de Fotos do Aluno */}
+          {progressLoadingPhotos ? (
+            <div className="flex flex-col items-center justify-center py-12 text-white/60 gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-[#0070f3]" />
+              <span className="text-xs">Carregando fotos...</span>
+            </div>
+          ) : progressPhotos.length === 0 && !progressPreview ? (
+            <div className="bg-white rounded-2xl shadow-md p-8 text-center space-y-3">
+              <div className="w-16 h-16 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto text-[#0070f3]">
+                <Activity className="w-8 h-8" />
+              </div>
+              <p className="text-slate-800 font-bold text-base">Nenhuma foto enviada ainda</p>
+              <p className="text-slate-500 text-xs leading-relaxed max-w-xs mx-auto">
+                Tire fotos do seu corpo e envie para o professor Cadu acompanhar sua evolução e evolução de cargas!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {progressPhotos.map((photo) => {
+                const dt = formatDateTime(photo.date);
+                const isEditing = progressEditingId === photo.id;
+
+                return (
+                  <div key={photo.id} className="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100">
+                    {/* Header do Card: Data, Hora e Lixeira */}
+                    <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100">
+                      <div className="flex items-center gap-2 text-slate-700 text-xs font-bold">
+                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{typeof dt === 'object' ? dt.date : dt}</span>
+                        {typeof dt === 'object' && dt.time && (
+                          <>
+                            <Clock className="w-3.5 h-3.5 text-slate-400 ml-1" />
+                            <span>{dt.time}</span>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteProgressPhoto(photo.id)}
+                        className="text-red-500 hover:text-red-700 p-1 transition"
+                        title="Excluir foto"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Foto */}
+                    <div className="relative bg-slate-950 flex items-center justify-center max-h-[440px] overflow-hidden">
+                      <img
+                        src={photo.photoURL}
+                        alt="Foto de progresso"
+                        className="w-full h-auto max-h-[440px] object-contain cursor-pointer"
+                        onClick={() => setProgressLightbox(photo.photoURL)}
+                      />
+                    </div>
+
+                    {/* Botão Ampliar foto */}
+                    <div className="py-2 text-center border-b border-slate-100">
+                      <button
+                        onClick={() => setProgressLightbox(photo.photoURL)}
+                        className="text-[#0070f3] hover:underline text-xs font-bold inline-flex items-center gap-1"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        Ampliar foto
+                      </button>
+                    </div>
+
+                    {/* Bloco de Comentário com Avatar */}
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-slate-500 overflow-hidden">
+                          {user?.photoURL ? (
+                            <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <UserIcon className="w-5 h-5" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-900 font-bold text-sm leading-tight">{user?.name || 'Aluno'}</p>
+
+                          {isEditing ? (
+                            <div className="mt-2 space-y-2">
+                              <textarea
+                                value={progressEditComment}
+                                onChange={(e) => setProgressEditComment(e.target.value)}
+                                rows={2}
+                                className="w-full rounded-lg border border-[#0070f3] p-2 text-xs text-slate-800 outline-none resize-none"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleSaveEditComment(photo.id)}
+                                  className="px-3 py-1 bg-[#0070f3] text-white rounded-md text-xs font-bold"
+                                >
+                                  Salvar
+                                </button>
+                                <button
+                                  onClick={() => setProgressEditingId(null)}
+                                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-bold"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-slate-700 text-xs mt-1 leading-relaxed break-words">
+                              {photo.notes || <span className="text-slate-400 italic">Sem comentário</span>}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-400 font-medium">
+                            <span>{typeof dt === 'object' ? `${dt.date} ${dt.time}` : dt}</span>
+                            <span>•</span>
+                            <button
+                              onClick={() => {
+                                setProgressEditingId(photo.id);
+                                setProgressEditComment(photo.notes || '');
+                              }}
+                              className="text-[#0070f3] hover:underline font-bold"
+                            >
+                              Editar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Modal de Zoom / Lightbox */}
+        {progressLightbox && (
+          <div
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
+            onClick={() => setProgressLightbox('')}
+          >
+            <button
+              onClick={() => setProgressLightbox('')}
+              className="absolute top-4 right-4 text-white hover:text-slate-300 p-2"
+            >
+              <CloseIcon className="w-7 h-7" />
+            </button>
+            <img
+              src={progressLightbox}
+              alt="Foto ampliada"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
       </div>
     );
   }
