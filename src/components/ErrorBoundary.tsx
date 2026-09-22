@@ -31,11 +31,9 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   private handleReset = () => {
     try {
-      // Clean oversized or corrupt exercise cache if any
-      const raw = localStorage.getItem('cadu_ponce_exercises_v3');
-      if (raw && (raw.includes('data:video') || raw.length > 500000)) {
-        localStorage.removeItem('cadu_ponce_exercises_v3');
-      }
+      localStorage.removeItem('cadu_ponce_photos');
+      localStorage.removeItem('cadu_ponce_exercises_v3');
+      localStorage.removeItem('cadu_financial_invoices');
     } catch {
       // ignore
     }
@@ -54,11 +52,19 @@ export default class ErrorBoundary extends Component<Props, State> {
             Algo deu errado ao carregar
           </h2>
 
-          <p className="text-slate-400 text-xs max-w-sm mb-6 leading-relaxed">
+          <p className="text-slate-400 text-xs max-w-sm mb-4 leading-relaxed">
             {this.state.error?.message?.includes('quota') || this.state.error?.message?.includes('Storage')
               ? 'O tamanho de um arquivo anexado excedeu o limite do navegador. Clique abaixo para restaurar com segurança.'
               : 'Ocorreu um erro temporário no carregamento. Clique abaixo para recuperar o aplicativo.'}
           </p>
+
+          {this.state.error && (
+            <div className="bg-red-950/60 border border-red-800/50 p-3 rounded-xl max-w-md w-full mb-6 text-left overflow-auto max-h-36">
+              <p className="text-red-300 font-mono text-[11px] font-bold break-all">
+                {this.state.error.name}: {this.state.error.message}
+              </p>
+            </div>
+          )}
 
           <button
             onClick={this.handleReset}

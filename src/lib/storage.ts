@@ -67,6 +67,12 @@ export function safeSetItem(key: string, value: string): boolean {
         }
       }
     }
+    // Auto-sanitiza cadu_ponce_photos se tiver excedendo o armazenamento local
+    const rawPhotos = localStorage.getItem('cadu_ponce_photos');
+    if (rawPhotos && rawPhotos.length > 500000) {
+      localStorage.removeItem('cadu_ponce_photos');
+      console.log('[storage] Cleared oversized photo cache to prevent white screen');
+    }
   } catch (e) {
     console.warn('[storage] Error sanitizing exercises:', e);
   }
@@ -561,7 +567,7 @@ export const storage = {
             date: extra.date || row.created_at || new Date().toISOString(),
           };
         });
-        localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
+        safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
         return photos;
       }
 
@@ -580,7 +586,7 @@ export const storage = {
           notes: row.notes ?? undefined,
           date: row.date,
         }));
-        localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
+        safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
         return photos;
       }
     } catch (e) {
@@ -654,7 +660,7 @@ export const storage = {
 
     const all = storage.getPhotos();
     const updated = { ...photo, photoURL };
-    localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([updated, ...all.filter(p => p.id !== photo.id)]));
+    safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify([updated, ...all.filter(p => p.id !== photo.id)]));
     return photoURL;
   },
 

@@ -418,18 +418,17 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
           const newPhoto = {
             id: photoId,
             studentId: user?.uid || 'guest',
+            studentName: user?.name || 'Aluno',
             photoURL: progressPreview,
             notes: progressComment.trim() || undefined,
             date: new Date().toISOString(),
           };
-          const all = storage.getPhotos();
-          localStorage.setItem('cadu_ponce_photos', JSON.stringify([newPhoto, ...all]));
           setProgressPhotos(prev => [newPhoto, ...prev]);
           setProgressSelectedFile(null);
           setProgressPreview('');
           setProgressComment('');
         } catch (localErr) {
-          setProgressSendError('Erro ao enviar. Tente uma foto menor.');
+          setProgressSendError('Erro ao enviar. Tente novamente.');
         }
       } finally {
         setProgressSending(false);
