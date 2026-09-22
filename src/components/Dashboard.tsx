@@ -13,6 +13,7 @@ import LoadHistory from './LoadHistory';
 import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
 import WorkoutList from './WorkoutList';
+import { TRAINER_CONFIG } from '../lib/trainerConfig';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BF4mz4GPAGZdcZi7EbNc1hHyI0bx_4npqhd0RV3aoHqSOpn9rjqpXUtA2SkNCPth1zgawRHMgFcVRmng0aVJQjQ';
 
