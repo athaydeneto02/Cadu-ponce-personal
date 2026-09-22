@@ -592,6 +592,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   }, []);
 
   useEffect(() => {
+    if (selectedDetailTab === 'progresso' && selectedStudent?.uid) {
+      setTrainerLoadingPhotos(true);
+      storage.fetchPhotos(selectedStudent.uid)
+        .then(photos => setTrainerProgressPhotos(photos))
+        .catch(() => setTrainerProgressPhotos([]))
+        .finally(() => setTrainerLoadingPhotos(false));
+    }
+  }, [selectedDetailTab, selectedStudent?.uid]);
+
+  useEffect(() => {
     if (bannerNotif) {
       const t = setTimeout(() => setBannerNotif(null), 8000);
       return () => clearTimeout(t);
@@ -719,6 +729,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   // Modals / Overlays
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
+  const [trainerProgressPhotos, setTrainerProgressPhotos] = useState<any[]>([]);
+  const [trainerLoadingPhotos, setTrainerLoadingPhotos] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [activePanel, setActivePanel] = useState<'sales_links' | 'feedbacks' | 'updates' | 'wallet_panel' | null>(null);
   const [isNotifyingByCategory, setIsNotifyingByCategory] = useState(false);
@@ -6693,55 +6705,94 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {/* TABCONTENT: PROGRESSO DO ALUNO */}
                 {selectedDetailTab === 'progresso' && (
                   <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
-                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
-                        <ClipboardCheck className="w-8 h-8" />
+                    {trainerLoadingPhotos ? (
+                      <div className="bg-white rounded-xl p-8 text-center text-slate-500 font-medium text-xs">
+                        Carregando fotos de progresso...
                       </div>
-                      
-                      <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
-                        Incentive seu <span className="text-[#0070f3]">aluno</span> a registrar o progresso!
-                      </h3>
-
-                      <div className="w-full space-y-4 mb-8">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <Camera className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Acompanhe a evolução com fotos</span>
+                    ) : trainerProgressPhotos.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between px-1">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                            Fotos registradas pelo aluno ({trainerProgressPhotos.length})
+                          </h4>
+                        </div>
+                        {trainerProgressPhotos.map((photo) => {
+                          const dateFormatted = photo.date ? new Date(photo.date).toLocaleString('pt-BR') : '';
+                          return (
+                            <div key={photo.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs text-slate-600 font-bold">
+                                <span>{dateFormatted}</span>
+                              </div>
+                              <div className="p-3 bg-slate-900 flex items-center justify-center max-h-[380px] overflow-hidden">
+                                <img
+                                  src={photo.photoURL}
+                                  alt="Foto do aluno"
+                                  className="w-full h-auto max-h-[380px] object-contain rounded-lg"
+                                />
+                              </div>
+                              {photo.notes && (
+                                <div className="p-3 bg-white border-t border-slate-100 text-xs text-slate-800">
+                                  <span className="font-bold text-slate-500 block mb-1">Comentário do aluno:</span>
+                                  <p className="leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100 italic">
+                                    "{photo.notes}"
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
+                        <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
+                          <ClipboardCheck className="w-8 h-8" />
                         </div>
                         
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <TrendingUp className="w-4 h-4" />
+                        <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
+                          Incentive seu <span className="text-[#0070f3]">aluno</span> a registrar o progresso!
+                        </h3>
+
+                        <div className="w-full space-y-4 mb-8">
+                          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                            <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                              <Camera className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">Acompanhe a evolução com fotos</span>
                           </div>
-                          <span className="text-sm font-medium text-slate-700">Registre mudanças ao longo do tempo</span>
+                          
+                          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                            <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                              <TrendingUp className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">Registre mudanças ao longo do tempo</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                            <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                              <RefreshCw className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">Compare resultados</span>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
+                              <Zap className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">Mantenha o aluno motivado</span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <RefreshCw className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Compare resultados</span>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <Zap className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Mantenha o aluno motivado</span>
-                        </div>
+                        <button 
+                          className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
+                          onClick={() => {
+                            const msg = `Olá ${selectedStudent.name}, não esqueça de registrar seu progresso no app!`;
+                            window.open(`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+                          }}
+                        >
+                          Enviar lembrete
+                        </button>
                       </div>
-
-                      <button 
-                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
-                        onClick={() => {
-                          const msg = `Olá ${selectedStudent.name}, não esqueça de registrar seu progresso no app!`;
-                          window.open(`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=${encodeURIComponent(msg)}`, '_blank');
-                        }}
-                      >
-                        Enviar lembrete
-                      </button>
-                    </div>
+                    )}
                   </div>
                 )}
 

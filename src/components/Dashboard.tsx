@@ -438,14 +438,9 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
     const handleSaveEditComment = async (photoId: string) => {
       try {
-        const target = progressPhotos.find(p => p.id === photoId);
-        if (target) {
-          const updatedPhoto = { ...target, notes: progressEditComment.trim() };
-          await supabase.from('evolution_photos').update({ notes: progressEditComment.trim() }).eq('id', photoId);
-          const updatedList = progressPhotos.map(p => p.id === photoId ? updatedPhoto : p);
-          setProgressPhotos(updatedList);
-          localStorage.setItem('cadu_ponce_photos', JSON.stringify(updatedList));
-        }
+        await storage.updatePhotoNotes(photoId, progressEditComment.trim());
+        const updatedList = progressPhotos.map(p => p.id === photoId ? { ...p, notes: progressEditComment.trim() } : p);
+        setProgressPhotos(updatedList);
       } catch (err) {
         console.warn('Erro ao atualizar comentário:', err);
       }
