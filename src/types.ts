@@ -59,6 +59,7 @@ export interface ProgressEntry {
 export interface EvolutionPhoto {
   id: string;
   studentId: string;
+  studentName?: string;
   photoURL: string;
   date: string;
   notes?: string;

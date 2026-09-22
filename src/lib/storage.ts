@@ -555,6 +555,7 @@ export const storage = {
           return {
             id: row.id,
             studentId: row.student_id,
+            studentName: row.student_name || extra.studentName || 'Aluno',
             photoURL: extra.photoURL || '',
             notes: extra.notes ?? undefined,
             date: extra.date || row.created_at || new Date().toISOString(),
@@ -614,6 +615,7 @@ export const storage = {
     const payload = {
       id: photo.id,
       studentId: photo.studentId,
+      studentName: photo.studentName || 'Aluno',
       photoURL,
       notes: photo.notes ?? null,
       date: photo.date,
@@ -627,7 +629,7 @@ export const storage = {
       await supabase.from('agenda_events').upsert({
         id: photo.id,
         student_id: photo.studentId,
-        student_name: 'Aluno',
+        student_name: photo.studentName || 'Aluno',
         title: 'Foto de Progresso',
         date: datePart,
         start_time: nowTime,

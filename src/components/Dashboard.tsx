@@ -14,6 +14,7 @@ import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
 import WorkoutList from './WorkoutList';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
+import { compressImage } from '../lib/mediaDb';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BF4mz4GPAGZdcZi7EbNc1hHyI0bx_4npqhd0RV3aoHqSOpn9rjqpXUtA2SkNCPth1zgawRHMgFcVRmng0aVJQjQ';
 
@@ -365,15 +366,25 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   }
 
   if (showMeuProgresso) {
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
         setProgressSelectedFile(file);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setProgressPreview(reader.result as string);
-        };
-        reader.readAsDataURL(file);
+        try {
+          // Comprime a imagem para 800px max a 80% qualidade garantindo tamanho leve (<80KB)
+          const compressedBlob = await compressImage(file, 800, 0.8);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setProgressPreview(reader.result as string);
+          };
+          reader.readAsDataURL(compressedBlob);
+        } catch {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setProgressPreview(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+        }
       }
     };
 
@@ -386,6 +397,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         const newPhoto = {
           id: photoId,
           studentId: user.uid,
+          studentName: user.name || 'Aluno',
           photoURL: progressPreview,
           notes: progressComment.trim() || undefined,
           date: new Date().toISOString(),
