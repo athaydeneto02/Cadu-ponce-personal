@@ -52,6 +52,7 @@ import {
   BarChart3,
   PlayCircle,
   FileText,
+  FilePlus,
   LayoutGrid,
   MoreHorizontal,
   Box,
