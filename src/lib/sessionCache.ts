@@ -47,6 +47,17 @@ function reclaimRemoteSnapshots(except: string): void {
 }
 
 export function setCacheUser(userId: string | null): void {
+  if (activeUserId && activeUserId !== userId) {
+    const departingPrefix = `${PREFIX}${activeUserId}:`;
+    for (const [key, confirmed] of disposableSnapshots) {
+      if (!key.startsWith(departingPrefix)) continue;
+      // A draft or another tab may have replaced this confirmed snapshot.
+      // Never remove a value that no longer matches what this session saved.
+      if (diskRead(key) === confirmed) { try { localStorage.removeItem(key); } catch { /* Browser storage may be unavailable. */ } }
+      disposableSnapshots.delete(key);
+    }
+    for (const key of remoteMemory.keys()) if (key.startsWith(departingPrefix)) remoteMemory.delete(key);
+  }
   // Preserve old offline data before retiring the shared cache format. Orphans
   // stay quarantined for recovery; they are never shown to a new account.
   let legacyOwner: string | null = null;
@@ -120,6 +131,10 @@ export function cacheForUser(userId: string | null) {
       // Some mutations merge one confirmed row with older, unverified local
       // records. Those records cannot yet be made discardable.
       const policy = remoteValuePolicy(value);
+      const disposable = policy.disposable && !options.preserveLocal && !durableKeys.has(key) && !key.startsWith('cadu_workout_session_');
+      // A late read cannot restore discarded data after that identity left.
+      // Durable/outbox merges retain their existing per-owner guarantees.
+      if (disposable && userId !== activeUserId) return false;
       if (policy.memoryOnly) {
         remoteMemory.set(fullKey, { value, diskValue: diskRead(fullKey) });
         return false;
@@ -128,7 +143,7 @@ export function cacheForUser(userId: string | null) {
         try { localStorage.setItem(fullKey, value); }
         catch { reclaimRemoteSnapshots(fullKey); localStorage.setItem(fullKey, value); }
         remoteMemory.delete(fullKey);
-        if (policy.disposable && !options.preserveLocal && !durableKeys.has(key) && !key.startsWith('cadu_workout_session_')) disposableSnapshots.set(fullKey, value);
+        if (disposable) disposableSnapshots.set(fullKey, value);
         else disposableSnapshots.delete(fullKey);
         return true;
       } catch {

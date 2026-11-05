@@ -9,6 +9,7 @@ const gifSql = await readFile(new URL('supabase/migrations/20261105135939_exerci
 const completionSql = await readFile(new URL('supabase/migrations/20261105144934_workout_completion_notifications.sql', base), 'utf8');
 const integritySql = await readFile(new URL('supabase/migrations/20261105161811_transactional_prescriptions_and_student_records.sql', base), 'utf8');
 const indexCleanupSql = await readFile(new URL('supabase/migrations/20261105163348_remove_redundant_workout_log_index.sql', base), 'utf8');
+const sessionIsolationSql = await readFile(new URL('supabase/migrations/20261105170511_session_and_student_data_isolation.sql', base), 'utf8');
 const bootstrap = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE SCHEMA auth; CREATE SCHEMA storage;
@@ -28,7 +29,7 @@ await db.exec(sql);
 await db.exec(gifSql);
 await db.exec(gifSql);
 const normalizeSql = value => value.replace(/\r\n/g, '\n').trim();
-assert.equal(normalizeSql(await readFile(new URL('supabase_setup.sql', base),'utf8')), [sql, gifSql, completionSql, integritySql, indexCleanupSql].map(normalizeSql).join('\n\n'));
+assert.equal(normalizeSql(await readFile(new URL('supabase_setup.sql', base),'utf8')), [sql, gifSql, completionSql, integritySql, indexCleanupSql, sessionIsolationSql].map(normalizeSql).join('\n\n'));
 const gifBucket = (await db.query("SELECT public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id='exercise-videos'")).rows[0];
 assert.equal(gifBucket.public, false);
 assert.equal(Number(gifBucket.file_size_limit), 104857600);

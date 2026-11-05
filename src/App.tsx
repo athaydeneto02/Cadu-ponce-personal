@@ -92,6 +92,9 @@ export default function App() {
       setIsManagingAccounts(false);
       setIsEditingProfile(false);
       setIsUpdatingPassword(false);
+      setNotification(null);
+      setIsNotificationsOpen(false);
+      setActiveTab('dashboard');
       storage.setSessionUser(null);
     };
 
@@ -107,7 +110,12 @@ export default function App() {
           return;
         }
 
-        if (verifiedUserId !== session.user.id) setIsLoading(true);
+        if (verifiedUserId !== session.user.id) {
+          // A direct account switch can arrive without a SIGNED_OUT event.
+          // Unmount the previous account's screens before validating the next.
+          clearAuthenticatedView();
+          setIsLoading(true);
+        }
         // Auth callbacks must finish before calling other Supabase operations.
         const timer = setTimeout(async () => {
           timers.delete(timer);
@@ -709,7 +717,7 @@ export default function App() {
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Home className="w-5 h-5" />} label="Início" />
               <button
                 onClick={() => {
-                  window.open('https://www.instagram.com/caduponce.personal', '_blank');
+                  window.open('https://www.instagram.com/caduponce.personal', '_blank', 'noopener,noreferrer');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >

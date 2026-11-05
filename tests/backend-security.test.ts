@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fixtureToken } from './api-fixtures';
 import { allowedPushEndpoint, bearerToken, enforceRateLimit, HttpError, notificationInput,
   relativeUrl, requireAdmin } from '../server/security';
 import upload, { matchesMediaType } from '../api/upload';
@@ -8,7 +9,7 @@ import createUser, { newUserInput } from '../api/admin-create-user';
 
 const userId = 'a0000000-0000-4000-8000-000000000001';
 function authClient(role: string, status = 'active') {
-  return { auth: { getUser: async () => ({ data: { user: { id: userId, user_metadata: { role: 'admin' } } }, error: null }) },
+  return { rpc: async () => ({ data: true, error: null }), auth: { getUser: async () => ({ data: { user: { id: userId, user_metadata: { role: 'admin' } } }, error: null }) },
     from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role, status }, error: null }) }) }) }) } as any;
 }
 
@@ -20,7 +21,7 @@ test('JWT bearer is mandatory and must be a single token', () => {
 });
 
 test('real database role and active status are required, not user metadata', async () => {
-  const req = { headers: { authorization: 'Bearer token' } };
+  const req = { headers: { authorization: 'Bearer ' + fixtureToken(userId) } };
   await assert.rejects(requireAdmin(req, authClient('student')), (err: any) => err.status === 403);
   await assert.rejects(requireAdmin(req, authClient('admin', 'inactive')), (err: any) => err.status === 403);
   assert.equal((await requireAdmin(req, authClient('admin'))).id, userId);

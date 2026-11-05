@@ -12,7 +12,7 @@ const text = node => typeof node === 'string' ? node : !node ? '' : Array.isArra
   ? node.map(text).join(' ') : text(node.props?.children);
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-function harness(component, props, storage = {}) {
+function harness(component, props, storage = {}, supabaseAuth = {}) {
   storage = { getUser: () => ({ uid: 'student', name: 'Aluno' }), getWorkoutLogs: () => [], ...storage };
   const source = readFileSync(new URL(`../src/components/${component}.tsx`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -35,6 +35,7 @@ function harness(component, props, storage = {}) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === '../lib/storage') return { storage };
+      if (name === '../lib/supabase') return { supabase: { auth: supabaseAuth } };
       if (name === '../lib/workoutSession') return require('../src/lib/workoutSession.ts');
       if (name === '../lib/workoutDraft') return require('../src/lib/workoutDraft.ts');
       if (name === '../lib/useWorkoutClock') {
@@ -100,4 +101,19 @@ test('personal data form retains entered values and displays rejected saves', as
   assert.equal(app.find(node => node.props.id === 'profile-first-name').props.value, 'Alterado');
   assert.match(text(app.find(node => node.props.role === 'alert')), /Não foi possível salvar/);
   assert.equal(app.find(node => node.props.type === 'submit').props.disabled, false);
+});
+
+test('password updates enforce twelve characters before sending any authentication request', async () => {
+  const passwords = []; let authCalls = 0, completed = 0;
+  const app = harness('UpdatePasswordForm', { onClose() {}, onSuccess() { completed++; } }, {}, {
+    async getUser() { authCalls++; return { data: { user: { id: 'student' } } }; },
+    async updateUser(value) { passwords.push(value.password); return { error: null }; },
+  });
+  const enter = password => {
+    for (const id of ['new-password', 'confirm-password']) app.find(node => node.props.id === id).props.onChange({ target: { value: password } });
+  };
+  enter('12345678901'); await app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(authCalls, 0); assert.match(text(app.render()), /pelo menos 12 caracteres/);
+  enter('test-password-12'); await app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(passwords, ['test-password-12']); assert.equal(completed, 1);
 });

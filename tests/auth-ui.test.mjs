@@ -24,8 +24,8 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
   let delayedProfile = false;
   let cachedUid = 'student-a';
   let finishUpdate;
-  const user = { id: 'student-a', email: 'cadu-client@example.invalid', user_metadata: { role: 'admin' } };
-  const profile = { uid: user.id, name: 'Aluno', email: user.email, role: profileRole, status, createdAt: '2026-01-01' };
+  let user = { id: 'student-a', email: 'cadu-client@example.invalid', user_metadata: { role: 'admin' } };
+  let profile = { uid: user.id, name: 'Aluno', email: user.email, role: profileRole, status, createdAt: '2026-01-01' };
   const react = {
     lazy(loader) { return loader.toString().match(/components\/([^'"\)]+)/)?.[1]; },
     useState(initial) {
@@ -85,6 +85,7 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
   return {
     render, calls,
     emit: event => authCallback(event, { user, access_token: 'test-only-token' }),
+    switchUser: uid => { user = { ...user, id: uid }; profile = { ...profile, uid }; authCallback('SIGNED_IN', { user, access_token: 'other-test-token' }); },
     signOut: () => authCallback('SIGNED_OUT', null),
     noSession: () => authCallback('INITIAL_SESSION', null),
     delayProfile: () => { delayedProfile = true; },
@@ -228,6 +229,17 @@ test('profile update finishing after account switch cannot replace the current s
     await assert.rejects(save, /sessão mudou/);
     assert.equal(nodes(app.render()).some(node => node.props?.user?.name === 'Stale result'), false);
   }
+});
+
+test('a direct account switch clears the previous student workout before showing the next session', async () => {
+  const app = harness(); app.emit('SIGNED_IN'); await settle();
+  nodes(app.render()).find(node => node.type === 'Dashboard').props.onStartWorkout({ id: 'private-a', studentId: 'student-a', name: 'Private prescription A', exercises: [] });
+  assert.ok(nodes(app.render()).some(node => node.type === 'WorkoutSession'));
+  app.switchUser('student-b');
+  assert.equal(nodes(app.render()).some(node => node.type === 'WorkoutSession'), false);
+  await settle();
+  assert.equal(nodes(app.render()).some(node => node.props?.workout?.id === 'private-a'), false);
+  assert.equal(nodes(app.render()).find(node => node.type === 'Dashboard').props.user.uid, 'student-b');
 });
 
 test('consulting screen only offers centralized WhatsApp and Instagram contact without plans or checkout', () => {

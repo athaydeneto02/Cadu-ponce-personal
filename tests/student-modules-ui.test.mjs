@@ -124,3 +124,16 @@ test('an unrelated outbox synchronization cannot discard the gallery read still 
   assert.match(label(app.render()), /Foto salva em outro dispositivo/);
   assert.doesNotMatch(label(app.render()), /Carregando fotos|Nenhuma foto enviada/);
 });
+
+test('a private file resolved after an account change is never exposed as a download link', async () => {
+  let actor = 'student';
+  const record = { id: 'file', studentId: 'student', name: 'private-exam.pdf', storagePath: 'storage://arquivos-alunos/student/file.pdf', size: 20, createdAt: '2026-11-05' };
+  const app = harness('StudentFiles', { studentId: 'student', onBack() {} }, {
+    getUser: () => ({ uid: actor }), fetchStudentFiles: async () => [record],
+  });
+  app.render(); await settle();
+  app.find(n => n.type === 'button' && label(n) === 'Abrir arquivo').props.onClick();
+  actor = 'another-student'; await settle();
+  assert.equal(all(app.render()).some(node => node.type === 'a'), false);
+  assert.match(label(app.render()), /A sessão mudou/);
+});

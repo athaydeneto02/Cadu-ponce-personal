@@ -740,7 +740,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
       `✅ ${exercises.length} ${exercises.length === 1 ? 'exercício concluído' : 'exercícios concluídos'}\n\n` +
       `_Via Cadu Ponce Personal_`;
     // Opening without a hardcoded phone number opens the WhatsApp contact/group picker
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   };
 
   const handleShareStories = async () => {
@@ -777,7 +777,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         URL.revokeObjectURL(url);
 
         setTimeout(() => {
-          window.open('https://instagram.com', '_blank');
+          window.open('https://instagram.com', '_blank', 'noopener,noreferrer');
         }, 600);
       }
     } catch (err) {

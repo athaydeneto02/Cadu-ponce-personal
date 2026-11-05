@@ -17,11 +17,12 @@ export function matchesMediaType(buffer: Buffer, type: string): boolean {
   return (type === 'video/mp4' || type === 'video/quicktime') && buffer.toString('ascii', 4, 8) === 'ftyp';
 }
 
-export default async function handler(req: any, res: any) {
+export function createUploadHandler(clientFactory = createServerClient) {
+return async function handler(req: any, res: any) {
   if (!postOnly(req, res)) return;
   try {
     bearerToken(req);
-    const client = createServerClient();
+    const client = clientFactory();
     const admin = await requireAdmin(req, client);
     const contentType = String(req.headers?.['content-type'] || '').split(';')[0].trim().toLowerCase();
     if (!formats[contentType]) throw new HttpError(415, 'Formato de arquivo não permitido.');
@@ -46,3 +47,5 @@ export default async function handler(req: any, res: any) {
     return res.status(201).json({ url: data.signedUrl, path, reference: `storage://exercise-videos/${path}` });
   } catch (error) { return safeError(res, error); }
 }
+}
+export default createUploadHandler();

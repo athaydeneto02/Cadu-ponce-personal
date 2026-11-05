@@ -33,11 +33,13 @@ export default function StudentFiles({ studentId, onBack }: { studentId: string;
   const open = async (file: StudentFile) => {
     if (lock.current) return;
     lock.current = true; setBusy(file.id); setError(''); setDownload(null);
+    const actor = storage.getUser()?.uid;
     const tab = window.open('', '_blank');
     if (tab) tab.opener = null;
     try {
       const reference = file.storagePath.startsWith('storage://') ? file.storagePath : `storage://arquivos-alunos/${file.storagePath}`;
       const url = await resolveMediaUrl(reference);
+      if (!actor || actor !== storage.getUser()?.uid) throw new Error('A sessão mudou. Entre novamente para abrir o arquivo.');
       if (!url) throw new Error('Não foi possível abrir o arquivo. Verifique a conexão e tente novamente.');
       if (tab) tab.location.href = url;
       else setDownload({ name: file.name, url });

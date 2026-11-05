@@ -19,8 +19,8 @@ export default function UpdatePasswordForm({ onClose, onSuccess, recovery = fals
     event.preventDefault();
     if (loading) return;
     setError('');
-    if (newPassword.length < 8) {
-      setError('Use uma senha com pelo menos 8 caracteres.');
+    if (newPassword.length < 12) {
+      setError('Use uma senha com pelo menos 12 caracteres.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -53,11 +53,11 @@ export default function UpdatePasswordForm({ onClose, onSuccess, recovery = fals
       </header>
       <div className="bg-white flex-1 rounded-t-xl px-4 pt-6 pb-20 overflow-y-auto">
         <form onSubmit={handleSubmit} className="space-y-5 max-w-md mx-auto">
-          <p className="text-slate-600 text-sm">Escolha uma nova senha com pelo menos 8 caracteres.</p>
+          <p className="text-slate-600 text-sm">Escolha uma nova senha com pelo menos 12 caracteres.</p>
           <div className="space-y-2">
             <label htmlFor="new-password" className="text-sm font-bold text-slate-800">Nova senha</label>
             <div className="relative">
-              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={8} value={newPassword} onChange={event => setNewPassword(event.target.value)} className="w-full border border-slate-300 rounded-lg pl-3 pr-12 py-3 text-slate-800" />
+              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={12} value={newPassword} onChange={event => setNewPassword(event.target.value)} className="w-full border border-slate-300 rounded-lg pl-3 pr-12 py-3 text-slate-800" />
               <button type="button" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-slate-500">
                 {showPassword ? <EyeOff aria-hidden="true" className="w-5 h-5" /> : <Eye aria-hidden="true" className="w-5 h-5" />}
               </button>
@@ -65,7 +65,7 @@ export default function UpdatePasswordForm({ onClose, onSuccess, recovery = fals
           </div>
           <div className="space-y-2">
             <label htmlFor="confirm-password" className="text-sm font-bold text-slate-800">Confirmar nova senha</label>
-            <input id="confirm-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={8} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-3 text-slate-800" />
+            <input id="confirm-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={12} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-3 text-slate-800" />
           </div>
           {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}
           <button type="submit" disabled={loading} className="w-full bg-[#0070f3] hover:bg-blue-700 text-white font-medium py-3 rounded-lg disabled:opacity-60">

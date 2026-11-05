@@ -46,7 +46,7 @@ export default async function handler(req: any, res: any) {
     if (error || !data.user) throw new HttpError(400, 'Não foi possível criar a conta. Verifique o e-mail e a senha.');
     const { password: _password, ...profile } = input;
     const { data: saved, error: saveError } = await client.from('profiles')
-      .upsert({ ...profile, id: data.user.id }).select('*').single();
+      .upsert({ ...profile, id: data.user.id }).select('id,name,email,photo_url,weight,height,trainer_phone,role,status,modality,metadata,created_at').single();
     if (saveError || !saved) {
       const { error: cleanupError } = await client.auth.admin.deleteUser(data.user.id);
       throw new HttpError(503, cleanupError

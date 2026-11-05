@@ -383,7 +383,7 @@ test('a late response with full storage cannot leak cached progress into the nex
   await saving;
   assert.equal(storage.getProgress().length, 0);
   storage.setSessionUser('student-a');
-  assert.equal(storage.getProgress()[0].id, 'progress-a');
+  assert.equal(storage.getProgress().length, 0, 'confirmed server data must be fetched again after leaving its account');
 });
 
 test('a failed prescription snapshot cannot expose an editable cached routine', async () => {
@@ -596,7 +596,7 @@ test('logout and another account cannot see or erase the previous outbox', async
   assert.equal(storage.getWorkoutLogs()[0].id, 'private-log');
 });
 
-test('a late admin response writes only to that admin cache', async () => {
+test('a late admin response never repopulates a signed-out account snapshot or the next account', async () => {
   const gate = deferred();
   const { storage } = setup({ query: () => gate.promise });
   storage.setSessionUser('admin-a');
@@ -606,7 +606,7 @@ test('a late admin response writes only to that admin cache', async () => {
   await fetching;
   assert.equal(storage.getUsersList().length, 0);
   storage.setSessionUser('admin-a');
-  assert.equal(storage.getUsersList()[0].uid, 'private-student');
+  assert.equal(storage.getUsersList().length, 0);
 });
 
 test('legacy offline logs are migrated as pending rather than erased', async () => {

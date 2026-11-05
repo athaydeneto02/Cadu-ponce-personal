@@ -11,8 +11,8 @@ const compiled = await build({
     builder.onResolve({ filter: /^(react|\.\/supabase|\.\/sessionCache)$/ }, ({ path }) => ({ path, namespace: 'media-test' }));
     builder.onLoad({ filter: /.*/, namespace: 'media-test' }, ({ path }) => ({ contents:
       path === './supabase' ? 'export const supabase = globalThis.testSupabase;' :
-      path === './sessionCache' ? 'export const getCacheUser = () => globalThis.testState.actor;' :
-      'export function useState() { throw new Error("React hooks are outside this test harness"); } export function useEffect() {}',
+      path === './sessionCache' ? 'export const getCacheUser = () => globalThis.testState.actor; export const cacheForUser = uid => ({ readJson: (key, fallback) => globalThis.testState.caches.get(uid + ":" + key) ?? fallback });' :
+      'export const useState = (...args) => globalThis.testReact.useState(...args); export const useEffect = (...args) => globalThis.testReact.useEffect(...args);',
       loader: 'js',
     }));
   } }],
@@ -24,8 +24,8 @@ function deferred() {
   return { promise, resolve };
 }
 
-function setup({ sign, agenda, localRead, download, remove, localDeleteError } = {}) {
-  const state = { actor: 'student-a', time: 1_000_000 };
+function setup({ sign, agenda, localRead, download, remove, localDeleteError, hooks } = {}) {
+  const state = { actor: 'student-a', time: 1_000_000, caches: new Map() };
   const signedCalls = [];
   const agendaCalls = [];
   const localCalls = [];
@@ -35,6 +35,9 @@ function setup({ sign, agenda, localRead, download, remove, localDeleteError } =
   const removeCalls = [];
   const localDeletes = [];
   const localRecords = new Map();
+  const listeners = new Map(), intervals = new Map(); let nextInterval = 0;
+  const events = { addEventListener(name, callback) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(callback); },
+    removeEventListener(name, callback) { listeners.get(name)?.delete(callback); } };
   class Clock extends Date { static now() { return state.time; } }
   class MediaURL extends URL {
     static createObjectURL(blob) {
@@ -92,20 +95,22 @@ function setup({ sign, agenda, localRead, download, remove, localDeleteError } =
   };
   const module = { exports: {} };
   vm.runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, testSupabase: supabase, testState: state,
+    module, exports: module.exports, testSupabase: supabase, testState: state, testReact: hooks,
     Date: Clock, URL: MediaURL, Blob, Uint8Array, atob,
     console: { log() {}, warn() {}, error() {} },
-    window: { indexedDB: { open() {
+    window: { ...events, indexedDB: { open() {
       const request = { result: db };
       queueMicrotask(() => request.onsuccess?.());
       return request;
     } } },
+    document: { ...events, visibilityState: 'visible' },
     fetch: async url => { fetchCalls.push(url); if (download) return download(url); throw new Error('Network access is forbidden in this test'); },
-    setTimeout, clearTimeout, setInterval, clearInterval,
+    setTimeout, clearTimeout, setInterval: (callback, delay) => { const id = ++nextInterval; intervals.set(id, { callback, delay }); return id; }, clearInterval: id => intervals.delete(id),
   });
   const media = module.exports;
   return {
-    media, state, signedCalls, agendaCalls, localCalls, created, revoked, fetchCalls, removeCalls, localDeletes, localRecords,
+    media, state, signedCalls, agendaCalls, localCalls, created, revoked, fetchCalls, removeCalls, localDeletes, localRecords, intervals,
+    dispatch: name => listeners.get(name)?.forEach(callback => callback()),
     switchActor(actor) { state.actor = actor; media.clearMediaCache(); },
   };
 }
@@ -117,19 +122,20 @@ test('durable references and legacy public/signed URLs resolve through authentic
   const legacyPath = `${projectOrigin}/storage/v1/object/public/evolution-photos/student-a/foto%20de%20evolu%C3%A7%C3%A3o.jpg`;
   assert.equal(await media.resolveMediaUrl(legacyPath), signed);
   assert.equal(await media.resolveMediaUrl(legacyPath.replace('/public/', '/sign/') + '?token=expired'), signed);
-  assert.deepEqual(signedCalls, [{ bucket: 'evolution-photos', path: 'student-a/foto de evolução.jpg', seconds: 3600, actor: 'student-a' }]);
+  assert.deepEqual(signedCalls, [{ bucket: 'evolution-photos', path: 'student-a/foto de evolução.jpg', seconds: 600, actor: 'student-a' }]);
 });
 
-test('a cached private URL is reused before forty minutes and renewed at expiration', async () => {
+test('a ten-minute private URL is cached for eight minutes and renewed before expiration', async () => {
   const { media, state, signedCalls } = setup();
   const ref = 'storage://exercise-videos/trainer/video.mp4';
   const first = await media.resolveMediaUrl(ref);
-  state.time += 40 * 60 * 1000 - 1;
+  state.time += 8 * 60 * 1000 - 1;
   assert.equal(await media.resolveMediaUrl(ref), first);
   assert.equal(signedCalls.length, 1);
   state.time++;
   assert.notEqual(await media.resolveMediaUrl(ref), first);
   assert.equal(signedCalls.length, 2);
+  assert.equal(signedCalls[1].seconds, 600);
 });
 
 test('logout blocks private media and another account never reuses the previous signed URL', async () => {
@@ -217,25 +223,25 @@ test('an unrelated host with a Supabase-looking path is never signed by this pro
   assert.equal(env.signedCalls.length, 0);
 });
 
-test('video cache distinguishes full URLs even when origins and paths share the same suffix', async () => {
-  const env = setup({ download: async url => ({ ok: true, blob: async () => new Blob([url], { type: 'video/mp4' }) }) });
+test('external videos play directly without fetching untrusted HTML into an application-origin blob or shared cache', async () => {
+  const env = setup({ download: async () => ({ ok: true, blob: async () => new Blob(['<script>stealToken()</script>'], { type: 'text/html' }) }) });
   const suffix = '/long-common-directory-name/example-video-demonstration.mp4';
   const first = 'https://first.example.test/a' + suffix;
   const second = 'https://second.example.test/b' + suffix;
   const firstUrl = await env.media.getCachedVideoBlobUrl(first);
   const secondUrl = await env.media.getCachedVideoBlobUrl(second);
-  assert.notEqual(firstUrl, secondUrl);
-  assert.deepEqual(env.fetchCalls, [first, second]);
+  assert.equal(firstUrl, first); assert.equal(secondUrl, second);
+  assert.deepEqual(env.fetchCalls, []);
   env.media.clearMediaCache();
   await env.media.getCachedVideoBlobUrl(first);
-  assert.equal(env.fetchCalls.length, 2, 'reload reads its own cached video');
-  assert.equal(await env.created.at(-1).blob.text(), first);
+  assert.equal(env.fetchCalls.length, 0);
+  assert.equal(env.created.length, 0); assert.equal(env.localRecords.size, 0);
 });
 
 test('confirmed local deletion removes only the exact file and revokes its object URL', async () => {
   const env = setup();
-  const key = await env.media.storeLocalFile(new Blob(['remove']), 'photo');
-  const keep = await env.media.storeLocalFile(new Blob(['keep']), 'photo');
+  const key = await env.media.storeLocalFile(new Blob(['remove'], { type: 'image/jpeg' }), 'photo');
+  const keep = await env.media.storeLocalFile(new Blob(['keep'], { type: 'image/jpeg' }), 'photo');
   const oldUrl = await env.media.resolveMediaUrl(key);
   await env.media.deleteLocalFile(key, 'student-a');
   assert.equal(await env.media.getLocalBlob(key), null);
@@ -246,7 +252,7 @@ test('confirmed local deletion removes only the exact file and revokes its objec
 
 test('failed local deletion preserves its blob and a session switch prevents deletion', async () => {
   const env = setup({ localDeleteError: true });
-  const key = await env.media.storeLocalFile(new Blob(['keep']), 'photo');
+  const key = await env.media.storeLocalFile(new Blob(['keep'], { type: 'image/jpeg' }), 'photo');
   await assert.rejects(env.media.deleteLocalFile(key), /delete denied/);
   assert.equal(await (await env.media.getLocalBlob(key)).text(), 'keep');
   env.switchActor('student-b');
@@ -271,4 +277,82 @@ test('stored media cleanup is scoped to the private project bucket, invalidates 
   env.switchActor('student-b');
   await assert.rejects(env.media.deleteStoredMedia(ref, 'student-a'), /sessão mudou/);
   assert.equal(env.removeCalls.length, 2);
+});
+
+test('active schemes, inline HTML/SVG and unknown blobs never reach media elements or direct-open links', async () => {
+  const env = setup();
+  for (const source of ['javascript:alert(document.cookie)', 'java\nscript:alert(1)', 'vbscript:msgbox(1)',
+    'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
+    'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIj48L3N2Zz4=',
+    'blob:https://app.example.test/unknown', 'file:///private.txt', 'https://user:password@example.test/video.mp4']) {
+    assert.equal(await env.media.resolveMediaUrl(source), '', source);
+    assert.equal(await env.media.getCachedVideoBlobUrl(source), '', source);
+  }
+  assert.equal(env.fetchCalls.length, 0); assert.equal(env.created.length, 0);
+  assert.equal(await env.media.resolveMediaUrl('data:image/jpeg;base64,aW1hZ2U='), 'data:image/jpeg;base64,aW1hZ2U=');
+  assert.equal(await env.media.resolveMediaUrl('https://youtu.be/abcdefghijk'), 'https://youtu.be/abcdefghijk');
+});
+
+test('legacy supamedia cannot mint an application-origin HTML/SVG blob, but preserves GIF and video playback', async () => {
+  for (const type of ['text/html', 'image/svg+xml', 'application/xhtml+xml']) {
+    const env = setup({ agenda: async () => ({ data: { notes: `data:${type};base64,PHNjcmlwdD5zdGVhbCgpPC9zY3JpcHQ+` } }) });
+    assert.equal(await env.media.resolveMediaUrl('supamedia:attacker-record'), '');
+    assert.equal(env.created.length, 0);
+  }
+  for (const type of ['image/gif', 'video/mp4']) {
+    const env = setup({ agenda: async () => ({ data: { notes: `data:${type};base64,bWVkaWE=` } }) });
+    assert.match(await env.media.resolveMediaUrl('supamedia:legacy-media'), /^blob:/);
+    assert.equal(env.created[0].blob.type, type);
+  }
+});
+
+test('local media belongs to its authenticated owner across logout and direct actor changes', async () => {
+  const env = setup(), key = await env.media.storeLocalFile(new Blob(['private'], { type: 'image/jpeg' }), 'photo');
+  assert.equal(env.localRecords.get(key.slice(4)).ownerId, 'student-a');
+  env.state.actor = 'student-b'; // No clearMediaCache dependency may bypass the owner check.
+  assert.equal(await env.media.resolveMediaUrl(key), '');
+  assert.equal(await env.media.getLocalBlob(key), null);
+  await assert.rejects(env.media.deleteLocalFile(key), /outra sessão/);
+  env.switchActor(null);
+  assert.equal(await env.media.resolveMediaUrl(key), '');
+  await assert.rejects(env.media.storeLocalFile(new Blob(['unowned'])), /Entre na sua conta/);
+  env.switchActor('student-a');
+  assert.equal(await (await env.media.getLocalBlob(key)).text(), 'private');
+});
+
+test('ownerless legacy files stay quarantined unless the active account explicitly references them, without deleting pending media', async () => {
+  const env = setup(), key = 'idb:legacy-photo';
+  env.localRecords.set('legacy-photo', { blob: new Blob(['pending'], { type: 'image/jpeg' }) });
+  env.state.caches.set('student-a:cadu_ponce_photos', [{ id: 'photo', localFileKey: key, syncStatus: 'pending' }]);
+  env.switchActor('student-b'); assert.equal(await env.media.getLocalBlob(key), null);
+  env.switchActor('student-a'); assert.equal(await (await env.media.getLocalBlob(key)).text(), 'pending');
+  assert.equal(env.localRecords.size, 1); assert.equal(env.localDeletes.length, 0);
+});
+
+test('private media renews after focus/visibility return and never paints the previous actor URL', async () => {
+  const slots = [], effects = []; let cursor = 0;
+  const hooks = {
+    useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { slots[index] = value; }]; },
+    useEffect(callback, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((value, i) => !Object.is(value, old.deps[i]))) {
+      slots[index] = { deps, cleanup: old?.cleanup }; effects.push(() => { slots[index].cleanup?.(); slots[index].cleanup = callback(); });
+    } },
+  };
+  const env = setup({ hooks }), reference = 'storage://evolution-photos/student-a/private.jpg';
+  const render = () => { cursor = 0; const value = env.media.useMediaUrl(reference); effects.splice(0).forEach(effect => effect()); return value; };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  try {
+    assert.equal(render(), ''); await settle();
+    const first = render(); assert.match(first, /student-a/);
+    assert.equal([...env.intervals.values()][0].delay, 9 * 60 * 1000);
+    env.state.time += 9 * 60 * 1000; env.dispatch('focus'); await settle();
+    const second = render(); assert.notEqual(second, first);
+    env.state.time += 9 * 60 * 1000; env.dispatch('visibilitychange'); await settle();
+    assert.notEqual(render(), second); assert.equal(env.signedCalls.length, 3);
+    env.switchActor('student-b'); assert.equal(render(), '', 'the previous signed URL cannot paint while the next actor resolves');
+    await settle(); assert.match(render(), /student-b/);
+    assert.ok(env.signedCalls.every(call => call.seconds === 600));
+  } finally { for (const slot of slots) slot?.cleanup?.(); }
+  const count = env.signedCalls.length;
+  env.state.time += 9 * 60 * 1000; env.dispatch('focus');
+  assert.equal(env.signedCalls.length, count); assert.equal(env.intervals.size, 0);
 });

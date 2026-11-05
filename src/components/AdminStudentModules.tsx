@@ -95,10 +95,12 @@ export function StudentRecords({ module, student }: { module: Exclude<StudentMod
   };
   const openFile = async (file: StudentFile) => {
     // Open synchronously so browser popup protection does not swallow the resolved private URL.
+    const actor = storage.getUser()?.uid;
     const tab = window.open('about:blank', '_blank');
     if (tab) tab.opener = null;
     try {
       const url = await resolveMediaUrl(file.storagePath);
+      if (!actor || actor !== storage.getUser()?.uid) throw new Error('A sessão mudou. Entre novamente para abrir o arquivo.');
       if (!url || !/^https?:\/\//i.test(url)) throw new Error('O arquivo não está disponível. Atualize a lista e tente novamente.');
       if (tab) tab.location.href = url;
       else throw new Error('Permita abrir uma nova aba para visualizar o arquivo.');

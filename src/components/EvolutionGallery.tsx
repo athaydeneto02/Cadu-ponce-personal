@@ -3,7 +3,7 @@ import { Camera, Calendar, Plus, PlusCircle, Trash2, Maximize2, Columns, X } fro
 import { EvolutionPhoto } from '../types';
 import { storage } from '../lib/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { useMediaUrl } from '../lib/mediaDb';
+import { createMediaPreview, revokeMediaPreview, useMediaUrl } from '../lib/mediaDb';
 
 // Componente auxiliar para resolver URLs idb: ou http normalmente
 function PhotoImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
@@ -63,7 +63,9 @@ export default function EvolutionGallery() {
     setUploadError(null);
 
     // 1. Cria URL local instantânea — foto aparece na tela imediatamente
-    const previewUrl = URL.createObjectURL(file);
+    let previewUrl: string;
+    try { previewUrl = createMediaPreview(file); }
+    catch { setUploadError('Selecione uma imagem JPG, PNG, GIF ou WebP.'); return; }
     const tempId = crypto.randomUUID();
 
     const tempPhoto: EvolutionPhoto = {
@@ -91,7 +93,7 @@ export default function EvolutionGallery() {
       setPhotos(prev => prev.filter(photo => photo.id !== tempId));
       setUploadError('Não foi possível salvar a foto. Selecione o arquivo novamente para tentar outra vez.');
     } finally {
-      URL.revokeObjectURL(previewUrl);
+      revokeMediaPreview(previewUrl);
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }

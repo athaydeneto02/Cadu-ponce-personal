@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { bearerToken, enforceRateLimit, HttpError, jsonBody, postOnly, safeError } from './security.js';
+import { assertLiveSession, bearerToken, enforceRateLimit, HttpError, jsonBody, postOnly, safeError } from './security.js';
 
 const codes = new Set(['render', 'runtime', 'promise', 'asset']);
 export function createClientErrorHandler(clientFactory: () => SupabaseClient, record: (event: { event: string; code: string }) => void) {
@@ -12,6 +12,7 @@ export function createClientErrorHandler(clientFactory: () => SupabaseClient, re
       const client = clientFactory();
       const { data, error } = await client.auth.getUser(token);
       if (error || !data.user) throw new HttpError(401, 'Sessão inválida.');
+      await assertLiveSession(client, token, data.user.id);
       const { data: profile, error: profileError } = await client.from('profiles').select('status').eq('id', data.user.id).single();
       if (profileError || profile?.status !== 'active') throw new HttpError(403, 'Conta inativa.');
       await enforceRateLimit(client, data.user.id, 'client-error');
