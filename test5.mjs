@@ -1,1 +1,5 @@
-import { createClient } from '@supabase/supabase-js'; const supabase = createClient('https://umqjakmxhfgclcxmpfda.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtcWpha214aGZnY2xjeG1wZmRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjQ3NzcsImV4cCI6MjA5NzIwMDc3N30.7gVBDSB958LZJ2NxcNigqrmPvh6fxBUDWNGNaCAKSzc'); async function test() { const {data, error} = await supabase.from('profiles').update({height: 180}).eq('id', '123e4567-e89b-12d3-a456-426614174001').select('*'); console.log('Update Data:', data); console.log('Update Error:', error); } test();  
+import { withTestEnvironment, assertTestResult } from './scripts/test-environment.mjs';
+await withTestEnvironment(async ({ client, user }) => {
+  assertTestResult(await client.from('profiles').update({ height: 180 }).eq('id', user.id).select('id').single());
+  console.log('Atualização do perfil da conta de teste concluída.');
+}, { write: true });

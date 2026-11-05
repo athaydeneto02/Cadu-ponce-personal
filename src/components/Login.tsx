@@ -12,9 +12,11 @@ import { supabase } from '../lib/supabase';
 interface LoginProps {
   onLogin: (email: string, password: string) => void | Promise<void>;
   onAcquireClick?: () => void;
+  errorMessage?: string | null;
+  notice?: string | null;
 }
 
-export default function Login({ onLogin, onAcquireClick }: LoginProps) {
+export default function Login({ onLogin, onAcquireClick, errorMessage, notice }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,13 +28,15 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
   const [resetEmail, setResetEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setLoginError(null);
     try {
-      await onLogin(email, password);
+      await onLogin(email.trim(), password);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setLoginError(err.message);
@@ -62,15 +66,17 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
-              E-mail ou CPF
+            <label htmlFor="login-email" className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
+              E-mail
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-red-500 transition-colors" />
               </div>
               <input
-                type="text"
+                id="login-email"
+                type="email"
+                autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -81,7 +87,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
+            <label htmlFor="login-password" className="text-[10px] font-bold text-white/60 uppercase tracking-widest pl-4 mb-2 block">
               Senha
             </label>
             <div className="relative group">
@@ -89,7 +95,9 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                 <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-red-500 transition-colors" />
               </div>
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -98,6 +106,8 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
               />
               <button
                 type="button"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                aria-pressed={showPassword}
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center"
               >
@@ -113,20 +123,22 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
           <div className="flex justify-end pt-1">
             <button 
               type="button"
-              onClick={() => setIsResetOpen(true)}
+              onClick={() => { setResetError(null); setIsResetOpen(true); }}
               className="text-xs text-white/60 hover:text-white font-semibold tracking-wide hover:underline cursor-pointer transition-colors duration-200"
             >
               Esqueci a senha
             </button>
           </div>
 
-          {loginError && (
+          {notice && <p role="status" className="text-emerald-300 text-sm text-center">{notice}</p>}
+          {(loginError || errorMessage) && (
             <motion.p
+              role="alert"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-red-400 text-xs font-semibold text-center bg-red-950/50 border border-red-500/30 rounded-xl px-4 py-2"
             >
-              {loginError}
+              {loginError || errorMessage}
             </motion.p>
           )}
 
@@ -162,6 +174,9 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
       <AnimatePresence>
         {isResetOpen && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="password-reset-title"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -175,6 +190,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
             >
               <button
                 type="button"
+                aria-label="Fechar recuperação de senha"
                 onClick={() => {
                   setIsResetOpen(false);
                   setResetSuccess(false);
@@ -189,7 +205,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                 <div className="w-12 h-12 bg-red-950/40 text-red-500 rounded-2xl flex items-center justify-center mb-4 border border-red-900/30">
                   <Lock className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-lg text-white">Recuperar Senha</h3>
+                <h3 id="password-reset-title" className="font-bold text-lg text-white">Recuperar Senha</h3>
                 <p className="text-slate-400 text-xs mt-2 px-3 leading-relaxed">
                   Digite seu e-mail cadastrado e enviaremos as instruções para você redefinir sua senha.
                 </p>
@@ -204,28 +220,29 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                   <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
                     <Check className="w-5 h-5 animate-pulse" />
                   </div>
-                  <p className="text-emerald-400 text-xs font-semibold">Link de recuperação enviado!</p>
-                  <p className="text-slate-450 text-[11px] leading-relaxed">Verifique a caixa de entrada do e-mail inserido.</p>
+                  <p role="status" className="text-emerald-400 text-xs font-semibold">Solicitação recebida.</p>
+                  <p className="text-slate-400 text-xs leading-relaxed">Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha. Verifique também a pasta de spam.</p>
                 </motion.div>
               ) : (
               <form onSubmit={async (e) => {
                 e.preventDefault();
+                if (isResetting) return;
                 setIsResetting(true);
-                const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-                  redirectTo: `${window.location.origin}/reset-password`,
-                });
-                setIsResetting(false);
-                if (!error) {
+                setResetError(null);
+                try {
+                  const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+                    redirectTo: `${window.location.origin}/reset-password`,
+                  });
+                  if (error) throw error;
                   setResetSuccess(true);
-                  setTimeout(() => {
-                    setResetSuccess(false);
-                    setIsResetOpen(false);
-                    setResetEmail('');
-                  }, 3000);
+                } catch {
+                  setResetError('Não foi possível solicitar a recuperação. Verifique a conexão e tente novamente em alguns instantes.');
+                } finally {
+                  setIsResetting(false);
                 }
               }} className="space-y-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-2 mb-1 block">
+                    <label htmlFor="reset-email" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2 mb-1 block">
                       Seu E-mail
                     </label>
                     <div className="relative">
@@ -233,7 +250,9 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                         <Mail className="h-5 w-5 text-slate-500" />
                       </div>
                       <input
+                        id="reset-email"
                         type="email"
+                        autoComplete="email"
                         required
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
@@ -243,6 +262,7 @@ export default function Login({ onLogin, onAcquireClick }: LoginProps) {
                     </div>
                   </div>
 
+                  {resetError && <p role="alert" className="text-red-300 text-sm">{resetError}</p>}
                   <button
                     type="submit"
                     disabled={isResetting}

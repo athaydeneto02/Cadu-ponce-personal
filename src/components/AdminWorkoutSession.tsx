@@ -96,7 +96,7 @@ export const getExerciseVideo = (ex: AdminExercise): string => {
 
   // Lookup in custom library cache
   try {
-    const rawLib = localStorage.getItem('cadu_ponce_exercises_v3');
+    const rawLib = storage.getCacheItem('cadu_ponce_exercises_v3');
     if (rawLib && ex.name) {
       const libList = JSON.parse(rawLib);
       const exNameClean = ex.name.toLowerCase().trim();
@@ -397,6 +397,10 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [activityRating, setActivityRating] = useState('');
   const [activityComment, setActivityComment] = useState('');
+  const [isSavingLog, setIsSavingLog] = useState(false);
+  const [saveLogError, setSaveLogError] = useState('');
+  const [saveLogStatus, setSaveLogStatus] = useState('');
+  const sessionLogId = useRef(crypto.randomUUID());
 
   // ── Video ─────────────────────────────────────────────────────────────────
   const [showVideo, setShowVideo] = useState(false);
@@ -408,6 +412,15 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // ── Effects ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const refresh = () => {
+      const saved = storage.getWorkoutLogs().find(log => log.id === sessionLogId.current);
+      if (saved?.syncStatus === 'synced') setSaveLogStatus('Treino salvo e sincronizado.');
+    };
+    window.addEventListener('cadu_data_synced', refresh);
+    return () => window.removeEventListener('cadu_data_synced', refresh);
+  }, []);
+
   useEffect(() => {
     if (!sessionActive) return;
     const id = setInterval(() => setSessionTime(t => t + 1), 1000);
@@ -468,26 +481,24 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     setEditLoadInput('');
   };
 
-  const saveLog = () => {
-    try {
-      const user = (() => {
-        try { return JSON.parse(localStorage.getItem('cadu_ponce_user') ?? '{}'); }
-        catch { return {}; }
-      })();
+  const saveLog = async () => {
+      const user = storage.getUser();
+      if (!user?.uid) throw new Error('Entre na sua conta para salvar este treino.');
 
       const rpeMap: Record<string, number> = {
         muito_facil: 2, facil: 4, adequado: 6, dificil: 8, muito_dificil: 10,
       };
 
       const log: WorkoutLog = {
-        id: `log_${Date.now()}`,
-        studentId: user.uid ?? 'unknown',
+        id: sessionLogId.current,
+        studentId: user.uid,
         studentName: user.name ?? undefined,
         routineId: routine.id,
         routineName: routine.name,
         completedAt: new Date().toISOString(),
         durationSeconds: sessionTime,
         rpe: rpeMap[activityRating] ?? 0,
+        comment: activityComment.trim() || undefined,
         exercisesSummary: exercises.map(ex => ({
           name: ex.name,
           setsCompleted: completedExs.has(ex.id) ? (Number(ex.sets) || 1) : 0,
@@ -496,29 +507,42 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         })),
       };
 
-      storage.saveWorkoutLog(log);
+      await storage.saveWorkoutLog(log);
+      const saved = storage.getWorkoutLogs().find(item => item.id === log.id);
+      setSaveLogStatus(saved?.syncStatus === 'pending'
+        ? 'Treino salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
+        : 'Treino salvo e sincronizado.');
 
       const studentPersonalPhone = (() => {
-        const p = user.phone || user.trainerPhone || '';
+        const p = user.metadata?.phone || '';
         if (typeof p === 'string' && !p.includes('84639369')) return p;
         return '';
       })();
 
-      storage.notifyTrainerWorkoutCompleted({
+      if (saved?.syncStatus !== 'pending') void storage.notifyTrainerWorkoutCompleted({
+        logId: log.id,
         studentName: user.name || log.studentName || 'Aluno',
         studentId: user.uid || log.studentId || 'unknown',
         studentPhone: studentPersonalPhone,
         routineName: routine.name,
         durationFormatted: fmtDuration(sessionTime),
         durationSeconds: sessionTime,
-      });
-    } catch { /* silent */ }
+      }).catch(() => setSaveLogStatus('Treino salvo. Não foi possível enviar o aviso ao treinador.'));
   };
 
-  const handleConcluir = () => {
-    saveLog();
-    setShowCompletionModal(false);
-    setScreen('finish');
+  const handleConcluir = async () => {
+    if (isSavingLog) return;
+    setIsSavingLog(true);
+    setSaveLogError('');
+    try {
+      await saveLog();
+      setShowCompletionModal(false);
+      setScreen('finish');
+    } catch (error) {
+      setSaveLogError(error instanceof Error ? error.message : 'Não foi possível salvar o treino. Tente novamente.');
+    } finally {
+      setIsSavingLog(false);
+    }
   };
 
   const generateStoryBlob = async (params: {
@@ -801,7 +825,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
   const fmtLoad = (ex: AdminExercise): string => `${loads[ex.id] ?? 0}kg`;
 
-  const whatsappPhone = (trainerPhone || TRAINER_CONFIG.phone).replace(/\D/g, '');
+  const whatsappPhone = TRAINER_CONFIG.phone;
 
   // ── Bottom Nav ─────────────────────────────────────────────────────────────
   const BottomNav = ({ onHome }: { onHome: () => void }) => (
@@ -1046,6 +1070,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
           <div className="text-center">
             <h1 className="text-white text-3xl font-black italic">Parabéns!</h1>
             <p className="text-white/70 text-base mt-1">Você concluiu o seu treino!</p>
+            {saveLogStatus && <p role="status" className="text-amber-200 text-sm mt-3 px-4">{saveLogStatus}</p>}
           </div>
 
           {/* Swipeable cards carousel */}
@@ -1673,11 +1698,13 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
               </div>
 
               {/* Concluir */}
+              {saveLogError && <p role="alert" className="text-sm text-red-600">{saveLogError}</p>}
               <button
                 onClick={handleConcluir}
+                disabled={isSavingLog}
                 className="w-full bg-[#1976D2] hover:bg-[#1565C0] text-white font-bold py-4 rounded-xl text-base transition cursor-pointer"
               >
-                Concluir
+                {isSavingLog ? 'Salvando...' : 'Concluir'}
               </button>
             </div>
           </div>

@@ -85,6 +85,11 @@ import { useMediaUrl, resolveMediaUrl } from '../lib/mediaDb';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 
+function PrivateImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const resolved = useMediaUrl(src);
+  return <img {...props} src={resolved || undefined} />;
+}
+
 interface AccountManagementProps {
   onClose: () => void;
   isDark?: boolean;
@@ -242,6 +247,7 @@ const DEFAULT_STUDENTS: UserProfile[] = [
     weight: 65,
     height: 160,
     trainerPhone: '5511999999999',
+    role: 'student',
     status: 'active',
     modality: 'Online',
     createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
@@ -302,7 +308,7 @@ function ExerciseImagePreview({ url }: { url?: string }) {
   if (!resolved) return null;
   return (
     <div className="relative w-full h-28 rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-      <img src={resolved} alt="Preview" className="w-full h-full object-cover" onError={() => {}} />
+      <PrivateImage src={resolved} alt="Preview" className="w-full h-full object-cover" onError={() => {}} />
     </div>
   );
 }
@@ -314,7 +320,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [studentTab, setStudentTab] = useState<'alunos' | 'grupos'>('alunos');
   const [studentGroupSearch, setStudentGroupSearch] = useState('');
   const [studentGroups, setStudentGroups] = useState<string[]>(() => {
-    const saved = localStorage.getItem('cadu_ponce_student_groups');
+    const saved = storage.getCacheItem('cadu_ponce_student_groups');
     if (saved) {
       try { return JSON.parse(saved); } catch(e){}
     }
@@ -424,7 +430,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
 
     const newInv: FinancialInvoice = {
-      id: editingInvoice ? editingInvoice.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'inv_' + Date.now()),
+      id: editingInvoice ? editingInvoice.id : crypto.randomUUID(),
       studentId: invoiceStudentId || undefined,
       studentName: invoiceStudentName.trim(),
       studentPhone: invoiceStudentPhone.trim(),
@@ -736,6 +742,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendComplete, setSendComplete] = useState(false);
+  const [notifyError, setNotifyError] = useState('');
+  const [notifyResult, setNotifyResult] = useState('');
   // Legacy states (keep for compatibility)
   const [selectedCategoryForNotify, setSelectedCategoryForNotify] = useState<string | null>(null);
   const [notifyStep, setNotifyStep] = useState<'category' | 'students' | 'message'>('category');
@@ -783,7 +791,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [exerciseFilter, setExerciseFilter] = useState<'favoritos' | 'app' | 'mine'>('mine');
 
   const [exercises, setExercises] = useState(() => {
-    const saved = localStorage.getItem('cadu_ponce_exercises_v3');
+    const saved = storage.getCacheItem('cadu_ponce_exercises_v3');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -837,7 +845,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     if (!isDataLoaded) return;
     // Sync custom exercises to Supabase: save only newly added/modified ones
     // (bulk save - iterate and upsert each)
-    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const cached = storage.getCacheItem('cadu_ponce_exercises_v3');
     const cachedList = cached ? JSON.parse(cached) : [];
     exercises.forEach((ex: any) => {
       const was = cachedList.find((c: any) => c.id === ex.id);
@@ -917,21 +925,24 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       exercises: routineExercises,
       createdAt: editingRoutine?.createdAt || new Date().toISOString(),
     };
-    await storage.saveAdminRoutine(routine);
+    try {
+      await storage.saveAdminRoutine(routine);
+    setEditingRoutine(routine);
     setAdminRoutines(storage.getAdminRoutines());
 
     // Automatically create Workouts for assigned students
     if (routineStudentIds.length > 0) {
-      routineStudentIds.forEach(async (studentId) => {
+      for (const studentId of routineStudentIds) {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
         if (!isUUID) {
           console.warn(`Skipping assignment for legacy student ID: ${studentId}`);
-          return;
+          continue;
         }
 
         const newWorkout: import('../types').Workout = {
-          id: crypto.randomUUID(),
+          id: storage.getWorkouts().find(workout => workout.routineId === routine.id && workout.studentId === studentId)?.id || crypto.randomUUID(),
           studentId,
+          routineId: routine.id,
           name: routine.name,
           description: routine.notes || routine.goal,
           exercises: routine.exercises.map((ex, idx) => ({
@@ -940,13 +951,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           })),
           createdAt: new Date().toISOString()
         };
-        try {
-          await storage.saveWorkout(newWorkout);
-        } catch (err: any) {
-          console.error('Failed to assign workout to student:', err);
-          alert('Erro ao atribuir treino ao aluno: ' + JSON.stringify(err));
-        }
-      });
+        await storage.saveWorkout(newWorkout);
+      }
     }
     setEditingRoutine(null);
     setRoutineExercises([]);
@@ -954,6 +960,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setRoutineName('NOME DA ROTINA');
     setRoutineNotes('');
     setHomeSubView('workout_library');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar todas as atribuições. Tente novamente.');
+    }
   };
 
   const handleSaveRoutineAssignment = async () => {
@@ -967,7 +976,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       studentIds: routineStudentIds,
       studentNames,
     };
-    await storage.saveAdminRoutine(updatedRoutine);
+    try {
+      await storage.saveAdminRoutine(updatedRoutine);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível atribuir o treino.');
+      return;
+    }
     setAdminRoutines(storage.getAdminRoutines());
 
     // Create a Workout for each student so it shows up on their end
@@ -980,8 +994,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       }
 
       const newWorkout: import('../types').Workout = {
-        id: crypto.randomUUID(),
+        id: storage.getWorkouts().find(workout => workout.routineId === assigningRoutine.id && workout.studentId === studentId)?.id || crypto.randomUUID(),
         studentId,
+        routineId: assigningRoutine.id,
         name: assigningRoutine.name,
         description: assigningRoutine.notes || assigningRoutine.goal,
         exercises: assigningRoutine.exercises.map((ex, idx) => ({
@@ -1003,21 +1018,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       alert(`Treino atribuído com sucesso a ${successCount} aluno(s) no Supabase!`);
     }
 
-    setAssigningRoutine(null);
-    setRoutineStudentIds([]);
-    alert('Treino atribuído com sucesso!');
+    setWorkouts(storage.getWorkouts());
+    if (successCount === routineStudentIds.length) {
+      setAssigningRoutine(null);
+      setRoutineStudentIds([]);
+    }
   };
 
   const handleDeleteAdminRoutine = async (id: string) => {
-    const routineToDelete = adminRoutines.find(r => r.id === id);
-    await storage.deleteAdminRoutine(id);
-    setAdminRoutines(storage.getAdminRoutines());
-    if (routineToDelete?.name) {
-      const matching = workouts.filter(w => w.name.toLowerCase().trim() === routineToDelete.name.toLowerCase().trim());
-      for (const mw of matching) {
-        await storage.deleteWorkout(mw.id);
-      }
+    try {
+      await storage.deleteAdminRoutine(id);
+      setAdminRoutines(storage.getAdminRoutines());
       setWorkouts(storage.getWorkouts());
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível excluir a rotina. Tente novamente.');
     }
   };
 
@@ -1137,22 +1151,22 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       setEditWeight(selectedStudent.weight?.toString() || '');
       setEditHeight(selectedStudent.height?.toString() || '');
       
-      const savedBF = localStorage.getItem(`cadu_bf_${selectedStudent.uid}`) || '';
+      const savedBF = storage.getCacheItem(`cadu_bf_${selectedStudent.uid}`) || '';
       setEditBF(savedBF);
       
-      const savedPayment = localStorage.getItem(`cadu_payment_${selectedStudent.uid}`) as 'pago' | 'pendente' | null;
+      const savedPayment = storage.getCacheItem(`cadu_payment_${selectedStudent.uid}`) as 'pago' | 'pendente' | null;
       setEditPaymentStatus(savedPayment || 'pago');
       
-      const savedPresc = localStorage.getItem(`cadu_presc_${selectedStudent.uid}`) || '';
+      const savedPresc = storage.getCacheItem(`cadu_presc_${selectedStudent.uid}`) || '';
       setExtraPrescription(savedPresc);
 
-      const savedFreq = localStorage.getItem(`cadu_freq_${selectedStudent.uid}`);
+      const savedFreq = storage.getCacheItem(`cadu_freq_${selectedStudent.uid}`);
       if (savedFreq) {
         setFrequency(JSON.parse(savedFreq));
       } else {
         const def = [true, false, true, false, true, false, false];
         setFrequency(def);
-        localStorage.setItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(def));
+        storage.setCacheItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(def));
       }
     }
   }, [selectedStudent]);
@@ -1162,7 +1176,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     const updated = [...frequency];
     updated[index] = !updated[index];
     setFrequency(updated);
-    localStorage.setItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(updated));
+    storage.setCacheItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(updated));
   };
 
   const handleSaveAssessment = () => {
@@ -1189,14 +1203,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       height: parsedHeight
     } : null);
     
-    localStorage.setItem(`cadu_bf_${selectedStudent.uid}`, editBF);
+    storage.setCacheItem(`cadu_bf_${selectedStudent.uid}`, editBF);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
   const handleSavePrescription = () => {
     if (!selectedStudent) return;
-    localStorage.setItem(`cadu_presc_${selectedStudent.uid}`, extraPrescription);
+    storage.setCacheItem(`cadu_presc_${selectedStudent.uid}`, extraPrescription);
     setPrescSuccess(true);
     setTimeout(() => setPrescSuccess(false), 2000);
   };
@@ -1205,12 +1219,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     if (!selectedStudent) return;
     const nextPayment = editPaymentStatus === 'pago' ? 'pendente' : 'pago';
     setEditPaymentStatus(nextPayment);
-    localStorage.setItem(`cadu_payment_${selectedStudent.uid}`, nextPayment);
+    storage.setCacheItem(`cadu_payment_${selectedStudent.uid}`, nextPayment);
   };
 
   const handleToggleModality = () => {
     if (!selectedStudent) return;
-    const nextModality = selectedStudent.modality === 'Presencial' ? 'Online' : 'Presencial';
+    const nextModality: UserProfile['modality'] = selectedStudent.modality === 'Presencial' ? 'Online' : 'Presencial';
     
     const updatedUsers = users.map(u => {
       if (u.uid === selectedStudent.uid) {
@@ -1224,7 +1238,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setSelectedStudent(prev => prev ? { ...prev, modality: nextModality } : null);
   };
 
-  const handleAddWorkout = (templateType: 'inferiores' | 'superiores' | 'cardio') => {
+  const handleAddWorkout = async (templateType: 'inferiores' | 'superiores' | 'cardio') => {
     if (!selectedStudent) return;
     
     let name = '';
@@ -1263,30 +1277,30 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
     
     const newWorkout: Workout = {
-      id: `w_custom_${Date.now()}`,
+      id: crypto.randomUUID(),
       name,
       description,
       studentId: selectedStudent.uid,
       createdAt: new Date().toISOString(),
-      exercises
+      exercises: exercises.map(exercise => ({ ...exercise, id: crypto.randomUUID() })),
     };
     
-    const updatedWorkouts = [...workouts, newWorkout];
-    storage.saveWorkouts(updatedWorkouts);
-    setWorkouts(updatedWorkouts);
+    try {
+      await storage.saveWorkout(newWorkout);
+      setWorkouts(storage.getWorkouts());
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar o treino. Tente novamente.');
+    }
   };
 
   const handleDeleteWorkout = async (id: string) => {
     const w = workouts.find(w => w.id === id);
-    const updated = workouts.filter(w => w.id !== id);
-    setWorkouts(updated);
-    await storage.deleteWorkout(id);
-    if (w?.name) {
-      const matchingAdmin = adminRoutines.find(r => r.name.toLowerCase().trim() === w.name.toLowerCase().trim());
-      if (matchingAdmin) {
-        await storage.deleteAdminRoutine(matchingAdmin.id);
-        setAdminRoutines(storage.getAdminRoutines());
-      }
+    if (!w) return;
+    try {
+      await storage.deleteWorkout(id, w.studentId);
+      setWorkouts(storage.getWorkouts());
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível excluir o treino. Tente novamente.');
     }
   };
 
@@ -1297,6 +1311,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName || !formEmail) return;
+    if (formPassword.length < 12) {
+      alert('Informe uma senha com pelo menos 12 caracteres.');
+      return;
+    }
 
     try {
       const newUser = await storage.adminCreateUser(
@@ -1304,7 +1322,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         formName,
         {
           role: formRole as 'student' | 'admin',
-          password: formPassword || '123456',
+          password: formPassword,
           status: 'active',
           modality: formModality as 'Presencial' | 'Online',
           trainerPhone: formPhone || TRAINER_CONFIG.phone,
@@ -1571,7 +1589,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           const found = users.find(u => u.uid === uid);
                           if (found) {
                             setInvoiceStudentName(found.name);
-                            const p = found.phone || found.trainerPhone || '';
+                            const p = found.metadata?.phone || '';
                             if (p && !p.includes('84639369')) setInvoiceStudentPhone(p);
                           }
                         }}
@@ -1735,7 +1753,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     </button>
                     <button 
                       onClick={() => setActiveTab('wallet')}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'wallet' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#E23737] text-white border-[#E23737]'}`}
+                      className="flex-1 py-3 text-sm font-bold border-b-4 transition bg-[#E23737] text-white border-[#E23737]"
                     >
                       Finanças
                     </button>
@@ -2163,7 +2181,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               }
                            };
 
-                           const handleAddExerciseSubmit = (e) => {
+                           const handleAddExerciseSubmit = async (e: React.FormEvent) => {
                               e.preventDefault();
                               if (!newExName.trim()) return;
 
@@ -2187,38 +2205,26 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                               if (editingExerciseOriginalTitle) {
                                 const origTitle = editingExerciseOriginalTitle;
-                                setExercises((prev: any[]) => prev.map(ex => ex.title === origTitle ? newExObj : ex));
-
-                                // Sync the new video/details to any routines that contain this exercise!
-                                setAdminRoutines((prev: any[]) => {
-                                  return prev.map(routine => {
+                                try {
+                                  const updatedRoutines = adminRoutines.map(routine => {
                                     let changed = false;
-                                    const updatedExs = routine.exercises.map((ex: any) => {
-                                      if (
-                                        (ex.name && ex.name.toLowerCase().trim() === origTitle.toLowerCase().trim()) ||
-                                        ex.id === newExObj.id
-                                      ) {
-                                        changed = true;
-                                        const isMp4 = valVid.includes('.mp4') || valVid.includes('.mov') || valVid.includes('supabase.co') || valVid.includes('files.catbox');
-                                        return {
-                                          ...ex,
-                                          name: newExObj.title,
-                                          videoUrl: isMp4 ? '' : valVid,
-                                          videoFileUrl: isMp4 ? valVid : '',
-                                          notes: newExObj.description || ex.notes,
-                                        };
-                                      }
-                                      return ex;
+                                    const updatedExs = routine.exercises.map(ex => {
+                                      if (ex.id !== newExObj.id && ex.name?.toLowerCase().trim() !== origTitle.toLowerCase().trim()) return ex;
+                                      changed = true;
+                                      const isFile = valVid.startsWith('storage://') || /\.(mp4|mov|webm)(\?|$)/i.test(valVid) || valVid.includes('supabase.co') || valVid.includes('files.catbox');
+                                      return { ...ex, name: newExObj.title, videoUrl: isFile ? '' : valVid, videoFileUrl: isFile ? valVid : '', notes: newExObj.description || ex.notes };
                                     });
-
-                                    if (changed) {
-                                      const updatedRoutine = { ...routine, exercises: updatedExs };
-                                      storage.saveAdminRoutine(updatedRoutine);
-                                      return updatedRoutine;
-                                    }
-                                    return routine;
+                                    return changed ? { ...routine, exercises: updatedExs } : routine;
                                   });
-                                });
+                                  for (let index = 0; index < updatedRoutines.length; index++) {
+                                    if (updatedRoutines[index] !== adminRoutines[index]) await storage.saveAdminRoutine(updatedRoutines[index]);
+                                  }
+                                  setExercises(prev => prev.map(ex => ex.title === origTitle ? newExObj : ex));
+                                  setAdminRoutines(updatedRoutines);
+                                } catch (error) {
+                                  alert(error instanceof Error ? error.message : 'Não foi possível atualizar todos os treinos. Tente novamente.');
+                                  return;
+                                }
 
                                 setEditingExerciseOriginalTitle(null);
                               } else {
@@ -2472,7 +2478,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                         className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex items-center p-2 gap-4 text-left hover:border-[#dc2626]/40 transition duration-250 cursor-pointer hover:shadow-md group"
                                                       >
                                                          <div className="relative w-24 h-20 bg-slate-900 rounded-lg shrink-0 overflow-hidden shadow-inner">
-                                                            <img src={ex.image} alt={ex.title} className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-300" referrerPolicy="no-referrer" />
+                                                            <PrivateImage src={ex.image} alt={ex.title} className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-300" referrerPolicy="no-referrer" />
                                                             <div className="absolute inset-0 bg-black/10 flex items-center justify-center group-hover:bg-black/20 transition-colors">
                                                                <PlayCircle className="w-8 h-8 text-white/90 group-hover:scale-110 transition duration-300 drop-shadow-md" />
                                                             </div>
@@ -3299,7 +3305,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       {ex.videoUrl && (ex.videoUrl.includes('youtube.com') || ex.videoUrl.includes('youtu.be')) && (() => {
                                         const ytId = ex.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
                                         return ytId ? (
-                                          <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="YouTube preview" className="w-full rounded-lg object-cover h-24" />
+                                          <PrivateImage src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="YouTube preview" className="w-full rounded-lg object-cover h-24" />
                                         ) : null;
                                       })()}
                                     </div>
@@ -3657,7 +3663,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                              >
                                                 <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 overflow-hidden">
                                                    {student.photoURL ? (
-                                                      <img src={student.photoURL} alt="" className="w-full h-full object-cover" />
+                                                      <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" />
                                                    ) : (
                                                       <User className="w-6 h-6" />
                                                    )}
@@ -3705,7 +3711,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           if (window.confirm(`Excluir o grupo "${selectedGroupForView}"?`)) {
                                             const updated = studentGroups.filter(g => g !== selectedGroupForView);
                                             setStudentGroups(updated);
-                                            localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                            storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
                                             setSelectedGroupForView(null);
                                           }
                                         }}
@@ -3730,7 +3736,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         {groupStudents.map(student => (
                                           <div key={student.uid} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3">
                                             <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                                              {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                              {student.photoURL ? <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                               <p className="text-xs font-black italic uppercase text-slate-900 truncate">{student.name}</p>
@@ -3757,7 +3763,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                            if (e.key === 'Enter' && newGroupName.trim()) {
                                              const updated = [...studentGroups, newGroupName.trim()];
                                              setStudentGroups(updated);
-                                             localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                             storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
                                              setNewGroupName('');
                                              setShowNewGroupInput(false);
                                            }
@@ -3770,7 +3776,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                            if (newGroupName.trim()) {
                                              const updated = [...studentGroups, newGroupName.trim()];
                                              setStudentGroups(updated);
-                                             localStorage.setItem('cadu_ponce_student_groups', JSON.stringify(updated));
+                                             storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
                                              setNewGroupName('');
                                              setShowNewGroupInput(false);
                                            }
@@ -4458,7 +4464,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               <div key={student.uid} className="flex items-center justify-between py-3">
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                                    {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                    {student.photoURL ? <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
                                   </div>
                                   <div>
                                     <p className="text-xs font-bold text-slate-900 uppercase">{student.name}</p>
@@ -4583,37 +4589,42 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
 
                         {/* Actions */}
+                        {notifyError && <p role="alert" className="text-sm text-red-600">{notifyError}</p>}
+                        {notifyResult && <p role="status" className="text-sm text-emerald-700">{notifyResult}</p>}
                         <button 
-                          disabled={!notifyTitle || !notifyMessage || isSending || selectedUidsForNotify.length === 0}
-                          onClick={() => {
+                          disabled={!notifyTitle.trim() || !notifyMessage.trim() || isSending || selectedUidsForNotify.length === 0}
+                          onClick={async () => {
                             setIsSending(true);
-                            fetch('/api/send-notification', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                userIds: selectedUidsForNotify,
-                                title: notifyTitle,
-                                body: notifyMessage
-                              })
-                            }).then(() => {
+                            setSendComplete(false);
+                            setNotifyError('');
+                            setNotifyResult('');
+                            try {
+                              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                              if (sessionError || !session?.access_token) throw new Error('Sua sessão expirou. Entre novamente.');
+                              const response = await fetch('/api/send-notification', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: 'Bearer ' + session.access_token,
+                                },
+                                body: JSON.stringify({ userIds: selectedUidsForNotify, title: notifyTitle.trim(), body: notifyMessage.trim() }),
+                              });
+                              const result = await response.json().catch(() => ({}));
+                              if (!response.ok) throw new Error(result.error || 'Não foi possível enviar a notificação.');
+                              const sent = Number(result.sentCount) || 0;
+                              const failed = Number(result.failedCount) || (Array.isArray(result.errors) ? result.errors.length : 0);
+                              if (!sent) throw new Error('Nenhuma notificação foi enviada. Os destinatários precisam ativar as notificações no aplicativo.');
+                              setNotifyResult(sent + ' notificação(ões) enviada(s).');
+                              if (failed) {
+                                setNotifyError(failed + ' envio(s) falharam. Confira os destinatários antes de reenviar, para evitar duplicatas.');
+                              } else {
+                                setSendComplete(true);
+                              }
+                            } catch (error) {
+                              setNotifyError(error instanceof Error ? error.message : 'Falha de conexão. Tente novamente.');
+                            } finally {
                               setIsSending(false);
-                              setSendComplete(true);
-                              setTimeout(() => {
-                                setIsNotifyingByCategory(false);
-                                setSendComplete(false);
-                                setNotifyTitle('');
-                                setNotifyMessage('');
-                                setNotifyView('list');
-                              }, 2000);
-                            }).catch(() => {
-                              setIsSending(false);
-                              setSendComplete(true);
-                              setTimeout(() => {
-                                setIsNotifyingByCategory(false);
-                                setSendComplete(false);
-                                setNotifyView('list');
-                              }, 2000);
-                            });
+                            }
                           }}
                           className="w-full py-3 bg-[#3182ce] disabled:opacity-40 text-white font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-600 transition flex items-center justify-center gap-2"
                         >
@@ -4948,8 +4959,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                     {/* ── LINK DE CADASTRO SUB-VIEW ── */}
                     {updatesSubView === 'link_cadastro' && (() => {
-                      const trainerProfile = JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}');
-                      const registrationLink = `https://client.mfitpersonal.com.br/out/signup-link/${trainerProfile.uid || 'Njk2NDk4'}`;
+                      const registrationLink = window.location.origin;
                       const contactsFromLink = users.filter(u => u.role === 'student');
                       const filteredContacts = contactsFromLink.filter(u =>
                         linkCadastroSearch === '' ||
@@ -5060,7 +5070,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   <div key={contact.uid} className="flex items-center justify-between py-3 border-b border-slate-100">
                                     <div className="flex items-center gap-3">
                                       <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                                        {contact.photoURL ? <img src={contact.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                        {contact.photoURL ? <PrivateImage src={contact.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
                                       </div>
                                       <div>
                                         <p className="text-xs font-bold text-slate-900">{contact.name}</p>
@@ -5177,7 +5187,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               >
                                 {/* Avatar */}
                                 <div className="w-11 h-11 bg-slate-100 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-                                  {student.photoURL ? <img src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
+                                  {student.photoURL ? <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
                                 </div>
 
                                 {/* Info */}
@@ -5227,7 +5237,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       const markAllAsRead = () => {
                         try {
                           const updated = adminNotifs.map(n => n.type === 'treinos' ? { ...n, read: true } : n);
-                          localStorage.setItem('cadu_notifs_admin', JSON.stringify(updated));
+                          storage.setCacheItem('cadu_notifs_admin', JSON.stringify(updated));
                           setAdminNotifs(updated);
                         } catch {}
                       };
@@ -5235,7 +5245,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       const toggleReadStatus = (id: string) => {
                         try {
                           const updated = adminNotifs.map(n => n.id === id ? { ...n, read: !n.read } : n);
-                          localStorage.setItem('cadu_notifs_admin', JSON.stringify(updated));
+                          storage.setCacheItem('cadu_notifs_admin', JSON.stringify(updated));
                           setAdminNotifs(updated);
                         } catch {}
                       };
@@ -6725,7 +6735,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 <span>{dateFormatted}</span>
                               </div>
                               <div className="p-3 bg-slate-900 flex items-center justify-center max-h-[380px] overflow-hidden">
-                                <img
+                                <PrivateImage
                                   src={photo.photoURL}
                                   alt="Foto do aluno"
                                   className="w-full h-auto max-h-[380px] object-contain rounded-lg"
@@ -7246,10 +7256,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Senha de Acesso</label>
                     <input 
                       required
-                      type="text"
+                      type="password"
+                      minLength={12}
+                      autoComplete="new-password"
                       value={formPassword}
                       onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder="Ex: 123456"
+                      placeholder="Pelo menos 12 caracteres"
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
                     />
                   </div>
@@ -7304,7 +7316,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">WhatsApp</label>
                   <div className="flex items-center">
                     <div className="flex items-center px-3 py-3 bg-slate-50 border border-r-0 border-slate-100 rounded-l-lg space-x-2">
-                       <img src="https://flagcdn.com/w20/br.png" width="20" alt="Brazil" className="rounded-sm" />
+                       <PrivateImage src="https://flagcdn.com/w20/br.png" width="20" alt="Brazil" className="rounded-sm" />
                        <span className="text-sm font-bold text-slate-600">+55</span>
                     </div>
                     <input 
@@ -7629,7 +7641,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       className="w-full flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-[#dc2626] transition text-left cursor-pointer"
                     >
                       <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0">
-                        <img src={libEx.image} alt={libEx.title} className="w-full h-full object-cover" />
+                        <PrivateImage src={libEx.image} alt={libEx.title} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-xs font-black text-slate-900 truncate">{libEx.title}</h4>

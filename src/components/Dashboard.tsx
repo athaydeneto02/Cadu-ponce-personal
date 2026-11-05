@@ -14,24 +14,16 @@ import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
 import WorkoutList from './WorkoutList';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
-import { compressImage } from '../lib/mediaDb';
+import { compressImage, useMediaUrl } from '../lib/mediaDb';
+import { ensurePushSubscription } from '../lib/pushSubscription';
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BF4mz4GPAGZdcZi7EbNc1hHyI0bx_4npqhd0RV3aoHqSOpn9rjqpXUtA2SkNCPth1zgawRHMgFcVRmng0aVJQjQ';
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
-function urlB64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
+function PrivateImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const resolved = useMediaUrl(src);
+  return <img {...props} src={resolved || undefined} />;
 }
+
 import { 
   XAxis, 
   YAxis, 
@@ -65,7 +57,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
   const currentWeight = user?.weight || 82;
   const [weightHistory, setWeightHistory] = useState<{ week: string; peso: number }[]>(() => {
-    const saved = localStorage.getItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`);
+    const saved = storage.getCacheItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -79,6 +71,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
   const [newWeight, setNewWeight] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [pushStatus, setPushStatus] = useState<'unsupported' | 'needs-permission' | 'denied' | 'syncing' | 'ready' | 'error'>('unsupported');
+  const [pushAttempt, setPushAttempt] = useState(0);
 
   // Sync the current weight from user profile to the final week if it changed
   React.useEffect(() => {
@@ -91,51 +85,62 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             peso: user.weight 
           };
         }
-        localStorage.setItem(`cadu_ponce_weight_history_${user.uid || 'guest'}`, JSON.stringify(updated));
+        storage.setCacheItem(`cadu_ponce_weight_history_${user.uid || 'guest'}`, JSON.stringify(updated));
         return updated;
       });
     }
   }, [user?.weight, user?.uid]);
 
-  // Request Push Notification permission and subscribe
+  // Renew an existing permission silently; first consent requires a user click.
   React.useEffect(() => {
+    let active = true;
+    const userId = user?.uid;
+    const isCurrent = () => active && storage.getUser()?.uid === userId;
     async function subscribeToPush() {
-      if (!user?.uid || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-        return; // Push not supported or no user
+      if (!VAPID_PUBLIC_KEY || !userId || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        setPushStatus('unsupported');
+        return;
       }
-
+      if (Notification.permission !== 'granted') {
+        setPushStatus(Notification.permission === 'denied' ? 'denied' : 'needs-permission');
+        return;
+      }
+      setPushStatus('syncing');
       try {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return;
-
         const registration = await navigator.serviceWorker.ready;
-        let subscription = await registration.pushManager.getSubscription();
-
-        if (!subscription) {
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY)
-          });
-        }
-
-        // Save subscription to Supabase
-        const { error } = await supabase.from('push_subscriptions').insert({
-          user_id: user.uid,
-          subscription: subscription.toJSON()
+        const status = await ensurePushSubscription({
+          manager: registration.pushManager, publicKey: VAPID_PUBLIC_KEY,
+          permission: Notification.permission, isCurrent,
+          persist: async (subscription, previousEndpoint) => {
+            if (!isCurrent()) throw new Error('A sessão mudou.');
+            const { data: existing, error: lookupError } = await supabase.from('push_subscriptions')
+              .select('id').eq('user_id', userId)
+              .eq('subscription->>endpoint', previousEndpoint || subscription.endpoint).limit(1).maybeSingle();
+            if (lookupError) throw lookupError;
+            if (!isCurrent()) throw new Error('A sessão mudou.');
+            const row = { user_id: userId, subscription: subscription.toJSON() };
+            const result = existing
+              ? await supabase.from('push_subscriptions').update(row).eq('id', existing.id).eq('user_id', userId).select('id').single()
+              : await supabase.from('push_subscriptions').insert(row).select('id').single();
+            if (result.error || !result.data?.id) throw new Error('Não foi possível salvar a inscrição.');
+          },
         });
-        
-        // Error will trigger if user tries to save exact same subscription again? 
-        // We could use an upsert, but let's just ignore duplicate errors for simplicity
-        if (error && error.code !== '23505') { 
-           console.error('Error saving subscription:', error);
-        }
-      } catch (err) {
-        console.error('Push subscription failed:', err);
+        if (isCurrent()) setPushStatus(status);
+      } catch {
+        if (isCurrent()) setPushStatus('error');
       }
     }
+    void subscribeToPush();
+    return () => { active = false; };
+  }, [user?.uid, pushAttempt]);
 
-    subscribeToPush();
-  }, [user?.uid]);
+  const enablePushNotifications = async () => {
+    if (!('Notification' in window)) return;
+    try {
+      if (Notification.permission === 'default') await Notification.requestPermission();
+      setPushAttempt(attempt => attempt + 1);
+    } catch { setPushStatus('error'); }
+  };
 
   const handleAddWeight = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +162,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
           { week: 'Semana 3', peso: prev[3]?.peso || parsed },
           { week: 'Semana 4', peso: parsed }
         ];
-        localStorage.setItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`, JSON.stringify(updated));
+        storage.setCacheItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`, JSON.stringify(updated));
         return updated;
       });
 
@@ -188,6 +193,10 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
   const [showFaturas, setShowFaturas] = useState(false);
   const [showArquivos, setShowArquivos] = useState(false);
+  const [arquivosUploading, setArquivosUploading] = useState(false);
+  const [arquivosError, setArquivosError] = useState('');
+  const [arquivosSucesso, setArquivosSucesso] = useState('');
+
 
   // ── Meu Progresso ──
   const [progressPhotos, setProgressPhotos] = useState<any[]>([]);
@@ -209,6 +218,12 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       .catch(() => setProgressPhotos(storage.getPhotos()))
       .finally(() => setProgressLoadingPhotos(false));
   }, [showMeuProgresso, user?.uid]);
+
+  useEffect(() => {
+    const refresh = () => setProgressPhotos(storage.getPhotos().filter(photo => photo.studentId === user?.uid));
+    window.addEventListener('cadu_data_synced', refresh);
+    return () => window.removeEventListener('cadu_data_synced', refresh);
+  }, [user?.uid]);
 
   // Configurações de pagamento do personal (carregadas do Supabase)
   const [paymentSettings, setPaymentSettings] = useState<{
@@ -393,7 +408,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       setProgressSending(true);
       setProgressSendError('');
       try {
-        const photoId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `photo_${Date.now()}`;
+        const photoId = crypto.randomUUID();
         const newPhoto = {
           id: photoId,
           studentId: user.uid,
@@ -403,33 +418,18 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
           date: new Date().toISOString(),
         };
 
-        await storage.savePhoto(newPhoto, progressSelectedFile || undefined);
-
-        // Update list
-        setProgressPhotos(prev => [newPhoto, ...prev]);
+        const photoURL = await storage.savePhoto(newPhoto, progressSelectedFile || undefined);
+        const savedPhoto = storage.getPhotos().find(photo => photo.id === photoId) ?? { ...newPhoto, photoURL };
+        setProgressPhotos(prev => [savedPhoto, ...prev.filter(photo => photo.id !== photoId)]);
+        if ('syncStatus' in savedPhoto && savedPhoto.syncStatus === 'pending') {
+          setProgressSendError('Foto salva neste dispositivo. O envio será retomado quando a conexão estiver disponível.');
+        }
         setProgressSelectedFile(null);
         setProgressPreview('');
         setProgressComment('');
       } catch (err: any) {
         console.error('Erro ao enviar foto de progresso:', err);
-        // Fallback: save locally
-        try {
-          const photoId = `photo_${Date.now()}`;
-          const newPhoto = {
-            id: photoId,
-            studentId: user?.uid || 'guest',
-            studentName: user?.name || 'Aluno',
-            photoURL: progressPreview,
-            notes: progressComment.trim() || undefined,
-            date: new Date().toISOString(),
-          };
-          setProgressPhotos(prev => [newPhoto, ...prev]);
-          setProgressSelectedFile(null);
-          setProgressPreview('');
-          setProgressComment('');
-        } catch (localErr) {
-          setProgressSendError('Erro ao enviar. Tente novamente.');
-        }
+        setProgressSendError('Não foi possível salvar a foto. Tente novamente; sua seleção foi mantida.');
       } finally {
         setProgressSending(false);
       }
@@ -440,11 +440,12 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       try {
         await storage.deletePhoto(photoId);
       } catch (err) {
-        console.warn('Erro ao deletar do Supabase, removendo localmente:', err);
+        setProgressSendError('Não foi possível excluir a foto. Tente novamente.');
+        return;
       }
       const updated = progressPhotos.filter(p => p.id !== photoId);
       setProgressPhotos(updated);
-      localStorage.setItem('cadu_ponce_photos', JSON.stringify(updated));
+      storage.setCacheItem('cadu_ponce_photos', JSON.stringify(updated));
     };
 
     const handleSaveEditComment = async (photoId: string) => {
@@ -454,6 +455,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         setProgressPhotos(updatedList);
       } catch (err) {
         console.warn('Erro ao atualizar comentário:', err);
+        setProgressSendError('Não foi possível salvar o comentário. Tente novamente.');
+        return;
       }
       setProgressEditingId(null);
       setProgressEditComment('');
@@ -605,13 +608,14 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
                     {/* Foto */}
                     <div className="relative bg-slate-950 flex items-center justify-center max-h-[440px] overflow-hidden">
-                      <img
+                      <PrivateImage
                         src={photo.photoURL}
                         alt="Foto de progresso"
                         className="w-full h-auto max-h-[440px] object-contain cursor-pointer"
                         onClick={() => setProgressLightbox(photo.photoURL)}
                       />
                     </div>
+                    {photo.syncStatus === 'pending' && <p role="status" className="px-4 py-2 text-xs text-amber-700">Salva no dispositivo · envio pendente</p>}
 
                     {/* Botão Ampliar foto */}
                     <div className="py-2 text-center border-b border-slate-100">
@@ -629,7 +633,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-slate-500 overflow-hidden">
                           {user?.photoURL ? (
-                            <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
+                            <PrivateImage src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
                           ) : (
                             <UserIcon className="w-5 h-5" />
                           )}
@@ -701,7 +705,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             >
               <CloseIcon className="w-7 h-7" />
             </button>
-            <img
+            <PrivateImage
               src={progressLightbox}
               alt="Foto ampliada"
               className="max-w-full max-h-[90vh] object-contain rounded-lg"
@@ -904,6 +908,85 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         </svg>
       )},
     ];
+
+    const handleArquivosUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files: File[] = Array.from(e.currentTarget.files ?? []);
+      if (!files.length) return;
+      if (!user?.uid) {
+        setArquivosError('Você precisa estar logado para enviar arquivos.');
+        return;
+      }
+
+      setArquivosUploading(true);
+      setArquivosError('');
+      setArquivosSucesso('');
+
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (const file of files) {
+        try {
+          const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain',
+            'application/msword', 'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'video/mp4', 'video/quicktime'];
+          if (!allowedTypes.includes(file.type)) {
+            errors.push(`${file.name}: formato não suportado. Use JPG, PNG, WebP, PDF, DOC, DOCX, XLS, XLSX, TXT, MP4 ou MOV.`);
+            continue;
+          }
+          if (file.size > 20 * 1024 * 1024) {
+            errors.push(`${file.name}: o limite é 20 MB por arquivo.`);
+            continue;
+          }
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const filePath = `${user.uid}/${Date.now()}_${safeName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('arquivos-alunos')
+            .upload(filePath, file, { upsert: false });
+
+          if (uploadError) {
+            errors.push(`${file.name}: ${uploadError.message}`);
+            continue;
+          }
+
+          // Registra o envio na tabela agenda_events para notificar o admin
+          const { error: recordError } = await supabase.from('agenda_events').insert({
+            id: crypto.randomUUID(),
+            student_id: user.uid,
+            student_name: user.name || 'Aluno',
+            title: `Arquivo enviado: ${file.name}`,
+            date: new Date().toISOString().split('T')[0],
+            start_time: new Date().toISOString().substring(11, 16),
+            end_time: new Date().toISOString().substring(11, 16),
+            type: 'student_file',
+            notes: JSON.stringify({ fileName: file.name, filePath, fileSize: file.size, fileType: file.type }),
+          });
+          if (recordError) {
+            await supabase.storage.from('arquivos-alunos').remove([filePath]);
+            errors.push(`${file.name}: não foi possível registrar o envio. Tente novamente.`);
+            continue;
+          }
+
+          successCount++;
+        } catch (err: any) {
+          errors.push(`${file.name}: erro inesperado`);
+        }
+      }
+
+      setArquivosUploading(false);
+
+      if (successCount > 0) {
+        setArquivosSucesso(`✅ ${successCount} arquivo${successCount > 1 ? 's' : ''} enviado${successCount > 1 ? 's' : ''} com sucesso!`);
+      }
+      if (errors.length > 0) {
+        setArquivosError(`Erro ao enviar: ${errors.join('; ')}`);
+      }
+
+      // Limpa o input
+      e.target.value = '';
+    };
+
     return (
       <div className="flex flex-col min-h-full bg-[#1c2b3e]">
         <div className="px-4 pt-4 pb-2">
@@ -938,11 +1021,40 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             ))}
           </div>
 
+          {/* Feedback */}
+          {arquivosSucesso && (
+            <div className="mx-4 mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-700 text-sm font-medium">{arquivosSucesso}</p>
+            </div>
+          )}
+          {arquivosError && (
+            <div className="mx-4 mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600 text-sm font-medium">{arquivosError}</p>
+            </div>
+          )}
+
           {/* Button */}
           <div className="px-4 pb-6 pt-2">
-            <label className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md flex items-center justify-center cursor-pointer transition text-sm">
-              Adicionar arquivos
-              <input type="file" className="hidden" multiple />
+            <label className={`w-full text-white font-semibold py-3.5 rounded-md flex items-center justify-center cursor-pointer transition text-sm gap-2 ${arquivosUploading ? 'bg-[#0070f3]/60 cursor-not-allowed' : 'bg-[#0070f3] hover:bg-[#005ccc] active:scale-95'}`}>
+              {arquivosUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Adicionar arquivos
+                </>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                multiple
+                accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.mp4,.mov"
+                disabled={arquivosUploading}
+                onChange={handleArquivosUpload}
+              />
             </label>
           </div>
         </div>
@@ -974,6 +1086,15 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
       </div>
 
       <div className="px-4 -mt-4 space-y-4 pb-6">
+        {pushStatus !== 'unsupported' && (
+          <div className="bg-white rounded-xl shadow-sm p-3 relative z-10 flex items-center gap-3 text-sm">
+            <Bell aria-hidden="true" className="w-5 h-5 text-slate-500 shrink-0" />
+            <p role="status" className="flex-1 text-slate-600">
+              {pushStatus === 'ready' ? 'Notificações ativadas neste dispositivo.' : pushStatus === 'syncing' ? 'Atualizando notificações...' : pushStatus === 'denied' ? 'Notificações bloqueadas nas permissões do navegador.' : pushStatus === 'error' ? 'Não foi possível ativar as notificações.' : 'Receba avisos do personal neste dispositivo.'}
+            </p>
+            {(pushStatus === 'needs-permission' || pushStatus === 'error') && <button type="button" onClick={() => { void enablePushNotifications(); }} className="font-semibold text-blue-700">{pushStatus === 'error' ? 'Tentar novamente' : 'Ativar'}</button>}
+          </div>
+        )}
         {/* Frequência de Treinos */}
         <button
           onClick={() => setShowFreqCalendar(true)}

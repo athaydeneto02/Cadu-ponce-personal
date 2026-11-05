@@ -1,1 +1,6 @@
-import { createClient } from '@supabase/supabase-js'; const supabase = createClient('https://umqjakmxhfgclcxmpfda.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtcWpha214aGZnY2xjeG1wZmRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjQ3NzcsImV4cCI6MjA5NzIwMDc3N30.7gVBDSB958LZJ2NxcNigqrmPvh6fxBUDWNGNaCAKSzc'); async function test() { const {data, error} = await supabase.from('profiles').update({metadata: {}}).eq('id', '123e4567-e89b-12d3-a456-426614174000'); console.log('Update:', error); } test();  
+import { withTestEnvironment, assertTestResult } from './scripts/test-environment.mjs';
+await withTestEnvironment(async ({ client, user }) => {
+  const profile = assertTestResult(await client.from('profiles').select('metadata').eq('id', user.id).single());
+  assertTestResult(await client.from('profiles').update({ metadata: { ...profile.metadata, testDiagnostic: true } }).eq('id', user.id).select('id').single());
+  console.log('Atualização de metadados da conta de teste concluída.');
+}, { write: true });

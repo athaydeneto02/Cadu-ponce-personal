@@ -16,7 +16,7 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
 
   const [firstName, setFirstName] = useState(defaultFirstName);
   const [lastName, setLastName] = useState(defaultLastName);
-  const [email, setEmail] = useState(user?.email || '');
+  const email = user?.email || '';
   
   // Student's own metadata
   const [whatsapp, setWhatsapp] = useState(user?.metadata?.phone || '');
@@ -31,7 +31,6 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
       onSave({
         ...user,
         name: `${firstName} ${lastName}`.trim(),
-        email,
         metadata: {
           ...user.metadata,
           phone: whatsapp,
@@ -60,8 +59,11 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
           
           {/* Nome */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-bold text-slate-800">Nome</label>
+            <label htmlFor="profile-first-name" className="text-[13px] font-bold text-slate-800">Nome</label>
             <input 
+              id="profile-first-name"
+              required
+              autoComplete="given-name"
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
@@ -71,8 +73,10 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
 
           {/* Sobrenome */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-bold text-slate-800">Sobrenome</label>
+            <label htmlFor="profile-last-name" className="text-[13px] font-bold text-slate-800">Sobrenome</label>
             <input 
+              id="profile-last-name"
+              autoComplete="family-name"
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
@@ -82,25 +86,30 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
 
           {/* E-mail */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-bold text-slate-800">E-mail</label>
+            <label htmlFor="profile-email" className="text-[13px] font-bold text-slate-800">E-mail de acesso</label>
             <input 
+              id="profile-email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              readOnly
+              aria-describedby="profile-email-help"
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-lg px-3 py-2.5 text-[15px] text-slate-700 outline-none focus:border-blue-500 transition-colors"
             />
+            <p id="profile-email-help" className="text-xs text-slate-600">Para trocar seu e-mail de acesso, entre em contato com o personal.</p>
           </div>
 
           {/* WhatsApp */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-bold text-slate-800">WhatsApp</label>
+            <label htmlFor="profile-phone" className="text-[13px] font-bold text-slate-800">WhatsApp</label>
             <div className="w-full bg-[#f8fafc] border border-slate-200 rounded-lg px-3 py-2.5 flex items-center focus-within:border-blue-500 transition-colors">
               <div className="flex items-center gap-1 pr-2 border-r border-slate-200 mr-2 shrink-0">
                 <span className="text-lg leading-none">🇧🇷</span>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
               </div>
               <input 
-                type="text"
+                id="profile-phone"
+                type="tel"
+                autoComplete="tel"
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
                 className="flex-1 text-[15px] text-slate-700 outline-none bg-transparent w-full"
@@ -111,8 +120,9 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
 
           {/* Instagram */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-bold text-slate-800">Instagram</label>
+            <label htmlFor="profile-instagram" className="text-[13px] font-bold text-slate-800">Instagram</label>
             <input 
+              id="profile-instagram"
               type="text"
               value={instagram}
               onChange={(e) => setInstagram(e.target.value)}

@@ -30,13 +30,6 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
-    try {
-      localStorage.removeItem('cadu_ponce_photos');
-      localStorage.removeItem('cadu_ponce_exercises_v3');
-      localStorage.removeItem('cadu_financial_invoices');
-    } catch {
-      // ignore
-    }
     window.location.reload();
   };
 

@@ -1,65 +1,97 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Calendar, Plus, PlusCircle, Trash2, Maximize2, Columns, X } from 'lucide-react';
 import { EvolutionPhoto } from '../types';
 import { storage } from '../lib/storage';
-import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
+import { useMediaUrl } from '../lib/mediaDb';
 
-const MOCK_PHOTOS: EvolutionPhoto[] = [];
+// Componente auxiliar para resolver URLs idb: ou http normalmente
+function PhotoImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const resolved = useMediaUrl(src);
+  return <img src={resolved || undefined} alt={alt} className={className} />;
+}
 
 export default function EvolutionGallery() {
   const [photos, setPhotos] = useState<EvolutionPhoto[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isComparisonMode, setIsComparisonMode] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    (async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData.user) {
-        const fetched = await storage.fetchPhotos(authData.user.id);
-        setPhotos(fetched.length > 0 ? fetched : MOCK_PHOTOS);
-      } else {
-        const saved = storage.getPhotos();
-        setPhotos(saved.length > 0 ? saved : MOCK_PHOTOS);
+    let active = true;
+    const refresh = async () => {
+      const studentId = storage.getUser()?.uid;
+      if (!studentId) return;
+      try {
+        const fetched = await storage.fetchPhotos(studentId);
+        if (active) setPhotos(fetched);
+      } catch {
+        if (active) setPhotos(storage.getPhotos().filter(photo => photo.studentId === studentId));
       }
-    })();
+    };
+    void refresh();
+    window.addEventListener('cadu_data_synced', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('cadu_data_synced', refresh);
+    };
   }, []);
 
   const handleUpload = () => {
+    setUploadError(null);
+
+    const studentId = storage.getUser()?.uid;
+    if (!studentId) {
+      setUploadError('Entre na sua conta para salvar uma foto.');
+      return;
+    }
     fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const studentId = storage.getUser()?.uid;
+    if (!studentId) {
+      setUploadError('Entre na sua conta para salvar uma foto.');
+      return;
+    }
 
+    setUploadError(null);
+
+    // 1. Cria URL local instantânea — foto aparece na tela imediatamente
+    const previewUrl = URL.createObjectURL(file);
+    const tempId = crypto.randomUUID();
+
+    const tempPhoto: EvolutionPhoto = {
+      id: tempId,
+      studentId,
+      photoURL: previewUrl,
+      date: new Date().toISOString(),
+      notes: 'Nova foto',
+      syncStatus: 'pending',
+    };
+
+    // Adiciona a foto na tela agora mesmo (preview local)
+    setPhotos(prev => [tempPhoto, ...prev]);
     setIsUploading(true);
+
+    // 2. Faz o upload em background (não bloqueia a UI)
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const studentId = authData.user?.id ?? 'guest';
+      const finalUrl = await storage.savePhoto(tempPhoto, file);
 
-      const newPhoto: EvolutionPhoto = {
-        id: Math.random().toString(36).substr(2, 9),
-        studentId,
-        photoURL: '',
-        date: new Date().toISOString(),
-        notes: 'Nova foto'
-      };
-
-      const publicUrl = await storage.savePhoto(newPhoto, file);
-      const savedPhoto = { ...newPhoto, photoURL: publicUrl };
-      setPhotos(prev => [savedPhoto, ...prev]);
+      const saved = storage.getPhotos().find(photo => photo.id === tempId);
+      setPhotos(prev => prev.map(photo => photo.id === tempId ? (saved ?? { ...tempPhoto, photoURL: finalUrl }) : photo));
+      if (saved?.syncStatus === 'pending') setUploadError('Foto salva neste dispositivo. O envio será retomado quando a conexão estiver disponível.');
     } catch (err) {
       console.error('Erro ao fazer upload:', err);
+      setPhotos(prev => prev.filter(photo => photo.id !== tempId));
+      setUploadError('Não foi possível salvar a foto. Selecione o arquivo novamente para tentar outra vez.');
     } finally {
+      URL.revokeObjectURL(previewUrl);
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -108,12 +140,21 @@ export default function EvolutionGallery() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={handleFileChange}
           />
         </div>
       </div>
+
+      {/* Banner de erro de upload */}
+      {uploadError && (
+        <div className="mb-4 p-4 bg-red-600/10 border border-red-600/30 rounded-2xl flex items-center justify-between">
+          <p className="text-sm font-bold text-red-600">{uploadError}</p>
+          <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {isComparisonMode && (
         <div className="mb-6 p-4 bg-red-600/5 border border-red-600/20 rounded-2xl flex items-center justify-between">
@@ -149,7 +190,7 @@ export default function EvolutionGallery() {
               onClick={() => isComparisonMode && toggleSelect(photo.id)}
             >
               <div className={`aspect-[3/4] bg-slate-200 dark:bg-slate-800 rounded-[32px] overflow-hidden shadow-sm border transition-all duration-300 ${isSelected ? 'ring-4 ring-red-600 ring-offset-4 dark:ring-offset-slate-950 scale-[0.98]' : 'border-gray-100 dark:border-slate-800'}`}>
-                <img 
+                <PhotoImage
                   src={photo.photoURL} 
                   alt={`Evolução ${index + 1}`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -168,6 +209,7 @@ export default function EvolutionGallery() {
                       {new Date(photo.date).toLocaleDateString('pt-BR')}
                     </span>
                   </div>
+                  {photo.syncStatus === 'pending' && <p className="text-xs text-amber-200 mt-1">Salva no dispositivo · envio pendente</p>}
                 </div>
                 
                 {!isComparisonMode && (
@@ -176,15 +218,6 @@ export default function EvolutionGallery() {
                   </button>
                 )}
               </div>
-              {index > 0 && photos[index-1] && !isComparisonMode && (
-                 <motion.div 
-                   initial={{ y: 5 }}
-                   animate={{ y: 0 }}
-                   className="mt-3 text-center"
-                 >
-                   <span className="text-[10px] font-black text-white bg-red-600 px-3 py-1 rounded-full uppercase tracking-widest italic">+1kg massa</span>
-                 </motion.div>
-              )}
             </motion.div>
           );
         })}
@@ -229,7 +262,7 @@ export default function EvolutionGallery() {
                     </span>
                   </div>
                   <div className="aspect-[3/4] rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl">
-                    <img src={photo.photoURL} className="w-full h-full object-cover" />
+                    <PhotoImage src={photo.photoURL} alt="Foto de evolução para comparação" className="w-full h-full object-cover" />
                   </div>
                 </div>
               ))}

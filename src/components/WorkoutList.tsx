@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Workout, AdminRoutine } from '../types';
 import { storage } from '../lib/storage';
+import { routineMatchesUser } from '../lib/workoutAssignment';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import AdminWorkoutSession from './AdminWorkoutSession';
 
@@ -91,60 +92,6 @@ function groupRoutines(routines: AdminRoutine[]): RoutineGroup[] {
   return Object.values(map);
 }
 
-function normalizeStr(str?: string): string {
-  return (str || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-}
-
-function routineMatchesUser(r: AdminRoutine, user: any, allUsers: any[]): boolean {
-  if (!user) return false;
-  const uid = user.uid || user.id;
-  const userEmail = normalizeStr(user.email);
-  const userName = normalizeStr(user.name);
-
-  // 1. Direct ID match
-  if (uid && r.studentIds && r.studentIds.includes(uid)) return true;
-
-  // 2. Direct Name match (normalized without accents, including partial prefixes)
-  if (userName && r.studentNames && r.studentNames.some(n => {
-    const normN = normalizeStr(n);
-    if (!normN) return false;
-    return normN === userName || normN.includes(userName) || userName.includes(normN) || (normN.length >= 4 && userName.length >= 4 && normN.slice(0, 4) === userName.slice(0, 4));
-  })) {
-    return true;
-  }
-
-  // 3. Match via users list
-  if (allUsers && allUsers.length > 0) {
-    const matchingStudents = allUsers.filter(u => {
-      const uUid = u.uid || u.id;
-      if (uid && uUid === uid) return true;
-      if (userEmail && normalizeStr(u.email) === userEmail) return true;
-      const uName = normalizeStr(u.name);
-      if (userName && uName && (uName === userName || uName.includes(userName) || userName.includes(uName) || (uName.length >= 4 && userName.length >= 4 && uName.slice(0, 4) === userName.slice(0, 4)))) return true;
-      return false;
-    });
-
-    for (const student of matchingStudents) {
-      const sId = student.uid || student.id;
-      const sName = normalizeStr(student.name);
-      if (sId && r.studentIds && r.studentIds.includes(sId)) return true;
-      if (sName && r.studentNames && r.studentNames.some(n => {
-        const normN = normalizeStr(n);
-        return normN && (normN === sName || normN.includes(sName) || sName.includes(normN) || (normN.length >= 4 && sName.length >= 4 && normN.slice(0, 4) === sName.slice(0, 4)));
-      })) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, onBack }: WorkoutListProps) {
   const [adminRoutines, setAdminRoutines] = useState<AdminRoutine[]>([]);
   const [activeSession, setActiveSession] = useState<AdminRoutine | null>(null);
@@ -156,20 +103,19 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
   const [isLoadingRoutines, setIsLoadingRoutines] = useState(() => storage.getAdminRoutines().length === 0);
 
   useEffect(() => {
-    const user = (() => { try { return JSON.parse(localStorage.getItem('cadu_ponce_user') || '{}'); } catch { return {}; } })();
-    const allUsers = storage.getUsersList();
+    const user = storage.getUser();
 
     const loadAndFilter = (routinesList: AdminRoutine[]) => {
       let deletedSet = new Set<string>();
       try {
-        const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
+        const deletedList: string[] = JSON.parse(storage.getCacheItem('cadu_ponce_deleted_routines') || '[]');
         const validIds = deletedList.filter(item => 
           item.startsWith('routine_') || 
           item.startsWith('w_') || 
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item)
         );
         deletedSet = new Set(validIds.map(s => s.toLowerCase().trim()));
-        localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(validIds));
+        storage.setCacheItem('cadu_ponce_deleted_routines', JSON.stringify(validIds));
       } catch {}
 
       // Active routines must never be suppressed
@@ -179,7 +125,7 @@ export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, o
 
       return routinesList.filter(r => {
         if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
-        return routineMatchesUser(r, user, allUsers);
+        return routineMatchesUser(r, user);
       });
     };
 
@@ -491,7 +437,7 @@ function FeedbackModal({
 
   const handleSubmit = () => {
     const text = `*Feedback de Treino - Cadu Ponce Personal*\nTreino: ${routine.name}\nAvaliação: ${'⭐'.repeat(rating)}\nMensagem: ${feedbackText || 'Sem observações adicionais.'}`;
-    const phone = (trainerPhone || TRAINER_CONFIG.phone).replace(/\D/g, '');
+    const phone = TRAINER_CONFIG.phone;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
     setSubmitted(true);

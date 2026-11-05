@@ -20,6 +20,8 @@ export interface UserProfile {
     group?: string;
     birthDate?: string;
     gender?: string;
+    phone?: string;
+    instagram?: string;
     sendAccessInfo?: boolean;
     sendAnamnesis?: string;
     blockDefaulters?: string;
@@ -39,6 +41,7 @@ export interface Exercise {
 
 export interface Workout {
   id: string;
+  routineId?: string;
   name: string;
   description?: string;
   exercises: Exercise[];
@@ -63,6 +66,9 @@ export interface EvolutionPhoto {
   photoURL: string;
   date: string;
   notes?: string;
+  syncStatus?: 'pending' | 'synced';
+  syncError?: string;
+  localFileKey?: string;
 }
 
 export interface Goal {
@@ -137,6 +143,9 @@ export interface WorkoutLog {
   durationSeconds: number;
   rpe: number; // 1-10
   exercisesSummary: WorkoutLogExercise[];
+  comment?: string;
+  syncStatus?: 'pending' | 'synced';
+  syncError?: string;
 }
 
 export interface FinancialInvoice {

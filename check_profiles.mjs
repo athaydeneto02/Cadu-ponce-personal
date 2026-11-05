@@ -1,12 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-
-async function checkProfiles() {
-  const { data, error } = await supabase.from('profiles').select('*');
-  console.log(data?.map(d => ({ id: d.id, name: d.name })));
-}
-
-checkProfiles();
+import { withTestEnvironment, assertTestResult } from './scripts/test-environment.mjs';
+await withTestEnvironment(async ({ client }) => {
+  const result = await client.from('profiles').select('id', { count: 'exact', head: true });
+  assertTestResult(result);
+  console.log('Consulta de perfis concluída. Registros acessíveis:', result.count ?? 0);
+});

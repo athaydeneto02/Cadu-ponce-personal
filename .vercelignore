@@ -1,0 +1,38 @@
+# Only application/build sources are uploaded. Local diagnostics, credentials,
+# generated bundles and scratch files are deliberately outside this allowlist.
+/*
+!/api
+!/api/**
+!/server
+!/server/**
+!/src
+!/src/**
+!/public
+!/public/**
+!/tests
+!/tests/**
+!/scripts
+/scripts/*
+!/scripts/test-environment.mjs
+!/supabase
+!/supabase/**
+!/supabase_setup.sql
+!/package.json
+!/package-lock.json
+!/index.html
+!/tsconfig.json
+!/vite.config.ts
+!/vercel.json
+!/.vercelignore
+!/.env.example
+
+# Also protect against secrets accidentally placed inside an allowed directory.
+**/.env*
+!/.env.example
+**/*.pem
+**/*.key
+**/node_modules/
+**/work/
+**/outputs/
+**/.temp/
+**/*.log

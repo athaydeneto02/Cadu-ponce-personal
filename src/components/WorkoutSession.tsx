@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, Timer, ChevronLeft, ChevronRight, Info, Trophy, Target, Dumbbell, Star, Flame, Download, MessageCircle } from 'lucide-react';
 import { Workout, Exercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
@@ -23,13 +23,45 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const [timer, setTimer] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const sessionLogId = useRef(crypto.randomUUID());
+  const completedLog = useRef<WorkoutLog | null>(null);
+  const [logSaveMessage, setLogSaveMessage] = useState('');
+  const [logSaveFailed, setLogSaveFailed] = useState(false);
+
+  const persistCompletedLog = async (log: WorkoutLog) => {
+    setLogSaveFailed(false);
+    setLogSaveMessage('Salvando seu treino...');
+    try {
+      await storage.saveWorkoutLog(log);
+      const saved = storage.getWorkoutLogs().find(item => item.id === log.id);
+      setLogSaveMessage(saved?.syncStatus === 'pending'
+        ? 'Salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
+        : 'Treino salvo e sincronizado.');
+      return saved?.syncStatus !== 'pending';
+    } catch {
+      setLogSaveFailed(true);
+      setLogSaveMessage('Não foi possível salvar o treino. Tente novamente antes de sair.');
+      return false;
+    }
+  };
   const [userNotes, setUserNotes] = useState<Record<string, string>>({});
   const [rpe, setRpe] = useState<number>(0);
   const [hoverRpe, setHoverRpe] = useState<number>(0);
+  useEffect(() => {
+    const refresh = () => {
+      const saved = storage.getWorkoutLogs().find(log => log.id === sessionLogId.current);
+      if (saved?.syncStatus === 'synced') {
+        setLogSaveFailed(false);
+        setLogSaveMessage('Treino salvo e sincronizado.');
+      }
+    };
+    window.addEventListener('cadu_data_synced', refresh);
+    return () => window.removeEventListener('cadu_data_synced', refresh);
+  }, []);
   const [loads, setLoads] = useState<Record<string, number[]>>(() => {
     const initial: Record<string, number[]> = {};
     workout.exercises.forEach(e => {
-      const setsCount = parseInt(e.sets) || 1;
+      const setsCount = Math.max(1, Number(e.sets) || 1);
       const defaultLoads = Array(setsCount).fill(e.currentLoad || 0);
       if (e.prescribedLoads && e.prescribedLoads.length > 0) {
         for (let i = 0; i < setsCount; i++) {
@@ -151,72 +183,40 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
       }, 250);
 
-      // Busca dados reais do aluno logado
-      let currentStudentName = 'Aluno';
-      let currentStudentId = 'student';
-      let currentStudentPhone = '';
-      try {
-        const userStr = localStorage.getItem('cadu_ponce_user') || localStorage.getItem('cadu_user');
-        if (userStr) {
-          const parsedUser = JSON.parse(userStr);
-          if (parsedUser?.name) currentStudentName = parsedUser.name;
-          if (parsedUser?.uid) currentStudentId = parsedUser.uid;
-          const p = parsedUser?.phone || parsedUser?.trainerPhone;
-          if (p && typeof p === 'string' && !p.includes('84639369')) {
-            currentStudentPhone = p;
-          }
-        }
-      } catch (e) {}
-
-      // ✅ Salva o log do treino no Supabase (powera os círculos de frequência)
-      try {
+      const user = storage.getUser();
+      if (!user?.uid) {
+        setLogSaveFailed(true);
+        setLogSaveMessage('Entre novamente na sua conta para salvar o treino.');
+      } else {
         const log: WorkoutLog = {
-          id: `log_${Date.now()}`,
-          studentId: currentStudentId,
-          studentName: currentStudentName,
-          routineId: workout.id || 'workout',
+          id: sessionLogId.current,
+          studentId: user.uid,
+          studentName: user.name,
+          routineId: workout.routineId || workout.id,
           routineName: workout.name || 'Treino do Dia',
           completedAt: new Date().toISOString(),
           durationSeconds: timer,
-          rpe: 0,
+          rpe,
           exercisesSummary: workout.exercises?.map(ex => ({
             name: ex.name,
-            setsCompleted: completedExercises.has(ex.id) ? (Number(ex.sets) || 1) : 0,
+            setsCompleted: getCheckedSetsForExercise(ex.id, Number(ex.sets) || 1).filter(Boolean).length,
             totalSets: Number(ex.sets) || 1,
-            loads: [0],
+            loads: loads[ex.id] || [],
           })) ?? [],
         };
-        storage.saveWorkoutLog(log);
-      } catch (e) {
-        console.warn('Erro ao salvar log do treino:', e);
-      }
-
-      // Envia notificação real para o personal via Supabase
-      try {
-        const newNotifItem = {
-          id: 'notif_' + Date.now(),
-          studentName: currentStudentName,
-          workoutTitle: workout.name || 'Treino do Dia',
-          duration: `${Math.round(timer / 60)} min`,
-          intensity: 'high',
-          timestamp: 'Agora mesmo',
-          isRead: false,
-          type: 'completion',
-          detailMessage: 'Completou com sucesso o treino do dia na plataforma Cadu Ponce Personal.'
-        };
-
-        storage.notifyTrainerWorkoutCompleted({
-          studentName: currentStudentName,
-          studentId: currentStudentId,
-          studentPhone: currentStudentPhone,
-          routineName: workout.name || 'Treino do Dia',
-          durationFormatted: `${Math.round(timer / 60)} min`,
-          durationSeconds: timer,
+        completedLog.current = log;
+        void persistCompletedLog(log).then(synced => {
+          if (!synced) return;
+          return storage.notifyTrainerWorkoutCompleted({
+            logId: log.id,
+            studentName: user.name || 'Aluno',
+            studentId: user.uid,
+            studentPhone: user.metadata?.phone || '',
+            routineName: workout.name || 'Treino do Dia',
+            durationFormatted: Math.round(timer / 60) + ' min',
+            durationSeconds: timer,
+          }).catch(() => setLogSaveMessage('Treino salvo. Não foi possível enviar o aviso ao treinador.'));
         });
-
-        window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: newNotifItem }));
-      } catch (err) {
-        console.error('Error storing student completion notification:', err);
       }
 
       return () => clearInterval(interval);
@@ -233,7 +233,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       newSet.add(id);
       // Log progress
       storage.saveProgress({
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         studentId: workout.studentId,
         exerciseName: currentExercise.name,
         load: Math.max(...(loads[currentExercise.id] || [0])),
@@ -257,7 +257,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
     let totalLoad = 0;
     workout.exercises.forEach(ex => {
       const exLoads = loads[ex.id] || [];
-      const setsCount = parseInt(ex.sets) || 1;
+      const setsCount = Math.max(1, Number(ex.sets) || 1);
       const setsDone = getCheckedSetsForExercise(ex.id, setsCount).filter(c => c).length;
       const reps = parseInt(ex.reps) || 1;
       for (let i = 0; i < setsDone; i++) {
@@ -283,7 +283,9 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-4">
             TREINO <span className="text-red-600">CONCLUÍDO!</span>
           </h2>
-          <p className="text-slate-400 font-medium mb-12">Você deu o seu máximo hoje. Ótimo trabalho!</p>
+          <p className="text-slate-400 font-medium mb-4">Você deu o seu máximo hoje. Ótimo trabalho!</p>
+          <p role={logSaveFailed ? 'alert' : 'status'} className="text-amber-200 text-sm mb-4 max-w-sm">{logSaveMessage}</p>
+          {logSaveFailed && completedLog.current && <button className="text-white underline mb-4" onClick={() => void persistCompletedLog(completedLog.current!)}>Tentar salvar novamente</button>}
 
           <div className="grid grid-cols-2 gap-4 w-full max-w-sm mb-8">
             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl">
@@ -306,7 +308,13 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
                   key={star}
                   onMouseEnter={() => setHoverRpe(star)}
                   onMouseLeave={() => setHoverRpe(0)}
-                  onClick={() => setRpe(star)}
+                  onClick={() => {
+                    setRpe(star);
+                    if (completedLog.current) {
+                      completedLog.current = { ...completedLog.current, rpe: star * 2 };
+                      void persistCompletedLog(completedLog.current);
+                    }
+                  }}
                   className="p-1 transition-transform active:scale-90"
                 >
                   <Star 
@@ -372,15 +380,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           <h2 className="font-bold text-lg">Modo Treino</h2>
           <button 
             onClick={() => {
-              let studentName = 'Felippe Leitao';
-              try {
-                const userStr = localStorage.getItem('cadu_user');
-                if (userStr) {
-                  const parsed = JSON.parse(userStr);
-                  if (parsed && parsed.name) studentName = parsed.name;
-                }
-              } catch (e) {}
-              generateWorkoutPDF(workout, studentName);
+              generateWorkoutPDF(workout, storage.getUser()?.name || 'Aluno');
             }} 
             className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-red-500 hover:text-red-400 flex items-center justify-center"
             title="Baixar ficha em PDF"

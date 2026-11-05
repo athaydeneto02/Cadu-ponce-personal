@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
+import { getCacheUser } from './sessionCache';
 
 const DB_NAME = 'cadu_ponce_media_db';
 const DB_VERSION = 1;
@@ -22,6 +23,33 @@ interface MediaRecord {
 
 // Memory cache for object URLs so we don't recreate them constantly
 const blobUrlCache = new Map<string, string>();
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const privateBuckets = new Set(['evolution-photos', 'exercise-videos', 'arquivos-alunos']);
+
+export function toStorageReference(bucket: string, path: string): string {
+  if (!privateBuckets.has(bucket) || !path || path.split('/').includes('..')) throw new Error('Arquivo inválido.');
+  return `storage://${bucket}/${path.replace(/^\/+/, '')}`;
+}
+
+function storageLocation(value: string): { bucket: string; path: string } | null {
+  const durable = value.match(/^storage:\/\/([^/]+)\/(.+)$/);
+  if (durable && privateBuckets.has(durable[1])) return { bucket: durable[1], path: durable[2] };
+  // Old public URLs must still work after the bucket becomes private.
+  try {
+    const url = new URL(value);
+    const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!projectUrl || url.origin !== new URL(projectUrl).origin) return null;
+    const match = url.pathname.match(/^\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
+    if (match && privateBuckets.has(match[1])) return { bucket: match[1], path: decodeURIComponent(match[2]) };
+  } catch { /* local or external reference */ }
+  return null;
+}
+
+export function clearMediaCache(): void {
+  for (const url of blobUrlCache.values()) if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  blobUrlCache.clear();
+  signedUrlCache.clear();
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -64,9 +92,10 @@ export async function storeLocalFile(file: File | Blob, prefix = 'media'): Promi
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.put(record);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Não foi possível salvar o arquivo neste dispositivo.'));
   });
 
   // Create immediate blob URL and cache it
@@ -104,6 +133,19 @@ export async function getLocalBlob(idbKey: string): Promise<Blob | null> {
  */
 export async function resolveMediaUrl(url: string | undefined | null): Promise<string> {
   if (!url) return '';
+  const requestActor = getCacheUser();
+  const location = storageLocation(url);
+  if (location) {
+    const actor = getCacheUser();
+    if (!actor) return '';
+    const key = `${actor}:${location.bucket}/${location.path}`;
+    const cached = signedUrlCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+    const { data, error } = await supabase.storage.from(location.bucket).createSignedUrl(location.path, 3600);
+    if (error || !data?.signedUrl || actor !== getCacheUser()) return '';
+    signedUrlCache.set(key, { url: data.signedUrl, expiresAt: Date.now() + 40 * 60 * 1000 });
+    return data.signedUrl;
+  }
   if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) return url;
 
   // Check cache first
@@ -112,6 +154,7 @@ export async function resolveMediaUrl(url: string | undefined | null): Promise<s
 
   // 1. Resolve from Supabase Cloud Media
   if (url.startsWith('supamedia:')) {
+    const actor = getCacheUser();
     const id = url.replace(/^supamedia:/, '');
     try {
       const { data, error } = await supabase
@@ -134,9 +177,9 @@ export async function resolveMediaUrl(url: string | undefined | null): Promise<s
           const blob = new Blob([u8arr], { type: mime });
           objectUrl = URL.createObjectURL(blob);
         } else if (data.notes.startsWith('http')) {
-          objectUrl = data.notes.trim();
+          objectUrl = await resolveMediaUrl(data.notes.trim());
         }
-        if (objectUrl) {
+        if (objectUrl && actor === getCacheUser()) {
           blobUrlCache.set(url, objectUrl);
           return objectUrl;
         }
@@ -150,7 +193,7 @@ export async function resolveMediaUrl(url: string | undefined | null): Promise<s
   // 2. Resolve from IndexedDB
   try {
     const blob = await getLocalBlob(url);
-    if (!blob) return '';
+    if (!blob || requestActor !== getCacheUser()) return '';
     const objectUrl = URL.createObjectURL(blob);
     blobUrlCache.set(url, objectUrl);
     return objectUrl;
@@ -166,6 +209,7 @@ export async function resolveMediaUrl(url: string | undefined | null): Promise<s
 export function useMediaUrl(url?: string | null): string {
   const [resolved, setResolved] = useState<string>(() => {
     if (!url) return '';
+    if (storageLocation(url)) return '';
     if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) return url;
     return blobUrlCache.get(url) || '';
   });
@@ -175,21 +219,23 @@ export function useMediaUrl(url?: string | null): string {
       setResolved('');
       return;
     }
-    if (!url.startsWith('idb:') && !url.startsWith('supamedia:')) {
+    if (!storageLocation(url) && !url.startsWith('idb:') && !url.startsWith('supamedia:')) {
       setResolved(url);
       return;
     }
-    const cached = blobUrlCache.get(url);
+    const cached = storageLocation(url) ? undefined : blobUrlCache.get(url);
     if (cached) {
       setResolved(cached);
       return;
     }
 
     let isMounted = true;
-    resolveMediaUrl(url).then(res => {
+    const refresh = () => resolveMediaUrl(url).then(res => {
       if (isMounted) setResolved(res);
     });
-    return () => { isMounted = false; };
+    void refresh();
+    const timer = storageLocation(url) ? setInterval(() => void refresh(), 45 * 60 * 1000) : undefined;
+    return () => { isMounted = false; if (timer) clearInterval(timer); };
   }, [url]);
 
   return resolved;
@@ -253,6 +299,11 @@ export async function compressImage(file: File, maxDim = 800, quality = 0.85): P
  */
 export async function getCachedVideoBlobUrl(url: string): Promise<string> {
   if (!url) return '';
+  if (storageLocation(url)) {
+    // Signed URLs are authorized per user; never persist private media in the
+    // shared URL-based video cache.
+    return resolveMediaUrl(url);
+  }
   if (url.startsWith('blob:') || url.startsWith('data:')) return url;
   if (url.includes('youtube.com') || url.includes('youtu.be')) return url;
 

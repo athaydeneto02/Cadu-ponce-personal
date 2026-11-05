@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import BrandLogo from './components/BrandLogo';
 import { storage } from './lib/storage';
 import { supabase } from './lib/supabase';
+import { getTrainerWhatsAppUrl } from './lib/trainerConfig';
 import { UserProfile, Workout } from './types';
 import Dashboard from './components/Dashboard';
 import WorkoutList from './components/WorkoutList';
@@ -39,16 +40,18 @@ import logoImg from './assets/images/cadu_ponce_logo_new.png';
 type Tab = 'dashboard' | 'workouts' | 'evolution' | 'profile';
 
 export default function App() {
-  // Initialize instantly from localStorage cache — no loading flash
-  const cachedUser = storage.getUser();
-  const [isLoading, setIsLoading] = useState(!cachedUser); // skip splash if we have cache
-  const [isAuthenticated, setIsAuthenticated] = useState(!!cachedUser);
+  // A cached profile is display data, never proof of a valid session or role.
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('cadu_ponce_theme') as 'light' | 'dark') || 'light';
   });
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [user, setUser] = useState<UserProfile | null>(cachedUser);
-  const [workouts, setWorkouts] = useState<Workout[]>(() => storage.getWorkouts());
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -62,89 +65,104 @@ export default function App() {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
-    const handleMockLogin = () => {
-      const mockUser = JSON.parse(localStorage.getItem('cadu_ponce_user') || 'null');
-      if (mockUser) {
-        setUser(mockUser);
-        setIsAuthenticated(true);
-        // Load workouts for mock user
-        storage.fetchWorkouts(mockUser.uid).then(w => setWorkouts(w));
-      }
-    };
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('mock_login_success', handleMockLogin);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('mock_login_success', handleMockLogin);
     };
   }, []);
 
   useEffect(() => {
-    // Listen to Supabase auth state changes
+    let mounted = true;
+    let revision = 0;
+    let verifiedUserId: string | null = null;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const clearAuthenticatedView = () => {
+      verifiedUserId = null;
+      setUser(null);
+      setIsAuthenticated(false);
+      setWorkouts([]);
+      setActiveWorkout(null);
+      setIsManagingAccounts(false);
+      setIsEditingProfile(false);
+      setIsUpdatingPassword(false);
+      storage.setSessionUser(null);
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          // ── INSTANT: show UI right away from session + localStorage cache ──
-          // Don't wait for Supabase DB queries before rendering the app
-          const cached = storage.getUser();
-          if (cached && cached.uid === session.user.id) {
-            // Returning user — render immediately from cache
-            setUser(cached);
-            setWorkouts(storage.getWorkouts());
-            setIsAuthenticated(true);
-            setIsLoading(false);
-          } else {
-            // First login — build a quick profile from session metadata (no DB needed)
-            const email = session.user.email || '';
-            const isAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno'))
-              || session.user.user_metadata?.role === 'admin';
-            const quickProfile: UserProfile = {
-              uid: session.user.id,
-              email,
-              name: (session.user.user_metadata?.name as string) || email.split('@')[0] || 'Usuário',
-              role: isAdmin ? 'admin' : 'student',
-              status: 'active',
-              createdAt: session.user.created_at || new Date().toISOString(),
-            };
-            storage.saveUser(quickProfile);
-            setUser(quickProfile);
-            setWorkouts(storage.getWorkouts());
-            setIsAuthenticated(true);
-            setIsLoading(false);
-          }
-
-          // ── BACKGROUND: fetch full profile + workouts silently ──
-          // Update UI when fresh data arrives without blocking login
-          storage.fetchCurrentProfile(session.user).then(profile => {
-            if (profile) {
-              setUser(profile);
-              storage.saveUser(profile);
-            }
-          }).catch(() => {});
-
-          storage.fetchWorkouts(session.user.id).then(fetchedWorkouts => {
-            setWorkouts(fetchedWorkouts);
-          }).catch(() => {});
-
-        } else {
-          // Signed out — clear everything
-          setUser(null);
-          setIsAuthenticated(false);
-          setWorkouts([]);
-          setIsManagingAccounts(false);
+      (event, session) => {
+        const request = ++revision;
+        const recoveryRequested = event === 'PASSWORD_RECOVERY' || window.location.pathname === '/reset-password';
+        if (!session?.user) {
+          clearAuthenticatedView();
+          setIsRecoveringPassword(false);
+          if (recoveryRequested) setAuthError('Este link de recuperação é inválido ou expirou. Solicite um novo link em “Esqueci a senha”.');
           setIsLoading(false);
+          return;
         }
+
+        if (verifiedUserId !== session.user.id) setIsLoading(true);
+        // Auth callbacks must finish before calling other Supabase operations.
+        const timer = setTimeout(async () => {
+          timers.delete(timer);
+          const current = () => mounted && request === revision;
+          try {
+            const { data: authData, error: authFailure } = await supabase.auth.getUser(session.access_token);
+            if (!current()) return;
+            if (authFailure || !authData.user || authData.user.id !== session.user.id) {
+              throw new Error('Sua sessão expirou. Entre novamente.');
+            }
+            if (recoveryRequested) {
+              clearAuthenticatedView();
+              setAuthError(null);
+              setIsRecoveringPassword(true);
+              return;
+            }
+            storage.setSessionUser(authData.user.id);
+            const profile = await storage.fetchProfile(authData.user.id);
+            if (!current()) return;
+            if (!profile || profile.status !== 'active') {
+              throw new Error('Seu acesso ainda não está liberado. Entre em contato com o personal.');
+            }
+            verifiedUserId = profile.uid;
+            storage.saveUser(profile);
+            setUser(profile);
+            setAuthError(null);
+            setIsAuthenticated(true);
+            setIsRecoveringPassword(false);
+            storage.fetchWorkouts(profile.uid).then(items => {
+              if (current()) setWorkouts(items);
+            }).catch(() => {
+              if (current()) setNotification({ title: 'Treinos indisponíveis', body: 'Não foi possível atualizar seus treinos. Verifique a conexão e tente novamente.' });
+            });
+          } catch (error) {
+            if (!current()) return;
+            clearAuthenticatedView();
+            setAuthError(error instanceof Error ? error.message : 'Não foi possível validar seu acesso. Tente novamente.');
+          } finally {
+            if (current()) setIsLoading(false);
+          }
+        }, 0);
+        timers.add(timer);
       }
     );
 
     return () => {
+      mounted = false;
+      revision++;
+      timers.forEach(clearTimeout);
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.uid || !isOnline) return;
+    storage.syncPendingData(user.uid).catch(() => {
+      setNotification({ title: 'Sincronização pendente', body: 'Seus registros continuam salvos neste dispositivo. Tentaremos sincronizar quando a conexão estiver disponível.' });
+    });
+  }, [isAuthenticated, user?.uid, isOnline]);
 
   useEffect(() => {
     localStorage.setItem('cadu_ponce_theme', theme);
@@ -152,27 +170,12 @@ export default function App() {
 
   const handleLogin = async (email: string, password?: string) => {
     if (!email || !password) return;
-
-    // --- TEMPORARY BYPASS FOR TESTING STUDENT ACCOUNT ---
-    if (email === 'aluno.teste@caduponce.com' && password === 'Teste@123') {
-      const mockUser = {
-        uid: '88888888-8888-8888-8888-888888888888',
-        name: 'Aluno Teste',
-        email: 'aluno.teste@caduponce.com',
-        role: 'student' as const,
-        createdAt: new Date().toISOString()
-      };
-      // Força localStorage e dispara evento pra App.tsx atualizar sem Supabase
-      localStorage.setItem('cadu_ponce_user', JSON.stringify(mockUser));
-      
-      // Emit custom event para o App pegar caso não consiga via auth state
-      window.dispatchEvent(new Event('mock_login_success'));
-      return;
-    }
-    // --------------------------------------------------
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+    setAuthError(null);
+    setLoginNotice(null);
+    // A stale recovery path must not turn a normal login into recovery mode.
+    if (window.location.pathname === '/reset-password') window.history.replaceState({}, '', '/');
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
       password,
     });
 
@@ -183,9 +186,45 @@ export default function App() {
       throw new Error(errorMessage);
     }
 
-    if (data.user) {
-      // onAuthStateChange will handle setting user state
+  };
+
+  const handleLogout = async (): Promise<boolean> => {
+    let pushWarning = false;
+    if ('serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager?.getSubscription();
+        if (subscription) {
+          // Invalidate the browser endpoint even if removing its database row fails.
+          await subscription.unsubscribe();
+          if (user?.uid) {
+            await supabase.from('push_subscriptions').delete()
+              .eq('user_id', user.uid).eq('subscription->>endpoint', subscription.endpoint);
+          }
+        }
+      } catch {
+        pushWarning = true;
+      }
     }
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      window.alert('Não foi possível encerrar a sessão. Verifique a conexão e tente novamente.');
+      return false;
+    }
+    storage.setSessionUser(null);
+    setIsAuthenticated(false);
+    setIsManagingAccounts(false);
+    setUser(null);
+    if (pushWarning) setLoginNotice('Você saiu da conta. Não foi possível desativar as notificações; revise a permissão deste site no navegador.');
+    return true;
+  };
+
+  const finishRecovery = async (saved: boolean) => {
+    window.history.replaceState({}, '', '/');
+    if (!await handleLogout()) return;
+    setIsRecoveringPassword(false);
+    setAuthError(null);
+    setLoginNotice(saved ? 'Sua senha foi atualizada. Entre com a nova senha.' : null);
   };
 
   if (isLoading) {
@@ -200,27 +239,19 @@ export default function App() {
     );
   }
 
+  if (isRecoveringPassword) {
+    return <UpdatePasswordForm recovery onClose={() => { void finishRecovery(false); }} onSuccess={() => finishRecovery(true)} />;
+  }
+
   if (!isAuthenticated) {
     if (showAcquire) {
       return (
         <AcquireConsulting 
           onCancel={() => setShowAcquire(false)}
-          onSuccess={(registeredUser) => {
-            // Account was already created in Supabase by AcquireConsulting component.
-            // Just save to cache and set auth state.
-            setUser(registeredUser);
-            storage.saveUser(registeredUser);
-            setIsAuthenticated(true);
-            setShowAcquire(false);
-            setNotification({
-              title: "Parabéns! 🏆",
-              body: "Sua consultoria foi contratada com sucesso! Bem-vindo(a) ao time!"
-            });
-          }}
         />
       );
     }
-    return <Login onLogin={handleLogin} onAcquireClick={() => setShowAcquire(true)} />;
+    return <Login onLogin={handleLogin} onAcquireClick={() => setShowAcquire(true)} errorMessage={authError} notice={loginNotice} />;
   }
 
   // PERSONAL TRAINER / ADMIN: Entra DIRETO no Painel do Administrador (não possui treinos de aluno)
@@ -228,13 +259,7 @@ export default function App() {
     return (
       <AccountManagement 
         isDark={theme === 'dark'}
-        onClose={async () => {
-          await supabase.auth.signOut();
-          localStorage.clear();
-          setIsAuthenticated(false);
-          setIsManagingAccounts(false);
-          setUser(null);
-        }}
+        onClose={() => { void handleLogout(); }}
       />
     );
   }
@@ -369,13 +394,7 @@ export default function App() {
 
                   {/* Logout Button (Extra, necessary for the app) */}
                   <button 
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      localStorage.clear();
-                      setIsAuthenticated(false);
-                      setIsManagingAccounts(false);
-                      setUser(null);
-                    }}
+                    onClick={() => { void handleLogout(); }}
                     className="w-full bg-white border border-red-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition mt-6"
                   >
                     <div className="text-left">
@@ -464,13 +483,7 @@ export default function App() {
               />
 
               <button 
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  localStorage.clear();
-                  setIsAuthenticated(false);
-                  setIsManagingAccounts(false);
-                  setUser(null);
-                }}
+                onClick={() => { void handleLogout(); }}
                 className={`w-full flex items-center justify-between p-5 rounded-2xl border shadow-sm text-red-600 font-bold active:scale-95 transition-all ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}
               >
                 <span>Sair da Conta</span>
@@ -483,7 +496,8 @@ export default function App() {
     }
   };
 
-  const isStudent = user?.role !== 'admin';
+  // Administrators have already returned their dedicated screen above.
+  const isStudent = true;
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-300 ${isStudent ? 'bg-[#e8ecf0] flex items-center justify-center' : (theme === 'dark' ? 'bg-slate-950 text-white dark pb-20' : 'bg-[#F4F6FA] text-slate-900 pb-20')}`}>
@@ -565,7 +579,7 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                window.open('https://wa.me/554384639369', '_blank');
+                window.open(getTrainerWhatsAppUrl(), '_blank', 'noopener,noreferrer');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
@@ -700,7 +714,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
-                  window.open('https://wa.me/554384639369', '_blank');
+                  window.open(getTrainerWhatsAppUrl(), '_blank', 'noopener,noreferrer');
                 }}
                 className="flex-1 relative flex flex-col items-center justify-center gap-1 outline-none transition-colors"
               >

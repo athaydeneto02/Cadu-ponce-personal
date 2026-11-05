@@ -7,8 +7,8 @@ self.addEventListener('push', function(event) {
       
       const options = {
         body: data.body || 'Você tem uma nova notificação.',
-        icon: data.icon || '/pwa-icon.svg',
-        badge: '/pwa-icon.svg', // Small icon for Android status bar
+        icon: '/icon.png',
+        badge: '/icon.png',
         vibrate: [100, 50, 100],
         data: {
           url: data.url || '/'
@@ -39,11 +39,15 @@ self.addEventListener('notificationclick', function(event) {
     clients.matchAll({
       type: "window"
     }).then(function(clientList) {
-      const targetUrl = event.notification.data?.url || '/';
+      let targetUrl = self.location.origin + '/';
+      try {
+        const candidate = new URL(event.notification.data?.url || '/', self.location.origin);
+        if (candidate.origin === self.location.origin) targetUrl = candidate.href;
+      } catch { /* Keep the application home for malformed destinations. */ }
       
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
-        if (client.url.includes(targetUrl) && 'focus' in client) {
+        if (client.url === targetUrl && 'focus' in client) {
           return client.focus();
         }
       }

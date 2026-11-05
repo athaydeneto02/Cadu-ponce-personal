@@ -1,89 +1,52 @@
 import webpush from 'web-push';
-import { createClient } from '@supabase/supabase-js';
-
-// Get environment variables
-const vapidPublicKey = process.env.VITE_VAPID_PUBLIC_KEY || 'BF4mz4GPAGZdcZi7EbNc1hHyI0bx_4npqhd0RV3aoHqSOpn9rjqpXUtA2SkNCPth1zgawRHMgFcVRmng0aVJQjQ';
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || 'xHmkGsNMxT45l0dwxCgEdCO0v7PDwmNZb1784g-vYP8';
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''; // Fallback to anon key if service key not set
-
-webpush.setVapidDetails(
-  'mailto:support@cadu-ponce.com',
-  vapidPublicKey,
-  vapidPrivateKey
-);
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { allowedPushEndpoint, bearerToken, createServerClient, enforceRateLimit, HttpError,
+  jsonBody, notificationInput, postOnly, requireAdmin, safeError } from '../server/security.js';
 
 export default async function handler(req: any, res: any) {
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
+  if (!postOnly(req, res)) return;
   try {
-    const { userIds, title, body, icon, url } = req.body;
-
-    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-      return res.status(400).json({ error: 'Missing or invalid userIds' });
+    bearerToken(req);
+    const client = createServerClient();
+    const admin = await requireAdmin(req, client);
+    const input = notificationInput(jsonBody(req));
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+    const subject = process.env.VAPID_SUBJECT;
+    if (!publicKey || !privateKey || !subject || !/^(mailto:|https:\/\/)/.test(subject)) {
+      throw new HttpError(503, 'Notificações ainda não estão configuradas.');
     }
-
-    // Fetch subscriptions for the given users
-    const { data: subscriptions, error } = await supabase
-      .from('push_subscriptions')
-      .select('*')
-      .in('user_id', userIds);
-
-    if (error) {
-      console.error('Supabase error:', error);
-      return res.status(500).json({ error: 'Failed to fetch subscriptions' });
-    }
-
-    if (!subscriptions || subscriptions.length === 0) {
-      return res.status(200).json({ message: 'No active subscriptions found for these users.', sentCount: 0 });
-    }
-
-    const payload = JSON.stringify({
-      title: title || 'Nova Notificação',
-      body: body || 'Você tem uma nova mensagem!',
-      icon: icon || '/pwa-icon.svg',
-      url: url || '/'
-    });
-
+    await enforceRateLimit(client, admin.id, 'notification');
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+    const { data: recipients, error: recipientError } = await client.from('profiles')
+      .select('id').in('id', input.userIds).eq('status', 'active');
+    if (recipientError) throw new HttpError(503, 'Não foi possível consultar os destinatários.');
+    const ids = (recipients || []).map(row => row.id);
+    if (ids.length !== input.userIds.length) throw new HttpError(400, 'Há destinatários inexistentes ou inativos.');
+    const { data: subscriptions, error } = await client.from('push_subscriptions')
+      .select('id, subscription').in('user_id', ids).limit(501);
+    if (error) throw new HttpError(503, 'Não foi possível consultar as notificações.');
+    if ((subscriptions?.length || 0) > 500) throw new HttpError(400, 'Envie para um grupo menor de alunos.');
+    const payload = JSON.stringify({ title: input.title, body: input.body, icon: input.icon, url: input.url });
     let sentCount = 0;
-    const errors: any[] = [];
-
-    // Send push notifications in parallel
-    await Promise.all(
-      subscriptions.map(async (sub) => {
+    const errors: string[] = [];
+    for (let offset = 0; offset < (subscriptions?.length || 0); offset += 10) {
+      await Promise.all(subscriptions!.slice(offset, offset + 10).map(async sub => {
+        if (!allowedPushEndpoint(sub.subscription?.endpoint)) {
+          errors.push('Inscrição com destino inválido.');
+          return;
+        }
         try {
-          // Send push notification
-          await webpush.sendNotification(sub.subscription, payload);
+          await webpush.sendNotification(sub.subscription, payload, { timeout: 10_000, TTL: 3600 });
           sentCount++;
         } catch (err: any) {
-          console.error(`Error sending push to subscription ${sub.id}:`, err);
-          
-          // If the subscription is expired or invalid, remove it from the database
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            await supabase
-              .from('push_subscriptions')
-              .delete()
-              .eq('id', sub.id);
-          } else {
-            errors.push(err);
+          errors.push('Não foi possível entregar uma notificação.');
+          if (err?.statusCode === 404 || err?.statusCode === 410) {
+            await client.from('push_subscriptions').delete().eq('id', sub.id);
           }
         }
-      })
-    );
-
-    return res.status(200).json({ 
-      success: true, 
-      message: `Notifications sent: ${sentCount}`,
-      errors: errors.length > 0 ? errors : undefined
-    });
-
-  } catch (error: any) {
-    console.error('Unexpected error:', error);
-    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
-  }
+      }));
+    }
+    return res.status(200).json({ success: sentCount > 0 && errors.length === 0,
+      sentCount, failedCount: errors.length, errors });
+  } catch (error) { return safeError(res, error); }
 }

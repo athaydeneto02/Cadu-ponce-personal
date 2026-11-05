@@ -1,16 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-
-async function test() {
-  console.log('Trying to insert exercise with invalid uuid...');
-  const { data, error } = await supabase.from('exercises').insert({
-    id: 'ex_123',
-    workout_id: '5e0b2ac4-ec33-4170-8aa2-0606e6c2de20',
-    name: 'test'
-  });
-  console.log('Exercises insert result:', error || data);
-}
-test();
+import { randomUUID } from 'node:crypto';
+import { withTestEnvironment, assertTestResult, insertWorkoutFixture } from './scripts/test-environment.mjs';
+await withTestEnvironment(async ({ client, user }) => {
+  const workoutId = await insertWorkoutFixture(client, user);
+  assertTestResult(await client.from('exercises').insert({
+    id: randomUUID(), workout_id: workoutId, name: 'Exercício de diagnóstico', sets: 3, reps: '10', rest: '60s',
+  }));
+  console.log('Inserção de treino e exercício concluída no ambiente de testes.');
+}, { write: true });

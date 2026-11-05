@@ -10,17 +10,18 @@
 
 import { supabase } from './supabase';
 import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog, FinancialInvoice, TrainerPaymentSettings } from '../types';
-import { storeLocalFile, compressImage, resolveMediaUrl } from './mediaDb';
+import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache } from './mediaDb';
+import { sessionCache as cacheStorage, cacheForUser, getCacheUser, setCacheUser, readCached } from './sessionCache';
 
 // ---------------------------------------------------------------------------
 // Safe localStorage helper - prevents QuotaExceededError crashes (white screen)
 // ---------------------------------------------------------------------------
-export function safeSetItem(key: string, value: string): boolean {
+export function safeSetItem(key: string, value: string, cache = cacheStorage): boolean {
   try {
-    localStorage.setItem(key, value);
+    cache.setItem(key, value);
     return true;
   } catch (err) {
-    console.warn(`[storage] Quota exceeded on localStorage.setItem(${key}):`, err);
+    console.warn(`[storage] Quota exceeded on cacheStorage.setItem(${key}):`, err);
     try {
       if (key === 'cadu_ponce_exercises_v3') {
         const parsed = JSON.parse(value);
@@ -29,7 +30,7 @@ export function safeSetItem(key: string, value: string): boolean {
           image: ex.image && ex.image.length > 30000 ? 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200' : ex.image,
           videoUrl: ex.videoUrl && ex.videoUrl.length > 30000 ? '' : ex.videoUrl,
         }));
-        localStorage.setItem(key, JSON.stringify(cleaned));
+        cache.setItem(key, JSON.stringify(cleaned));
         return true;
       }
     } catch {
@@ -38,45 +39,6 @@ export function safeSetItem(key: string, value: string): boolean {
     return false;
   }
 }
-
-// Boot-time auto-sanitizer: remove any oversized base64 items that caused white screens
-(() => {
-  if (typeof window === 'undefined') return;
-  try {
-    const raw = localStorage.getItem('cadu_ponce_exercises_v3');
-    if (raw) {
-      const list = JSON.parse(raw);
-      if (Array.isArray(list)) {
-        let changed = false;
-        const sanitized = list.map((ex: any) => {
-          let img = ex.image;
-          let vid = ex.videoUrl;
-          if (typeof img === 'string' && img.length > 50000) {
-            img = 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200';
-            changed = true;
-          }
-          if (typeof vid === 'string' && (vid.startsWith('data:video') || vid.length > 50000)) {
-            vid = '';
-            changed = true;
-          }
-          return { ...ex, image: img, videoUrl: vid };
-        });
-        if (changed) {
-          localStorage.setItem('cadu_ponce_exercises_v3', JSON.stringify(sanitized));
-          console.log('[storage] Cleared oversized base64 exercises to prevent white screen');
-        }
-      }
-    }
-    // Auto-sanitiza cadu_ponce_photos se tiver excedendo o armazenamento local
-    const rawPhotos = localStorage.getItem('cadu_ponce_photos');
-    if (rawPhotos && rawPhotos.length > 500000) {
-      localStorage.removeItem('cadu_ponce_photos');
-      console.log('[storage] Cleared oversized photo cache to prevent white screen');
-    }
-  } catch (e) {
-    console.warn('[storage] Error sanitizing exercises:', e);
-  }
-})();
 
 // ---------------------------------------------------------------------------
 // Local-storage cache keys (session cache only — NOT the source of truth)
@@ -101,8 +63,8 @@ function rowToUserProfile(row: Record<string, unknown>): UserProfile {
     weight: (row.weight as number) ?? undefined,
     height: (row.height as number) ?? undefined,
     trainerPhone: (row.trainer_phone as string) ?? undefined,
-    role: (row.role === 'admin' || (typeof row.email === 'string' && row.email.toLowerCase().includes('cadu') && !row.email.toLowerCase().includes('aluno'))) ? 'admin' : ((row.role as 'admin' | 'student') ?? 'student'),
-    status: (row.status as UserProfile['status']) ?? 'active',
+    role: row.role === 'admin' ? 'admin' : 'student',
+    status: (row.status as UserProfile['status']) ?? 'inactive',
     modality: (row.modality as UserProfile['modality']) ?? undefined,
     metadata: (row.metadata as UserProfile['metadata']) ?? {},
     createdAt: row.created_at as string,
@@ -120,6 +82,7 @@ function rowToWorkout(row: Record<string, unknown>): Workout {
       rest: (e.rest as string) ?? '60s',
       notes: (e.notes as string) ?? undefined,
       currentLoad: (e.current_load as number) ?? 0,
+      prescribedLoads: (e.prescribed_loads as number[]) ?? undefined,
     }));
 
   return {
@@ -127,6 +90,7 @@ function rowToWorkout(row: Record<string, unknown>): Workout {
     name: row.name as string,
     description: (row.description as string) ?? undefined,
     studentId: row.student_id as string,
+    routineId: (row.routine_id as string) ?? undefined,
     createdAt: row.created_at as string,
     exercises,
   };
@@ -144,6 +108,7 @@ function rowToAdminExercise(row: Record<string, unknown>): AdminExercise {
     videoFileUrl: (row.video_file_url as string) ?? undefined,
     combinedWithNext: (row.combined_with_next as boolean) ?? (row.combinedWithNext as boolean) ?? undefined,
     combinedGroup: (row.combined_group as string) ?? (row.combinedGroup as string) ?? undefined,
+    prescribedLoads: (row.prescribed_loads as number[]) ?? undefined,
   };
 }
 
@@ -174,82 +139,70 @@ function rowToAdminRoutine(row: Record<string, unknown>, exercises: AdminExercis
 export const storage = {
   // ── User / Auth ─────────────────────────────────────────────────────────
 
-  /** Returns the cached user from localStorage (sync – used on first render). */
-  getUser: (): UserProfile | null => {
-    const data = localStorage.getItem(CACHE_KEYS.USER);
-    return data ? JSON.parse(data) : null;
+  setSessionUser: (userId: string | null): void => {
+    if (getCacheUser() !== userId) clearMediaCache();
+    setCacheUser(userId);
+  },
+  getCacheItem: (key: string): string | null => cacheStorage.getItem(key),
+  setCacheItem: (key: string, value: string): void => cacheStorage.setItem(key, value),
+
+  getUser: (): UserProfile | null => readCached<UserProfile | null>(CACHE_KEYS.USER, null),
+
+  saveUser: (user: UserProfile): void => {
+    if (user.uid !== getCacheUser()) return;
+    const { password: _password, ...safeUser } = user;
+    cacheStorage.setItem(CACHE_KEYS.USER, JSON.stringify(safeUser));
   },
 
-  /** Persists the active user to localStorage cache. */
-  saveUser: (user: UserProfile) => {
-    localStorage.setItem(CACHE_KEYS.USER, JSON.stringify(user));
+  /** Roles come only from the protected database profile. */
+  fetchProfile: async (userId: string): Promise<UserProfile | null> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (error) throw error;
+    return data ? rowToUserProfile(data) : null;
   },
 
-  /** Fetches the full profile from Supabase for the currently authenticated user.
-   *  Pass sessionUser from onAuthStateChange to skip an extra getUser() round-trip. */
-  fetchCurrentProfile: async (sessionUser?: { id: string; email?: string; created_at?: string; user_metadata?: Record<string, unknown> }): Promise<UserProfile | null> => {
-    // Use the provided session user or fall back to getUser() (slower)
-    let authUser = sessionUser;
-    if (!authUser) {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData.user) return null;
-      authUser = authData.user;
-    }
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .single();
-
-    if (error || !data) {
-      const email = authUser.email || '';
-      const isCaduAdmin = (email.toLowerCase().includes('cadu') && !email.toLowerCase().includes('aluno')) || authUser.user_metadata?.role === 'admin';
-      const fallbackProfile: UserProfile = {
-        uid: authUser.id,
-        name: (authUser.user_metadata?.name as string) || 'Cadu Ponce',
-        email,
-        role: isCaduAdmin ? 'admin' : 'student',
-        status: 'active',
-        createdAt: authUser.created_at || new Date().toISOString()
-      };
-      storage.saveUser(fallbackProfile);
-      return fallbackProfile;
-    }
-    const profile = rowToUserProfile(data);
-    storage.saveUser(profile);
+  fetchCurrentProfile: async (sessionUser?: { id: string }): Promise<UserProfile | null> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    if (!data.user || (sessionUser && data.user.id !== sessionUser.id)) return null;
+    const profile = await storage.fetchProfile(data.user.id);
+    if (profile) storage.saveUser(profile);
     return profile;
   },
 
   /** Fetches all profiles from Supabase (admin use). */
   fetchUsersList: async (): Promise<UserProfile[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error || !data) {
-      const cached = localStorage.getItem('cadu_ponce_all_users');
+      const cached = cacheStorage.getItem('cadu_ponce_all_users');
       return cached ? JSON.parse(cached) : [];
     }
     const users = data.map(rowToUserProfile);
-    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+    cacheStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
     return users;
   },
 
   /** Returns cached users list (sync). */
   getUsersList: (): UserProfile[] => {
-    const data = localStorage.getItem('cadu_ponce_all_users');
+    const data = cacheStorage.getItem('cadu_ponce_all_users');
     return data ? JSON.parse(data) : [];
   },
 
   /** Saves users list to local cache. */
   saveUsersList: (users: UserProfile[]): void => {
-    localStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+    cacheStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
   },
 
   /** Updates a user profile in Supabase. */
   updateProfile: async (user: UserProfile): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -266,240 +219,138 @@ export const storage = {
       .eq('id', user.uid);
 
     if (error) throw error;
-    storage.saveUser(user);
+    if (user.uid === getCacheUser()) storage.saveUser(user);
   },
 
   /** Deletes a profile from Supabase. */
   deleteProfile: async (userId: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('profiles').delete().eq('id', userId);
     if (error) throw error;
     const users = storage.getUsersList().filter(u => u.uid !== userId);
     storage.saveUsersList(users);
   },
 
-  /** Creates a new student account via Supabase Auth. */
+  /** Public registration never assigns privileged roles or assumes a session. */
   createStudentAccount: async (
-    email: string,
-    password: string,
-    name: string,
-    extraData?: Partial<UserProfile>
+    email: string, password: string, name: string, extraData?: Partial<UserProfile>
   ): Promise<UserProfile> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    if (extraData?.role === 'admin') throw new Error('Administradores só podem ser criados pelo painel autorizado.');
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, role: extraData?.role ?? 'student' },
-      },
+      email: email.trim(), password, options: { data: { name: name.trim() } },
     });
     if (error) throw error;
-    if (!data.user) throw new Error('Usuário não criado');
-
-    if (extraData && Object.keys(extraData).length > 0) {
-      await supabase.from('profiles').update({
+    if (!data.user) throw new Error('Não foi possível criar a conta.');
+    if (!data.session) throw new Error('Conta criada. Confirme o e-mail recebido antes de entrar.');
+    if (extraData) {
+      const { error: updateError } = await supabase.from('profiles').update({
         weight: extraData.weight ?? null,
         height: extraData.height ?? null,
-        trainer_phone: extraData.trainerPhone ?? null,
-        modality: extraData.modality ?? null,
-        metadata: extraData.metadata ?? {},
       }).eq('id', data.user.id);
+      if (updateError) throw new Error('Conta criada, mas os dados adicionais não foram salvos. Entre para completá-los.');
     }
-
-    return storage.fetchProfile(data.user.id) as Promise<UserProfile>;
+    const profile = await storage.fetchProfile(data.user.id);
+    if (!profile) throw new Error('Conta criada, mas o perfil ainda não está disponível. Tente entrar novamente.');
+    return profile;
   },
 
-  adminCreateUser: async (
-    email: string,
-    name: string,
-    extraData?: Partial<UserProfile>
-  ): Promise<UserProfile> => {
-    // Create a temporary client that DOES NOT persist the session,
-    // so the Admin doesn't get logged out when creating a student!
-    const { createClient } = await import('@supabase/supabase-js');
-    const tempClient = createClient(
-      import.meta.env.VITE_SUPABASE_URL,
-      import.meta.env.VITE_SUPABASE_ANON_KEY,
-      { auth: { persistSession: false, autoRefreshToken: false } }
-    );
-
-    const password = extraData?.password || '123456';
-    const { data, error } = await tempClient.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, role: extraData?.role ?? 'student' },
-      },
+  adminCreateUser: async (email: string, name: string, extraData?: Partial<UserProfile>): Promise<UserProfile> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Entre novamente para cadastrar um aluno.');
+    const response = await fetch('/api/admin-create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ ...extraData, email: email.trim(), name: name.trim() }),
     });
-
-    if (error) throw error;
-    if (!data.user) throw new Error('Usuário não criado. Verifique se o e-mail já existe.');
-
-    // Wait a brief moment for the Supabase trigger to create the profile row
-    await new Promise(r => setTimeout(r, 1000));
-
-    // Update the newly created profile with the extra data
-    if (extraData) {
-      await supabase.from('profiles').update({
-        weight: extraData.weight ?? null,
-        height: extraData.height ?? null,
-        trainer_phone: extraData.trainerPhone ?? null,
-        modality: extraData.modality ?? null,
-        status: extraData.status ?? 'active',
-        metadata: extraData.metadata ?? {},
-      }).eq('id', data.user.id);
-    }
-
-    return {
-      uid: data.user.id,
-      name,
-      email,
-      role: extraData?.role ?? 'student',
-      status: extraData?.status ?? 'active',
-      trainerPhone: extraData?.trainerPhone,
-      modality: extraData?.modality,
-      createdAt: new Date().toISOString(),
-      metadata: extraData?.metadata ?? {}
-    };
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.user) throw new Error(result.error || 'Não foi possível criar a conta.');
+    return rowToUserProfile(result.user);
   },
 
   // ── Workouts ─────────────────────────────────────────────────────────────
 
-  getWorkouts: (): Workout[] => {
-    const data = localStorage.getItem(CACHE_KEYS.WORKOUTS);
-    return data ? JSON.parse(data) : [];
-  },
+  getWorkouts: (): Workout[] => readCached<Workout[]>(CACHE_KEYS.WORKOUTS, []),
 
   fetchWorkouts: async (studentId?: string): Promise<Workout[]> => {
-    let query = supabase
-      .from('workouts')
-      .select('*, exercises(*)')
-      .order('created_at', { ascending: false });
-
+    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    let query = supabase.from('workouts').select('*').order('created_at', { ascending: false });
     if (studentId) query = query.eq('student_id', studentId);
-
     const { data, error } = await query;
-    const localCached = storage.getWorkouts();
-    if (error || !data) return localCached;
-
-    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
-    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
-    const isDeleted = (id?: string) => {
-      if (id && deletedSet.has(id.toLowerCase().trim())) return true;
-      return false;
-    };
-
-    const fromSupabase = data
-      .map(rowToWorkout)
-      .filter(w => !isDeleted(w.id));
-
-    const validLocals = localCached.filter(w => !isDeleted(w.id));
-    const supabaseIds = new Set(fromSupabase.map(w => w.id));
-    const unsyncedLocals = validLocals.filter(w => !supabaseIds.has(w.id));
-    const merged = [...fromSupabase, ...unsyncedLocals];
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(merged));
-    return merged;
+    const cached: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
+    if (error || !data) return cached.filter(w => !studentId || w.studentId === studentId);
+    const ids = data.map(row => row.id);
+    const exercises = ids.length
+      ? await supabase.from('exercises').select('*').in('workout_id', ids).order('sort_order', { ascending: true })
+      : { data: [], error: null };
+    if (exercises.error) throw exercises.error;
+    const workouts = data.map(row => rowToWorkout({ ...row, exercises: (exercises.data ?? []).filter(exercise => exercise.workout_id === row.id) }));
+    const others = studentId ? cached.filter(w => w.studentId !== studentId) : [];
+    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify([...others, ...workouts]));
+    return workouts;
   },
 
   saveWorkout: async (workout: Workout): Promise<void> => {
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workout.id);
-    const validWorkoutId = isUUID ? workout.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : workout.id);
-    workout.id = validWorkoutId;
-
-    try {
-      const { error: wError } = await supabase.from('workouts').upsert({
-        id: validWorkoutId,
-        name: workout.name,
-        description: workout.description ?? null,
-        student_id: workout.studentId,
-      });
-      if (wError) {
-        console.warn('saveWorkout Supabase error:', wError.message);
-        return;
-      }
-
-      await supabase.from('exercises').delete().eq('workout_id', validWorkoutId);
-
-      if (workout.exercises && workout.exercises.length > 0) {
-        const rows = workout.exercises.map((e, idx) => {
-          const exIsUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
-          const exUUID = exIsUUID ? e.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ex_${Date.now()}_${idx}`);
-          return {
-            id: exUUID,
-            workout_id: validWorkoutId,
-            name: e.name,
-            sets: e.sets,
-            reps: e.reps,
-            rest: e.rest ?? '60s',
-            notes: e.notes ?? null,
-            current_load: e.currentLoad ?? 0,
-            sort_order: idx,
-          };
-        });
-        const { error: eError } = await supabase.from('exercises').insert(rows);
-        if (eError) console.warn('saveWorkout exercises Supabase error:', eError.message);
-      }
-    } catch (err) {
-      console.warn('saveWorkout failed:', err);
-    }
-  },
-
-  saveWorkouts: (workouts: Workout[]): void => {
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts));
-    workouts.forEach(async (w) => {
-      try { await storage.saveWorkout(w); } catch (e) { console.warn('saveWorkout silent error:', e); }
+    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    const { error: workoutError } = await supabase.from('workouts').upsert({
+      id: workout.id, name: workout.name, description: workout.description ?? null,
+      student_id: workout.studentId, routine_id: workout.routineId ?? null,
     });
+    if (workoutError) throw workoutError;
+    const { data: existing, error: readError } = await supabase.from('exercises').select('id').eq('workout_id', workout.id);
+    if (readError) throw readError;
+    const existingIds = new Set((existing ?? []).map(e => e.id));
+    const rows = workout.exercises.map((exercise, index) => {
+      const id = existingIds.has(exercise.id) ? exercise.id : crypto.randomUUID();
+      exercise.id = id;
+      return { id, workout_id: workout.id, name: exercise.name, sets: exercise.sets,
+        reps: exercise.reps, rest: exercise.rest ?? '60s', notes: exercise.notes ?? null,
+        current_load: exercise.currentLoad ?? 0, prescribed_loads: exercise.prescribedLoads ?? null, sort_order: index };
+    });
+    if (rows.length) {
+      const { error } = await supabase.from('exercises').upsert(rows);
+      if (error) throw error;
+    }
+    const kept = new Set(rows.map(row => row.id));
+    const removed = [...existingIds].filter(id => !kept.has(id));
+    if (removed.length) {
+      const { error } = await supabase.from('exercises').delete().eq('workout_id', workout.id).in('id', removed);
+      if (error) throw error;
+    }
+    const all: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
+    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify([workout, ...all.filter(w => w.id !== workout.id)]));
   },
 
-  deleteWorkout: async (workoutId: string): Promise<void> => {
-    const all = storage.getWorkouts();
-    const workoutToDelete = all.find(w => w.id === workoutId);
-    const workoutName = workoutToDelete?.name;
+  saveWorkouts: async (workouts: Workout[]): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    for (const workout of workouts) await storage.saveWorkout(workout);
+  },
 
-    const remaining = all.filter(w => w.id !== workoutId);
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(remaining));
-
-    // Track in deleted list so it's never restored by sync
-    try {
-      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
-      if (!deletedList.includes(workoutId)) deletedList.push(workoutId);
-      if (workoutName && !deletedList.includes(workoutName)) deletedList.push(workoutName);
-      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
-    } catch {}
-
-    try {
-      await supabase.from('workouts').delete().eq('id', workoutId);
-    } catch (e) {
-      console.warn('deleteWorkout Supabase error:', e);
-    }
-    if (workoutName) {
-      try {
-        await supabase.from('workouts').delete().eq('name', workoutName);
-      } catch {}
-      try {
-        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', workoutName);
-        const tombstoneId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
-        await supabase.from('agenda_events').insert({
-          id: tombstoneId,
-          student_id: 'all',
-          student_name: 'all',
-          title: workoutName,
-          date: new Date().toISOString().split('T')[0],
-          start_time: '00:00',
-          end_time: '23:59',
-          type: 'deleted_routine',
-          notes: workoutId
-        });
-      } catch {}
-    }
+  /** Delete the selected assignment only. Display names never identify records. */
+  deleteWorkout: async (workoutId: string, studentId?: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    const { data, error } = await supabase.rpc('delete_workout_assignment', {
+      p_workout_id: workoutId, p_student_id: studentId ?? null,
+    });
+    if (error) throw error;
+    if (!data) throw new Error('Treino não encontrado para esse aluno. Atualize a lista.');
+    const all: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
+    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(all.filter(w => w.id !== workoutId || (studentId && w.studentId !== studentId))));
   },
 
   // ── Progress ──────────────────────────────────────────────────────────────
 
   getProgress: (): ProgressEntry[] => {
-    const data = localStorage.getItem(CACHE_KEYS.PROGRESS);
+    const data = cacheStorage.getItem(CACHE_KEYS.PROGRESS);
     return data ? JSON.parse(data) : [];
   },
 
   fetchProgress: async (studentId: string): Promise<ProgressEntry[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('progress_entries')
       .select('*')
@@ -518,11 +369,12 @@ export const storage = {
       date: row.date,
     }));
 
-    localStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify(entries));
+    cacheStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify(entries));
     return entries;
   },
 
   saveProgress: async (entry: ProgressEntry): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('progress_entries').insert({
       id: entry.id,
       student_id: entry.studentId,
@@ -534,166 +386,103 @@ export const storage = {
     });
     if (error) throw error;
     const all = storage.getProgress();
-    localStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
+    cacheStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
   },
 
   // ── Evolution Photos ──────────────────────────────────────────────────────
 
-  getPhotos: (): EvolutionPhoto[] => {
-    const data = localStorage.getItem(CACHE_KEYS.PHOTOS);
-    return data ? JSON.parse(data) : [];
-  },
+  getPhotos: (): EvolutionPhoto[] => readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []),
 
   fetchPhotos: async (studentId: string): Promise<EvolutionPhoto[]> => {
-    try {
-      // 1. Busca primeiro da agenda_events (sem bloqueio de RLS)
-      const { data: agendaData, error: agendaError } = await supabase
-        .from('agenda_events')
-        .select('*')
-        .eq('type', 'evolution_photo')
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false });
-
-      if (!agendaError && agendaData && agendaData.length > 0) {
-        const photos: EvolutionPhoto[] = agendaData.map((row) => {
-          let extra: any = {};
-          try { extra = JSON.parse(row.notes || '{}'); } catch {}
-          return {
-            id: row.id,
-            studentId: row.student_id,
-            studentName: row.student_name || extra.studentName || 'Aluno',
-            photoURL: extra.photoURL || '',
-            notes: extra.notes ?? undefined,
-            date: extra.date || row.created_at || new Date().toISOString(),
-          };
-        });
-        safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
-        return photos;
-      }
-
-      // 2. Fallback para tabela evolution_photos caso exista algum registro lá
-      const { data, error } = await supabase
-        .from('evolution_photos')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('date', { ascending: false });
-
-      if (!error && data && data.length > 0) {
-        const photos: EvolutionPhoto[] = data.map((row) => ({
-          id: row.id,
-          studentId: row.student_id,
-          photoURL: row.photo_url,
-          notes: row.notes ?? undefined,
-          date: row.date,
-        }));
-        safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify(photos));
-        return photos;
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar fotos do Supabase:', e);
+    const cacheStorage = cacheForUser(getCacheUser());
+    const actor = getCacheUser();
+    const cache = cacheForUser(actor);
+    const cached = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
+    const { data, error } = await supabase.from('evolution_photos').select('*').eq('student_id', studentId).order('date', { ascending: false });
+    if (error || !data) return cached.filter(photo => photo.studentId === studentId);
+    const remote: EvolutionPhoto[] = data.map(row => ({ id: row.id, studentId: row.student_id,
+      photoURL: row.photo_url, notes: row.notes ?? undefined, date: row.date, syncStatus: 'synced' }));
+    // Read old photos without treating the agenda as a second write destination.
+    const { data: legacy } = await supabase.from('agenda_events').select('*').eq('type', 'evolution_photo').eq('student_id', studentId);
+    for (const row of legacy ?? []) {
+      try {
+        const item = JSON.parse(row.notes ?? '{}');
+        if (!remote.some(p => p.id === row.id) && typeof item.photoURL === 'string' && !/^(blob:|idb:)/.test(item.photoURL)) {
+          remote.push({ id: row.id, studentId, photoURL: item.photoURL, date: item.date || row.created_at, notes: item.notes, syncStatus: 'synced' });
+        }
+      } catch { /* malformed legacy record */ }
     }
-
-    return storage.getPhotos();
+    const latest = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
+    const pending = latest.filter(photo => photo.studentId === studentId && (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')));
+    const pendingIds = new Set(pending.map(photo => photo.id));
+    const merged = [...pending, ...remote.filter(photo => !pendingIds.has(photo.id))];
+    cache.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([...latest.filter(photo => photo.studentId !== studentId), ...merged]));
+    return merged;
   },
 
+  /** Preserve the file durably before uploading. Temporary blob URLs never reach the database. */
   savePhoto: async (photo: EvolutionPhoto, file?: File): Promise<string> => {
-    let photoURL = photo.photoURL;
-
-    // Se tiver arquivo, tenta upload para o bucket ou comprime
+    const cacheStorage = cacheForUser(getCacheUser());
+    const actor = getCacheUser();
+    if (!actor) throw new Error('Entre na sua conta para salvar a foto.');
+    const cache = cacheForUser(actor);
+    let localKey = photo.localFileKey || (photo.photoURL.startsWith('idb:') ? photo.photoURL : undefined);
+    let uploadBlob: Blob | null = file ?? null;
     if (file) {
-      try {
-        const filePath = `${photo.studentId}/${photo.id}-${Date.now()}.${file.name.split('.').pop()}`;
-        const { error: uploadError } = await supabase.storage
-          .from('evolution-photos')
-          .upload(filePath, file, { upsert: true });
-
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage.from('evolution-photos').getPublicUrl(filePath);
-          if (urlData?.publicUrl) {
-            photoURL = urlData.publicUrl;
-          }
-        }
-      } catch (e) {
-        console.warn('Bucket upload fallback para data/storage:', e);
-      }
+      if (!file.type.startsWith('image/')) throw new Error('Selecione um arquivo de imagem.');
+      if (file.size > 20 * 1024 * 1024) throw new Error('A foto deve ter no máximo 20 MB.');
+      uploadBlob = await compressImage(file, 1600, 0.85);
+      localKey = await storeLocalFile(uploadBlob, `photo_${photo.id}`);
+    } else if (localKey) {
+      uploadBlob = await getLocalBlob(localKey);
+      if (!uploadBlob) throw new Error('O arquivo local não foi encontrado. Selecione a foto novamente.');
     }
-
-    const payload = {
-      id: photo.id,
-      studentId: photo.studentId,
-      studentName: photo.studentName || 'Aluno',
-      photoURL,
-      notes: photo.notes ?? null,
-      date: photo.date,
+    let reference = uploadBlob ? (localKey || '') : photo.photoURL;
+    if (!reference || reference.startsWith('blob:')) throw new Error('Selecione a foto novamente para salvá-la.');
+    let current: EvolutionPhoto = { ...photo, photoURL: reference, localFileKey: localKey, syncStatus: 'pending', syncError: undefined };
+    const saveCache = () => {
+      const all = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
+      cache.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([current, ...all.filter(p => p.id !== photo.id)]));
     };
-
-    // 1. Salva na agenda_events do Supabase (100% permissivo, RLS liberado)
+    saveCache();
     try {
-      const nowTime = new Date().toISOString().substring(11, 16);
-      const datePart = (photo.date && photo.date.substring(0, 10)) || new Date().toISOString().substring(0, 10);
-
-      await supabase.from('agenda_events').upsert({
-        id: photo.id,
-        student_id: photo.studentId,
-        student_name: photo.studentName || 'Aluno',
-        title: 'Foto de Progresso',
-        date: datePart,
-        start_time: nowTime,
-        end_time: nowTime,
-        type: 'evolution_photo',
-        notes: JSON.stringify(payload),
+      if (actor !== getCacheUser()) throw new Error('A sessão mudou. A foto permanece salva neste dispositivo.');
+      if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Sem conexão. A foto será enviada quando a conexão voltar.');
+      if (uploadBlob) {
+        const extension = uploadBlob.type === 'image/png' ? 'png' : uploadBlob.type === 'image/webp' ? 'webp' : 'jpg';
+        const path = `${photo.studentId}/${photo.id}.${extension}`;
+        const { error } = await supabase.storage.from('evolution-photos').upload(path, uploadBlob, { upsert: true, contentType: uploadBlob.type });
+        if (error) throw error;
+        reference = toStorageReference('evolution-photos', path);
+      }
+      if (actor !== getCacheUser()) throw new Error('A sessão mudou. A sincronização continuará ao entrar novamente.');
+      if (/^(idb:|blob:|data:)/.test(reference)) throw new Error('A foto ainda não foi enviada ao armazenamento.');
+      const { error } = await supabase.from('evolution_photos').upsert({
+        id: photo.id, student_id: photo.studentId, photo_url: reference, notes: photo.notes ?? null, date: photo.date,
       });
-    } catch (e) {
-      console.warn('Erro ao salvar foto na agenda_events:', e);
+      if (error) throw error;
+      current = { ...current, photoURL: reference, syncStatus: 'synced', syncError: undefined, localFileKey: undefined };
+    } catch (error) {
+      current = { ...current, syncStatus: 'pending', syncError: error instanceof Error ? error.message : 'Envio pendente. Tentaremos novamente ao conectar.' };
     }
-
-    // 2. Tenta também salvar na tabela evolution_photos caso RLS permita
-    try {
-      await supabase.from('evolution_photos').upsert({
-        id: photo.id,
-        student_id: photo.studentId,
-        photo_url: photoURL,
-        notes: photo.notes ?? null,
-        date: photo.date,
-      });
-    } catch {}
-
-    const all = storage.getPhotos();
-    const updated = { ...photo, photoURL };
-    safeSetItem(CACHE_KEYS.PHOTOS, JSON.stringify([updated, ...all.filter(p => p.id !== photo.id)]));
-    return photoURL;
+    saveCache();
+    return current.photoURL;
   },
 
   deletePhoto: async (photoId: string): Promise<void> => {
-    try {
-      await supabase.from('agenda_events').delete().eq('id', photoId);
-    } catch {}
-
-    try {
-      await supabase.from('evolution_photos').delete().eq('id', photoId);
-    } catch {}
-
-    const all = storage.getPhotos();
-    localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(all.filter(p => p.id !== photoId)));
+    const cacheStorage = cacheForUser(getCacheUser());
+    const { error: legacyError } = await supabase.from('agenda_events').delete().eq('type', 'evolution_photo').eq('id', photoId);
+    if (legacyError) throw legacyError;
+    const { error } = await supabase.from('evolution_photos').delete().eq('id', photoId);
+    if (error) throw error;
+    const all: EvolutionPhoto[] = JSON.parse(cacheStorage.getItem(CACHE_KEYS.PHOTOS) ?? '[]');
+    cacheStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(all.filter(p => p.id !== photoId)));
   },
 
   updatePhotoNotes: async (photoId: string, notes: string): Promise<void> => {
-    try {
-      const { data } = await supabase.from('agenda_events').select('*').eq('id', photoId).single();
-      if (data && data.notes) {
-        let parsed = {};
-        try { parsed = JSON.parse(data.notes); } catch {}
-        const updated = { ...parsed, notes };
-        await supabase.from('agenda_events').update({ notes: JSON.stringify(updated) }).eq('id', photoId);
-      }
-    } catch {}
-
-    try {
-      await supabase.from('evolution_photos').update({ notes }).eq('id', photoId);
-    } catch {}
-
-    const all = storage.getPhotos();
-    localStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(all.map(p => p.id === photoId ? { ...p, notes } : p)));
+    const photo = storage.getPhotos().find(item => item.id === photoId);
+    if (!photo) throw new Error('Atualize a galeria antes de editar esta foto.');
+    await storage.savePhoto({ ...photo, notes });
   },
 
   // ── Admin Routines (Fichas por Treino) ────────────────────────────────────
@@ -704,6 +493,7 @@ export const storage = {
   /** Fetches all admin routines with their exercises from Supabase.
    *  Runs admin_routines, admin_exercises, and agenda_events in PARALLEL for speed. */
   fetchAdminRoutines: async (): Promise<AdminRoutine[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     // Fire all 3 Supabase queries at the same time instead of waiting for each
     const [routinesResult, agendaResult] = await Promise.all([
       supabase.from('admin_routines').select('*').order('created_at', { ascending: false }),
@@ -739,8 +529,8 @@ export const storage = {
     }
 
     // Merge Supabase data with local cache:
-    const localCached: AdminRoutine[] = JSON.parse(localStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
-    const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+    const localCached: AdminRoutine[] = JSON.parse(cacheStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
+    const deletedList: string[] = JSON.parse(cacheStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
     const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
     // ONLY check unique ID — NEVER block by routine name!
@@ -752,7 +542,7 @@ export const storage = {
     const validLocals = localCached.filter(l => !isDeleted(l.id));
     const validSupabaseRows = safeRoutineRows.filter(r => !isDeleted(r.id as string));
     const supabaseIds = new Set(validSupabaseRows.map(r => r.id as string));
-    const unsyncedLocals = validLocals.filter(l => !supabaseIds.has(l.id));
+    const unsyncedLocals = rErr ? validLocals.filter(l => !supabaseIds.has(l.id)) : [];
 
     const routines = validSupabaseRows.map(row => {
       const fromSupabase = rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? []);
@@ -784,25 +574,16 @@ export const storage = {
             if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
           }
         }
-        localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
+        cacheStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
 
         for (const ev of cloudEvents) {
           if (ev.type === 'assigned_routine' && ev.notes) {
             try {
               const parsed: AdminRoutine = JSON.parse(ev.notes);
               if (parsed && parsed.name && !isDeleted(parsed.id)) {
-                const existingIdx = merged.findIndex(r => r.id === parsed.id || r.name.toLowerCase().trim() === parsed.name.toLowerCase().trim());
+                const existingIdx = merged.findIndex(r => r.id === parsed.id);
                 if (existingIdx === -1) {
                   merged.push(parsed);
-                } else {
-                  // Never downgrade exercises array if the incoming or existing has more exercises
-                  const currentExsCount = merged[existingIdx]?.exercises?.length || 0;
-                  const newExsCount = parsed?.exercises?.length || 0;
-                  if (newExsCount >= currentExsCount) {
-                    merged[existingIdx] = { ...merged[existingIdx], ...parsed };
-                  } else {
-                    merged[existingIdx] = { ...parsed, ...merged[existingIdx], exercises: merged[existingIdx].exercises };
-                  }
                 }
               }
             } catch {}
@@ -815,10 +596,10 @@ export const storage = {
 
     // Clean out deleted routines and workouts from local caches
     const finalRoutines = merged.filter(r => !isDeleted(r.id));
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
+    cacheStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
 
     const cleanWorkouts = storage.getWorkouts().filter(w => !isDeleted(w.id));
-    localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
+    cacheStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
 
     return finalRoutines;
   },
@@ -826,190 +607,74 @@ export const storage = {
 
   /** Returns cached routines (sync, used while async fetch is in-flight). */
   getAdminRoutines: (): AdminRoutine[] => {
-    const data = localStorage.getItem('cadu_ponce_admin_routines');
+    const data = cacheStorage.getItem('cadu_ponce_admin_routines');
     return data ? JSON.parse(data) : [];
   },
 
-  /** Upserts a single routine (and its exercises) to Supabase. */
+  /** Save a prescription to its dedicated tables, with failures visible to callers. */
   saveAdminRoutine: async (routine: AdminRoutine): Promise<void> => {
-    // Always update local cache first so data is never lost
-    const all = storage.getAdminRoutines();
-    const idx = all.findIndex(r => r.id === routine.id);
-    if (idx >= 0) all[idx] = routine; else all.unshift(routine);
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(all));
-
-    // Remove any deleted tombstone for this routine ID or name from local cache
-    try {
-      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
-      const filteredDeleted = deletedList.filter(item => 
-        item.toLowerCase().trim() !== (routine.id || '').toLowerCase().trim() &&
-        item.toLowerCase().trim() !== (routine.name || '').toLowerCase().trim()
-      );
-      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(filteredDeleted));
-    } catch {}
-
-    // Cloud sync via agenda_events (works on all devices seamlessly)
-    try {
-      // Delete any previous assigned_routine or tombstone event for this routine title to prevent stale duplicates
-      try {
-        await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').ilike('title', routine.name.trim());
-        await supabase.from('agenda_events').delete().eq('type', 'deleted_routine').or(`notes.eq.${routine.id},title.ilike.${routine.name}`);
-      } catch {}
-
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(routine.id);
-      const eventId = isUUID ? routine.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`);
-
-      await supabase.from('agenda_events').upsert({
-        id: eventId,
-        student_id: (routine.studentIds && routine.studentIds[0]) || 'all',
-        student_name: (routine.studentNames && routine.studentNames.join(', ')) || 'Todos',
-        title: routine.name,
-        date: routine.startDate || new Date().toISOString().split('T')[0],
-        start_time: '00:00',
-        end_time: '23:59',
-        type: 'assigned_routine',
-        notes: JSON.stringify(routine)
-      });
-    } catch (e) {
-      console.warn('saveAdminRoutine cloud sync error:', e);
-    }
-
-    // Try full upsert with new columns first
-    const { error: rErr } = await supabase.from('admin_routines').upsert({
-      id: routine.id,
-      name: routine.name,
-      goal: routine.goal ?? '',
-      difficulty: routine.difficulty ?? '',
-      day_of_week: routine.dayOfWeek ?? null,
-      muscle_group: routine.muscleGroup ?? null,
-      general_notes: routine.generalNotes ?? null,
-      notes: routine.notes ?? null,
-      student_ids: routine.studentIds ?? [],
-      student_names: routine.studentNames ?? [],
-      start_date: routine.startDate ?? null,
-      end_date: routine.endDate ?? null,
-      routine_group_name: routine.routineGroupName ?? null,
+    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    const { error } = await supabase.from('admin_routines').upsert({
+      id: routine.id, name: routine.name, goal: routine.goal ?? '', difficulty: routine.difficulty ?? '',
+      day_of_week: routine.dayOfWeek ?? null, muscle_group: routine.muscleGroup ?? null,
+      general_notes: routine.generalNotes ?? null, notes: routine.notes ?? null,
+      student_ids: routine.studentIds ?? [], student_names: routine.studentNames ?? [],
+      start_date: routine.startDate ?? null, end_date: routine.endDate ?? null, routine_group_name: routine.routineGroupName ?? null,
     });
-
-    let savedOk = !rErr;
-
-    // If failed (e.g. new columns don't exist yet), fall back to base columns only
-    if (rErr) {
-      console.warn('saveAdminRoutine full upsert failed, trying fallback:', rErr.message);
-      const { error: fallbackErr } = await supabase.from('admin_routines').upsert({
-        id: routine.id,
-        name: routine.name,
-        goal: routine.goal ?? '',
-        difficulty: routine.difficulty ?? '',
-        notes: routine.notes ?? null,
-        student_ids: routine.studentIds ?? [],
-        student_names: routine.studentNames ?? [],
-      });
-      if (fallbackErr) {
-        console.error('saveAdminRoutine fallback also failed:', fallbackErr.message);
-      } else {
-        savedOk = true;
-      }
+    if (error) throw error;
+    const { data: existing, error: readError } = await supabase.from('admin_exercises').select('id').eq('routine_id', routine.id);
+    if (readError) throw readError;
+    const existingIds = new Set((existing ?? []).map(row => row.id));
+    const rows = routine.exercises.map((exercise, index) => {
+      const id = existingIds.has(exercise.id) ? exercise.id : crypto.randomUUID();
+      exercise.id = id;
+      return { id, routine_id: routine.id, name: exercise.name, sets: exercise.sets, reps: exercise.reps,
+        rest: exercise.rest ?? '60s', notes: exercise.notes ?? null, video_url: exercise.videoUrl ?? null,
+        video_file_url: exercise.videoFileUrl ?? null, combined_with_next: exercise.combinedWithNext ?? false,
+        combined_group: exercise.combinedGroup ?? null, prescribed_loads: exercise.prescribedLoads ?? null, sort_order: index };
+    });
+    if (rows.length) {
+      const { error } = await supabase.from('admin_exercises').upsert(rows);
+      if (error) throw error;
     }
-
-    // Save exercises if routine was persisted
-    if (savedOk) {
-      await supabase.from('admin_exercises').delete().eq('routine_id', routine.id);
-      if (routine.exercises && routine.exercises.length > 0) {
-        const rows = routine.exercises.map((e, i) => ({
-          id: e.id || `aex_${Date.now()}_${i}`,
-          routine_id: routine.id,
-          name: e.name,
-          sets: e.sets,
-          reps: e.reps,
-          rest: e.rest ?? '60s',
-          notes: e.notes ?? null,
-          video_url: e.videoUrl ?? null,
-          video_file_url: e.videoFileUrl ?? null,
-          sort_order: i,
-        }));
-        await supabase.from('admin_exercises').insert(rows);
-      }
+    const kept = new Set(rows.map(row => row.id));
+    const removed = [...existingIds].filter(id => !kept.has(id));
+    if (removed.length) {
+      const { error } = await supabase.from('admin_exercises').delete().eq('routine_id', routine.id).in('id', removed);
+      if (error) throw error;
     }
+    const all: AdminRoutine[] = JSON.parse(cache.getItem('cadu_ponce_admin_routines') ?? '[]');
+    cache.setItem('cadu_ponce_admin_routines', JSON.stringify([routine, ...all.filter(r => r.id !== routine.id)]));
   },
 
-  saveAdminRoutines: (routines: AdminRoutine[]): void => {
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(routines));
-    routines.forEach(async (r) => {
-      try { await storage.saveAdminRoutine(r); } catch { /* silent */ }
-    });
+  saveAdminRoutines: async (routines: AdminRoutine[]): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    for (const routine of routines) await storage.saveAdminRoutine(routine);
   },
 
-  /** Deletes a routine (and its exercises cascade) from Supabase. */
   deleteAdminRoutine: async (id: string): Promise<void> => {
-    const all = storage.getAdminRoutines();
-    const routineToDelete = all.find(r => r.id === id);
-    const routineName = routineToDelete?.name;
-
-    const remaining = all.filter(r => r.id !== id);
-    localStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(remaining));
-
-    // Track ONLY ID in deleted list (NEVER routine name!)
-    try {
-      const deletedList: string[] = JSON.parse(localStorage.getItem('cadu_ponce_deleted_routines') || '[]');
-      if (!deletedList.includes(id)) deletedList.push(id);
-      localStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(deletedList));
-    } catch {}
-
-    // Cloud sync tombstone via agenda_events
-    try {
-      await supabase.from('agenda_events').delete().eq('type', 'assigned_routine').eq('id', id);
-
-      const tombstoneId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
-      await supabase.from('agenda_events').insert({
-        id: tombstoneId,
-        student_id: 'all',
-        student_name: 'all',
-        title: routineName || id,
-        date: new Date().toISOString().split('T')[0],
-        start_time: '00:00',
-        end_time: '23:59',
-        type: 'deleted_routine',
-        notes: id // Unique routine ID
-      });
-    } catch (e) {
-      console.warn('deleteAdminRoutine cloud sync tombstone error:', e);
-    }
-
-    // Also remove from workouts cache
-    if (routineName) {
-      try {
-        const allWorkouts = storage.getWorkouts();
-        const remainingWorkouts = allWorkouts.filter(w => w.id !== id && w.name.toLowerCase().trim() !== routineName.toLowerCase().trim());
-        localStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(remainingWorkouts));
-      } catch {}
-    }
-
-    try {
-      const { error } = await supabase.from('admin_routines').delete().eq('id', id);
-      if (error) console.error('deleteAdminRoutine error:', error.message);
-    } catch (e) {
-      console.warn('deleteAdminRoutine Supabase error:', e);
-    }
-
-    if (routineName) {
-      try {
-        await supabase.from('workouts').delete().eq('name', routineName);
-      } catch {}
-    }
-    try {
-      await supabase.from('workouts').delete().eq('id', id);
-    } catch {}
+    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    // Remove only copies carrying this stable relationship. Legacy same-name
+    // workouts are intentionally preserved until their relationship is known.
+    const { data, error } = await supabase.rpc('delete_admin_routine', { p_routine_id: id });
+    if (error) throw error;
+    if (!data) throw new Error('Rotina não encontrada. Atualize a lista.');
+    const routines: AdminRoutine[] = JSON.parse(cache.getItem('cadu_ponce_admin_routines') ?? '[]');
+    cache.setItem('cadu_ponce_admin_routines', JSON.stringify(routines.filter(r => r.id !== id)));
+    const workouts: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
+    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts.filter(w => w.routineId !== id)));
   },
 
-  // --- AGENDA EVENTS ---
   fetchAgendaEvents: async (): Promise<any[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('agenda_events')
       .select('*');
       
     if (error || !data) {
-      const cached = localStorage.getItem('cp_agenda_events');
+      const cached = cacheStorage.getItem('cp_agenda_events');
       return cached ? JSON.parse(cached) : [];
     }
     
@@ -1026,16 +691,17 @@ export const storage = {
       createdAt: row.created_at
     }));
     
-    localStorage.setItem('cp_agenda_events', JSON.stringify(events));
+    cacheStorage.setItem('cp_agenda_events', JSON.stringify(events));
     return events;
   },
 
   getAgendaEvents: (): any[] => {
-    const data = localStorage.getItem('cp_agenda_events');
+    const data = cacheStorage.getItem('cp_agenda_events');
     return data ? JSON.parse(data) : [];
   },
 
   saveAgendaEvent: async (event: any): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('agenda_events').upsert({
       id: event.id,
       student_id: event.studentId || null,
@@ -1059,28 +725,30 @@ export const storage = {
     } else {
       events.push(event);
     }
-    localStorage.setItem('cp_agenda_events', JSON.stringify(events));
+    cacheStorage.setItem('cp_agenda_events', JSON.stringify(events));
   },
 
   deleteAgendaEvent: async (id: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('agenda_events').delete().eq('id', id);
     if (error) console.error('deleteAgendaEvent error:', error.message);
     
     const events = storage.getAgendaEvents();
     const newEvents = events.filter((e: any) => e.id !== id);
-    localStorage.setItem('cp_agenda_events', JSON.stringify(newEvents));
+    cacheStorage.setItem('cp_agenda_events', JSON.stringify(newEvents));
   },
 
   // ── Custom Exercises (Biblioteca de Exercícios) ───────────────────────────
 
   /** Fetches custom exercises from Supabase. */
   fetchCustomExercises: async (): Promise<any[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('custom_exercises')
       .select('*')
       .order('created_at', { ascending: false });
 
-    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
     const localExercises: any[] = cached ? JSON.parse(cached) : [];
 
     if (error || !data || data.length === 0) {
@@ -1106,12 +774,13 @@ export const storage = {
     const unsyncedLocals = localExercises.filter(e => !dbIds.has(e.id));
     const merged = [...dbExercises, ...unsyncedLocals];
 
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(merged));
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(merged), cacheStorage);
     return merged;
   },
 
   /** Upserts a custom exercise to Supabase and updates local cache safely. */
   saveCustomExercise: async (exercise: any): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     // Upsert to Supabase
     try {
       const { error } = await supabase.from('custom_exercises').upsert({
@@ -1129,11 +798,11 @@ export const storage = {
 
     // Always update local cache safely
     try {
-      const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+      const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
       const all: any[] = cached ? JSON.parse(cached) : [];
       const idx = all.findIndex((e: any) => e.id === exercise.id);
       if (idx >= 0) all[idx] = exercise; else all.unshift(exercise);
-      safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all));
+      safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all), cacheStorage);
     } catch (err) {
       console.warn('saveCustomExercise local cache error:', err);
     }
@@ -1141,20 +810,22 @@ export const storage = {
 
   /** Deletes a custom exercise from Supabase. */
   deleteCustomExercise: async (id: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     try {
       const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
       if (error) console.error('deleteCustomExercise error:', error.message);
     } catch (err) {
       console.warn('deleteCustomExercise error:', err);
     }
-    const cached = localStorage.getItem('cadu_ponce_exercises_v3');
+    const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
     const all: any[] = cached ? JSON.parse(cached) : [];
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)));
+    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)), cacheStorage);
   },
 
   // ── Muscle Groups & Categories ────────────────────────────────────────────
 
   fetchMuscleGroups: async (): Promise<string[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('muscle_groups')
       .select('name')
@@ -1162,22 +833,24 @@ export const storage = {
 
     if (error || !data || data.length === 0) return storage.getMuscleGroups();
     const groups = data.map(r => r.name as string);
-    localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+    cacheStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
     return groups;
   },
 
   getMuscleGroups: (): string[] => {
-    const data = localStorage.getItem('cadu_ponce_muscle_groups');
+    const data = cacheStorage.getItem('cadu_ponce_muscle_groups');
     return data ? JSON.parse(data) : ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'];
   },
 
   saveMuscleGroups: async (groups: string[]): Promise<void> => {
-    localStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+    const cacheStorage = cacheForUser(getCacheUser());
+    cacheStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
     await supabase.from('muscle_groups').delete().neq('id', 0);
     if (groups.length > 0) await supabase.from('muscle_groups').insert(groups.map(name => ({ name })));
   },
 
   fetchCategories: async (): Promise<string[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('exercise_categories')
       .select('name')
@@ -1185,124 +858,40 @@ export const storage = {
 
     if (error || !data || data.length === 0) return storage.getCategories();
     const cats = data.map(r => r.name as string);
-    localStorage.setItem('cadu_ponce_categories', JSON.stringify(cats));
+    cacheStorage.setItem('cadu_ponce_categories', JSON.stringify(cats));
     return cats;
   },
 
   getCategories: (): string[] => {
-    const data = localStorage.getItem('cadu_ponce_categories');
+    const data = cacheStorage.getItem('cadu_ponce_categories');
     return data ? JSON.parse(data) : ['Musculação', 'Funcional', 'Alongamento'];
   },
 
   saveCategories: async (categories: string[]): Promise<void> => {
-    localStorage.setItem('cadu_ponce_categories', JSON.stringify(categories));
+    const cacheStorage = cacheForUser(getCacheUser());
+    cacheStorage.setItem('cadu_ponce_categories', JSON.stringify(categories));
     await supabase.from('exercise_categories').delete().neq('id', 0);
     if (categories.length > 0) await supabase.from('exercise_categories').insert(categories.map(name => ({ name })));
   },
 
   uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
-    const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase();
-    const path = `exercises/${exerciseId}-${Date.now()}.${ext}`;
-    const BUCKET = 'exercise-videos';
-
-    // 0. Try direct Supabase Storage bucket (fastest, secure, 100% native Supabase!)
-    try {
-      const { data: uploadData, error: sErr } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, {
-          cacheControl: '31536000',
-          upsert: true,
-          contentType: file.type || 'video/mp4',
-        });
-
-      if (!sErr && uploadData) {
-        const { data: publicData } = supabase.storage
-          .from(BUCKET)
-          .getPublicUrl(path);
-        if (publicData?.publicUrl) {
-          return publicData.publicUrl;
-        }
-      }
-    } catch (storageErr) {
-      console.warn('Supabase storage upload failed, trying /api/upload:', storageErr);
+    const cacheStorage = cacheForUser(getCacheUser());
+    if (!/^(video\/(mp4|webm|quicktime)|image\/(jpeg|png|webp|gif))$/.test(file.type)) {
+      throw new Error('Use vídeo MP4, WebM ou MOV, ou imagem JPG, PNG, WebP ou GIF.');
     }
-
-    // 1. Try our same-origin /api/upload endpoint (works on Vercel and local dev, zero CORS!)
-    try {
-      const res = await fetch(`/api/upload?name=${encodeURIComponent(file.name || `${exerciseId}.${ext}`)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-        body: file,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.url && typeof data.url === 'string' && data.url.startsWith('http')) {
-          return data.url.trim();
-        }
-      }
-    } catch (apiErr) {
-      console.warn('/api/upload request failed, trying Supabase Cloud Media:', apiErr);
-    }
-
-    // 2. Cloud Media Storage via Supabase (guaranteed cross-device sync to all phones/PCs!)
-    try {
-      const supaKey = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64 = reader.result as string;
-          const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
-            ? crypto.randomUUID()
-            : `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 14).padStart(12, '0')}`;
-          try {
-            const { error } = await supabase.from('agenda_events').upsert({
-              id,
-              title: file.name || `${exerciseId}.${ext}`,
-              student_id: 'all',
-              type: 'media_storage',
-              date: new Date().toISOString().split('T')[0],
-              start_time: '00:00',
-              end_time: '00:00',
-              notes: base64
-            });
-            if (error) reject(error);
-            else resolve(`supamedia:${id}`);
-          } catch (e) {
-            reject(e);
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      if (supaKey) return supaKey;
-    } catch (cloudErr) {
-      console.warn('Supabase cloud media storage failed, falling back to local IndexedDB:', cloudErr);
-    }
-
-    // 3. Fallback: Local IndexedDB (safe local storage, never base64 in localStorage!)
-    const isImage = file.type.startsWith('image/');
-    if (isImage) {
-      try {
-        const compressed = await compressImage(file, 800, 0.85);
-        const idbKey = await storeLocalFile(compressed, `img_${exerciseId}`);
-        return idbKey;
-      } catch {
-        const idbKey = await storeLocalFile(file, `img_${exerciseId}`);
-        return idbKey;
-      }
-    }
-
-    // Video: Store safely in IndexedDB
-    const idbKey = await storeLocalFile(file, `vid_${exerciseId}`);
-    return idbKey;
+    if (file.size > 100 * 1024 * 1024) throw new Error('O arquivo deve ter no máximo 100 MB.');
+    const extension = (file.name.split('.').pop() ?? 'bin').replace(/[^a-z0-9]/gi, '');
+    const path = `exercises/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from('exercise-videos').upload(path, file, { contentType: file.type });
+    if (error) throw new Error(`Não foi possível enviar o arquivo: ${error.message}`);
+    return toStorageReference('exercise-videos', path);
   },
-
 
   // ── Legacy shims (kept for backward compat) ───────────────────────────────
   getUsersListSync: (): UserProfile[] => storage.getUsersList(),
   /** @deprecated no-op — data now goes directly to dedicated tables */
-  syncAdminData: async (): Promise<void> => { /* no-op */ },
+  syncAdminData: async (): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser()); /* no-op */ },
   /** @deprecated no-op shim */
   fetchAdminData: async (): Promise<null> => null,
 
@@ -1311,70 +900,78 @@ export const storage = {
 
   WORKOUT_LOGS_KEY: 'cadu_workout_logs',
 
-  /** Saves a completed workout session to Supabase and updates local cache. */
+  /** Keep an outbox until the database confirms the write. */
   saveWorkoutLog: async (log: WorkoutLog): Promise<void> => {
-    // Persist to local cache immediately for instant UI feedback
-    const all: WorkoutLog[] = storage.getWorkoutLogs();
-    const updated = [log, ...all.filter(l => l.id !== log.id)];
-    localStorage.setItem('cadu_workout_logs', JSON.stringify(updated));
-
-    // Persist to Supabase in background
+    const cacheStorage = cacheForUser(getCacheUser());
+    const actor = getCacheUser();
+    if (!actor) throw new Error('Entre na sua conta para registrar o treino.');
+    const cache = cacheForUser(actor);
+    let entry: WorkoutLog = { ...log, syncStatus: 'pending', syncError: undefined };
+    const saveCache = () => {
+      const all = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
+      cache.setItem('cadu_workout_logs', JSON.stringify([entry, ...all.filter(item => item.id !== entry.id)]));
+    };
+    saveCache();
     try {
-      await supabase.from('workout_logs').upsert({
-        id: log.id,
-        student_id: log.studentId,
-        student_name: log.studentName ?? null,
-        routine_id: log.routineId,
-        routine_name: log.routineName,
-        completed_at: log.completedAt,
-        duration_seconds: log.durationSeconds,
-        rpe: log.rpe,
-        exercises_summary: log.exercisesSummary,
+      if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Sem conexão. Treino salvo neste dispositivo.');
+      const { error } = await supabase.from('workout_logs').upsert({
+        id: log.id, student_id: log.studentId, student_name: log.studentName ?? null,
+        routine_id: log.routineId, routine_name: log.routineName, completed_at: log.completedAt,
+        duration_seconds: log.durationSeconds, rpe: log.rpe, exercises_summary: log.exercisesSummary,
+        comment: log.comment ?? null,
       });
-    } catch (err) {
-      console.warn('saveWorkoutLog Supabase error (log kept locally):', err);
+      if (error) throw error;
+      entry = { ...entry, syncStatus: 'synced', syncError: undefined };
+    } catch (error) {
+      entry = { ...entry, syncError: error instanceof Error ? error.message : 'Sincronização pendente. Tentaremos novamente ao conectar.' };
     }
+    saveCache();
   },
 
-  /** Returns cached workout logs synchronously. */
-  getWorkoutLogs: (): WorkoutLog[] => {
-    try {
-      const data = localStorage.getItem('cadu_workout_logs');
-      return data ? JSON.parse(data) : [];
-    } catch { return []; }
-  },
+  getWorkoutLogs: (): WorkoutLog[] => readCached<WorkoutLog[]>('cadu_workout_logs', []),
 
-  /** Fetches workout logs from Supabase for a specific student. */
   fetchWorkoutLogs: async (studentId: string): Promise<WorkoutLog[]> => {
-    try {
-      const { data, error } = await supabase
-        .from('workout_logs')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('completed_at', { ascending: false })
-        .limit(100);
+    const cacheStorage = cacheForUser(getCacheUser());
+    const actor = getCacheUser();
+    const cache = cacheForUser(actor);
+    const cached = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
+    const { data, error } = await supabase.from('workout_logs').select('*').eq('student_id', studentId).order('completed_at', { ascending: false }).limit(100);
+    if (error || !data) return cached.filter(log => log.studentId === studentId);
+    const logs: WorkoutLog[] = data.map(row => ({
+      id: row.id, studentId: row.student_id, studentName: row.student_name ?? undefined,
+      routineId: row.routine_id, routineName: row.routine_name, completedAt: row.completed_at,
+      durationSeconds: row.duration_seconds, rpe: row.rpe, exercisesSummary: row.exercises_summary ?? [],
+      comment: row.comment ?? undefined, syncStatus: 'synced',
+    }));
+    const latest = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
+    const pending = latest.filter(log => log.studentId === studentId && log.syncStatus === 'pending');
+    const pendingIds = new Set(pending.map(log => log.id));
+    const merged = [...pending, ...logs.filter(log => !pendingIds.has(log.id))];
+    cache.setItem('cadu_workout_logs', JSON.stringify([...latest.filter(log => log.studentId !== studentId), ...merged]));
+    return merged;
+  },
 
-      if (error || !data) {
-        return storage.getWorkoutLogs();
+  syncPendingData: async (userId: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
+    if (userId !== getCacheUser()) return;
+    const profile = storage.getUser();
+    const canSync = (studentId: string) => studentId === userId || profile?.role === 'admin';
+    for (const log of storage.getWorkoutLogs().filter(log => log.syncStatus === 'pending' && canSync(log.studentId))) {
+      if (userId !== getCacheUser()) return;
+      await storage.saveWorkoutLog(log);
+      if (storage.getWorkoutLogs().find(item => item.id === log.id)?.syncStatus === 'synced') {
+        await storage.notifyTrainerWorkoutCompleted({
+          logId: log.id, studentId: log.studentId, studentName: log.studentName || 'Aluno',
+          routineName: log.routineName, durationSeconds: log.durationSeconds,
+          durationFormatted: `${Math.floor(log.durationSeconds / 60)} min`,
+        });
       }
-
-      const logs: WorkoutLog[] = data.map(row => ({
-        id: row.id as string,
-        studentId: row.student_id as string,
-        studentName: row.student_name as string | undefined,
-        routineId: row.routine_id as string,
-        routineName: row.routine_name as string,
-        completedAt: row.completed_at as string,
-        durationSeconds: row.duration_seconds as number,
-        rpe: row.rpe as number,
-        exercisesSummary: (row.exercises_summary as any[]) ?? [],
-      }));
-
-      localStorage.setItem('cadu_workout_logs', JSON.stringify(logs));
-      return logs;
-    } catch {
-      return storage.getWorkoutLogs();
     }
+    for (const photo of storage.getPhotos().filter(photo => (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')) && canSync(photo.studentId))) {
+      if (userId !== getCacheUser()) return;
+      try { await storage.savePhoto(photo); } catch { /* keep file and pending record for recovery */ }
+    }
+    if (typeof window !== 'undefined' && userId === getCacheUser()) window.dispatchEvent(new Event('cadu_data_synced'));
   },
 
   /**
@@ -1388,22 +985,15 @@ export const storage = {
     routineName: string;
     durationFormatted: string;
     durationSeconds: number;
+    logId?: string;
   }): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     
     // Gera UUID v4 válido compatível com a coluna UUID NOT NULL do Supabase
-    const notifUuid = (() => {
-      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-      }
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    })();
+    const notifUuid = details.logId || crypto.randomUUID();
 
     const notifPayload: Record<string, unknown> = {
       id: notifUuid,
@@ -1422,7 +1012,7 @@ export const storage = {
 
     // 1. Salva no Supabase agenda_events com UUID válido
     try {
-      const { error } = await supabase.from('agenda_events').insert({
+      const { error } = await supabase.from('agenda_events').upsert({
         id: notifUuid,
         student_id: details.studentId,
         student_name: details.studentName,
@@ -1432,20 +1022,22 @@ export const storage = {
         end_time: timeStr,
         type: 'trainer_notification',
         notes: JSON.stringify(notifPayload)
-      });
+      }, { onConflict: 'id', ignoreDuplicates: true });
 
       if (error) {
         console.warn('Erro ao salvar notificação do treino no Supabase:', error.message, error.code);
+        return;
       }
     } catch (err) {
       console.warn('Erro ao salvar notificação do treino no Supabase:', err);
+      return;
     }
 
     // 2. Salva no cache local para atualização imediata (mesmo aparelho)
     try {
       if (!notifPayload.id) notifPayload.id = `local_${Date.now()}`;
-      const existing = JSON.parse(localStorage.getItem('cadu_notifs_admin') ?? '[]');
-      localStorage.setItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing]));
+      const existing = JSON.parse(cacheStorage.getItem('cadu_notifs_admin') ?? '[]');
+      cacheStorage.setItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing.filter((item: any) => item.id !== notifUuid)]));
       window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notifPayload }));
     } catch {}
   },
@@ -1454,8 +1046,9 @@ export const storage = {
    * Busca todas as notificações de treinos concluídos pelos alunos diretamente do Supabase.
    */
   fetchTrainerNotifications: async (): Promise<any[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     // Limpa o cache antigo que pode ter dados falsos
-    localStorage.removeItem('cadu_notifs_admin');
+    cacheStorage.removeItem('cadu_notifs_admin');
 
     try {
       const { data, error } = await supabase
@@ -1511,6 +1104,7 @@ export const storage = {
 
   /** Marca notificação como lida no Supabase */
   markTrainerNotificationRead: async (notifId: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     try {
       const { data } = await supabase.from('agenda_events').select('notes').eq('id', notifId).single();
       if (data?.notes) {
@@ -1525,6 +1119,7 @@ export const storage = {
 
   /** Busca todas as faturas e pendências financeiras registradas no Supabase */
   fetchFinancialInvoices: async (): Promise<FinancialInvoice[]> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     try {
       const { data, error } = await supabase
         .from('agenda_events')
@@ -1550,7 +1145,7 @@ export const storage = {
             createdAt: row.created_at,
           };
         });
-        localStorage.setItem('cadu_financial_invoices', JSON.stringify(invoices));
+        cacheStorage.setItem('cadu_financial_invoices', JSON.stringify(invoices));
         return invoices;
       }
     } catch (e) {
@@ -1558,13 +1153,14 @@ export const storage = {
     }
 
     try {
-      const cached = localStorage.getItem('cadu_financial_invoices');
+      const cached = cacheStorage.getItem('cadu_financial_invoices');
       return cached ? JSON.parse(cached) : [];
     } catch { return []; }
   },
 
   /** Salva ou atualiza uma fatura no Supabase com sincronização total */
   saveFinancialInvoice: async (invoice: FinancialInvoice): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const payload = {
       id: invoice.id,
       studentId: invoice.studentId,
@@ -1595,14 +1191,15 @@ export const storage = {
     }
 
     try {
-      const cached: FinancialInvoice[] = JSON.parse(localStorage.getItem('cadu_financial_invoices') || '[]');
+      const cached: FinancialInvoice[] = JSON.parse(cacheStorage.getItem('cadu_financial_invoices') || '[]');
       const filtered = cached.filter(i => i.id !== invoice.id);
-      localStorage.setItem('cadu_financial_invoices', JSON.stringify([...filtered, invoice]));
+      cacheStorage.setItem('cadu_financial_invoices', JSON.stringify([...filtered, invoice]));
     } catch {}
   },
 
   /** Exclui uma fatura do Supabase e do cache */
   deleteFinancialInvoice: async (id: string): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     try {
       await supabase.from('agenda_events').delete().eq('id', id);
     } catch (e) {
@@ -1610,8 +1207,8 @@ export const storage = {
     }
 
     try {
-      const cached: FinancialInvoice[] = JSON.parse(localStorage.getItem('cadu_financial_invoices') || '[]');
-      localStorage.setItem('cadu_financial_invoices', JSON.stringify(cached.filter(i => i.id !== id)));
+      const cached: FinancialInvoice[] = JSON.parse(cacheStorage.getItem('cadu_financial_invoices') || '[]');
+      cacheStorage.setItem('cadu_financial_invoices', JSON.stringify(cached.filter(i => i.id !== id)));
     } catch {}
   },
 
@@ -1619,6 +1216,7 @@ export const storage = {
 
   /** Busca as configurações de pagamento do personal */
   fetchPaymentSettings: async (): Promise<TrainerPaymentSettings> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     const defaultSettings: TrainerPaymentSettings = {
       pixKey: '554384639369',
       pixType: 'Telefone',
@@ -1637,13 +1235,13 @@ export const storage = {
 
       if (!error && data?.notes) {
         const parsed = JSON.parse(data.notes);
-        localStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(parsed));
+        cacheStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(parsed));
         return { ...defaultSettings, ...parsed };
       }
     } catch {}
 
     try {
-      const cached = localStorage.getItem('cadu_trainer_payment_settings');
+      const cached = cacheStorage.getItem('cadu_trainer_payment_settings');
       if (cached) return { ...defaultSettings, ...JSON.parse(cached) };
     } catch {}
 
@@ -1652,6 +1250,7 @@ export const storage = {
 
   /** Salva as configurações de pagamento do personal no Supabase */
   savePaymentSettings: async (settings: TrainerPaymentSettings): Promise<void> => {
+    const cacheStorage = cacheForUser(getCacheUser());
     try {
       await supabase.from('agenda_events').upsert({
         id: '00000000-0000-4000-8000-000000000002',
@@ -1667,7 +1266,7 @@ export const storage = {
     }
 
     try {
-      localStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(settings));
+      cacheStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(settings));
     } catch {}
   },
 };
