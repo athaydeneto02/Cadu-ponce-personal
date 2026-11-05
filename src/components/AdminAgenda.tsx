@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
   Clock, User, Video, MapPin, AlignLeft, X, Trash2, Edit2
@@ -26,6 +26,9 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
+  const [pendingAction, setPendingAction] = useState<'save' | 'delete' | null>(null);
+  const [formError, setFormError] = useState('');
+  const mutationPending = useRef(false);
   
   // Form State
   const [formData, setFormData] = useState<Partial<AgendaEvent>>({
@@ -35,7 +38,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   });
 
   useEffect(() => {
-    setEvents(storage.getAgendaEvents());
+    // The legacy table also holds media and app settings, which are not appointments.
+    setEvents(storage.getAgendaEvents().filter(event => ['presential', 'online', 'other'].includes(event.type)));
     setUsers(storage.getUsersList().filter(u => u.role === 'student'));
   }, []);
 
@@ -58,8 +62,11 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   };
 
   const openNewModal = (dateStr?: string, timeStr?: string) => {
+    if (mutationPending.current) return;
     setSelectedEvent(null);
+    setFormError('');
     setFormData({
+      id: crypto.randomUUID(),
       type: 'presential',
       date: dateStr || format(new Date(), 'yyyy-MM-dd'),
       startTime: timeStr || '08:00',
@@ -71,26 +78,33 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   };
 
   const openEditModal = (ev: AgendaEvent) => {
+    if (mutationPending.current) return;
+    setFormError('');
     setSelectedEvent(ev);
     setFormData(ev);
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.date || !formData.startTime || !formData.endTime) return;
+    if (mutationPending.current) return;
+    if (!formData.title?.trim() || !formData.date || !formData.startTime || !formData.endTime) return;
+    if (formData.endTime <= formData.startTime) {
+      setFormError('O horário final deve ser depois do horário inicial.');
+      return;
+    }
 
-    let studentName = formData.studentName;
+    let studentName = formData.studentId ? formData.studentName : undefined;
     if (formData.studentId) {
       const u = users.find(u => u.uid === formData.studentId);
       if (u) studentName = u.name;
     }
 
     const newEvent: AgendaEvent = {
-      id: selectedEvent?.id || crypto.randomUUID(),
+      id: selectedEvent?.id || formData.id || crypto.randomUUID(),
       studentId: formData.studentId || '',
       studentName,
-      title: formData.title,
+      title: formData.title.trim(),
       date: formData.date,
       startTime: formData.startTime,
       endTime: formData.endTime,
@@ -99,16 +113,35 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
       createdAt: selectedEvent?.createdAt || new Date().toISOString()
     };
 
-    storage.saveAgendaEvent(newEvent);
-    setEvents(storage.getAgendaEvents());
-    setIsModalOpen(false);
+    mutationPending.current = true;
+    setPendingAction('save');
+    setFormError('');
+    try {
+      await storage.saveAgendaEvent(newEvent);
+      setEvents(previous => [...previous.filter(event => event.id !== newEvent.id), newEvent]);
+      setIsModalOpen(false);
+    } catch {
+      setFormError('Não foi possível salvar o agendamento. Seus dados foram mantidos; tente novamente.');
+    } finally {
+      mutationPending.current = false;
+      setPendingAction(null);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este evento?')) {
-      storage.deleteAgendaEvent(id);
-      setEvents(storage.getAgendaEvents());
+  const handleDelete = async (id: string) => {
+    if (mutationPending.current || !window.confirm('Tem certeza que deseja excluir este evento?')) return;
+    mutationPending.current = true;
+    setPendingAction('delete');
+    setFormError('');
+    try {
+      await storage.deleteAgendaEvent(id);
+      setEvents(previous => previous.filter(event => event.id !== id));
       setIsModalOpen(false);
+    } catch {
+      setFormError('Não foi possível excluir o agendamento. Ele foi mantido na agenda; tente novamente.');
+    } finally {
+      mutationPending.current = false;
+      setPendingAction(null);
     }
   };
 
@@ -116,7 +149,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
     <div className="flex flex-col h-full bg-[#f4f7fa]">
       {/* Header */}
       <div className="bg-[#0c1622] p-4 flex justify-between items-center shrink-0 border-b border-white/10">
-        <button onClick={onBack} className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer">
+        <button onClick={onBack} disabled={pendingAction !== null} className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer disabled:cursor-wait">
           <ChevronLeft className="w-3.5 h-3.5" /> Voltar
         </button>
         <div className="flex gap-2">
@@ -312,17 +345,19 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
       {/* Modal de Agendamento */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div role="dialog" aria-modal="true" aria-labelledby="agenda-modal-title" aria-busy={pendingAction !== null} className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="text-xl font-black italic uppercase tracking-tighter text-slate-800">
+              <h3 id="agenda-modal-title" className="text-xl font-black italic uppercase tracking-tighter text-slate-800">
                 {selectedEvent ? 'Editar Agendamento' : 'Novo Agendamento'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition">
+              <button onClick={() => setIsModalOpen(false)} disabled={pendingAction !== null} aria-label="Fechar agendamento" className="text-slate-400 hover:text-slate-600 transition disabled:cursor-wait">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto">
+              {formError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{formError}</p>}
+              <fieldset disabled={pendingAction !== null} className="space-y-4 min-w-0">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase text-slate-500">Título / Assunto</label>
                 <input 
@@ -426,6 +461,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
                   <button
                     type="button"
                     onClick={() => handleDelete(selectedEvent.id)}
+                    aria-label={pendingAction === 'delete' ? 'Excluindo agendamento' : 'Excluir agendamento'}
                     className="p-3 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition"
                   >
                     <Trash2 className="w-5 h-5" />
@@ -435,9 +471,10 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
                   type="submit"
                   className="flex-1 bg-[#dc2626] text-white py-3 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-200 hover:bg-[#ef4444] transition active:scale-95"
                 >
-                  <Edit2 className="w-4 h-4" /> {selectedEvent ? 'Salvar Edição' : 'Agendar'}
+                  <Edit2 className="w-4 h-4" /> {pendingAction === 'save' ? 'Salvando…' : pendingAction === 'delete' ? 'Excluindo…' : selectedEvent ? 'Salvar Edição' : 'Agendar'}
                 </button>
               </div>
+              </fieldset>
             </form>
           </div>
         </div>

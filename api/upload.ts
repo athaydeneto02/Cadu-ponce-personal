@@ -5,10 +5,11 @@ export const config = { api: { bodyParser: false } };
 const maxBytes = 4 * 1024 * 1024;
 const formats: Record<string, string> = {
   'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
 };
 
 export function matchesMediaType(buffer: Buffer, type: string): boolean {
+  if (type === 'image/gif') return ['GIF87a', 'GIF89a'].includes(buffer.toString('ascii', 0, 6));
   if (type === 'image/jpeg') return buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
   if (type === 'image/png') return buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (type === 'image/webp') return buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';

@@ -45,6 +45,20 @@ function storageLocation(value: string): { bucket: string; path: string } | null
   return null;
 }
 
+/** Only durable media references belong in shared exercise records. */
+export function normalizeStoredMediaReference(value?: string | null): string | null {
+  const reference = value?.trim();
+  if (!reference) return null;
+  const location = storageLocation(reference);
+  if (location) return toStorageReference(location.bucket, location.path);
+  if (/^supamedia:[a-zA-Z0-9_-]+$/.test(reference)) return reference;
+  try {
+    const url = new URL(reference);
+    if (url.protocol === 'https:' || url.protocol === 'http:') return reference;
+  } catch { /* reject local references and incomplete URLs */ }
+  throw new Error('Envie o arquivo antes de salvar ou use um link HTTP válido. Arquivos locais não podem ser compartilhados.');
+}
+
 export function clearMediaCache(): void {
   for (const url of blobUrlCache.values()) if (url.startsWith('blob:')) URL.revokeObjectURL(url);
   blobUrlCache.clear();

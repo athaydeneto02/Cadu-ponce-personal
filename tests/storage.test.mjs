@@ -16,16 +16,27 @@ const compiled = await build({
          export const getLocalBlob = globalThis.testMedia.getLocalBlob;
          export const resolveMediaUrl = async value => value;
          export const toStorageReference = (bucket, path) => 'storage://' + bucket + '/' + path;
+         export const normalizeStoredMediaReference = value => value;
          export const clearMediaCache = () => {};`, loader: 'js' }));
   } }],
 });
 
 function localStorageFake() {
   const storage = Object.create(null);
+  let quota = Infinity;
+  let denyWrites = false;
   Object.defineProperties(storage, {
     getItem: { value: key => Object.hasOwn(storage, key) ? storage[key] : null },
-    setItem: { value: (key, value) => Object.defineProperty(storage, key, { value: String(value), writable: true, configurable: true, enumerable: true }) },
+    setItem: { value: (key, value) => {
+      const next = String(value);
+      const bytes = Object.entries(storage).filter(([storedKey]) => storedKey !== key).reduce((sum, [storedKey, storedValue]) => sum + storedKey.length + storedValue.length, 0) + key.length + next.length;
+      if (denyWrites || bytes > quota) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      Object.defineProperty(storage, key, { value: next, writable: true, configurable: true, enumerable: true });
+    } },
     removeItem: { value: key => delete storage[key] },
+    setQuota: { value: value => { quota = value; } },
+    denyWrites: { value: value => { denyWrites = value; } },
+    usedBytes: { value: () => Object.entries(storage).reduce((sum, [key, value]) => sum + key.length + value.length, 0) },
   });
   return storage;
 }
@@ -52,6 +63,7 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
         update(values) { call.operation = 'update'; call.values = values; return this; },
         delete() { call.operation = 'delete'; return this; },
         eq(column, value) { call.filters.push(['eq', column, value]); return this; },
+        neq(column, value) { call.filters.push(['neq', column, value]); return this; },
         in(column, value) { call.filters.push(['in', column, value]); return this; },
         order() { return this; }, limit() { return this; }, maybeSingle() { return this; }, single() { return this; },
         then(resolve, reject) { calls.push(call); return Promise.resolve(query(call)).then(resolve, reject); },
@@ -76,6 +88,253 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
 
 const log = id => ({ id, studentId: 'student-a', studentName: 'Pessoa A', routineId: 'routine-a', routineName: 'Treino A', completedAt: '2026-11-05T12:00:00Z', durationSeconds: 300, rpe: 5, exercisesSummary: [], comment: 'Concluído com boa técnica.' });
 const photo = id => ({ id, studentId: 'student-a', photoURL: 'blob:temporary-preview', date: '2026-11-05' });
+
+function cloudDatabase() {
+  const tables = new Map();
+  const query = async call => {
+    const table = tables.get(call.table) ?? new Map();
+    tables.set(call.table, table);
+    if (call.operation === 'upsert' || call.operation === 'insert') {
+      for (const row of Array.isArray(call.values) ? call.values : [call.values]) table.set(row.id ?? row.name, structuredClone(row));
+    }
+    const rows = [...table.values()].filter(row => call.filters.every(([op, column, value]) =>
+      op === 'in' ? value.includes(row[column]) : op === 'neq' ? row[column] !== value : row[column] === value));
+    if (call.operation === 'delete') for (const row of rows) table.delete(row.id ?? row.name);
+    return { data: structuredClone(rows), error: null };
+  };
+  return { tables, query };
+}
+
+test('a successful routine edit survives total cache failure and reloads from the cloud', async () => {
+  const cloud = cloudDatabase();
+  const { storage, local } = setup({ query: cloud.query });
+  const routine = { id: randomUUID(), name: 'Treino salvo', studentIds: ['student-a'], exercises: [
+    { id: 'draft', name: 'Agachamento', sets: 3, reps: '8', videoFileUrl: 'data:video/mp4;base64,' + 'A'.repeat(50000) },
+  ] };
+  local.denyWrites(true);
+  await storage.saveAdminRoutine(routine);
+  assert.equal(storage.getAdminRoutines()[0].name, routine.name);
+  assert.equal(storage.getAdminRoutines()[0].exercises[0].videoFileUrl, routine.exercises[0].videoFileUrl, 'mutation caches may still contain unverified local siblings');
+  assert.match(routine.exercises[0].videoFileUrl, /^data:/, 'only the cache copy is compacted');
+  const reloaded = setup({ query: cloud.query, local });
+  const loaded = await reloaded.storage.fetchAdminRoutines();
+  assert.equal(loaded[0].name, routine.name);
+  assert.equal(loaded[0].exercises[0].videoFileUrl, routine.exercises[0].videoFileUrl);
+  assert.equal(loaded[0].exercises[0].id, routine.exercises[0].id);
+  assert.equal(reloaded.storage.getAdminRoutines()[0].exercises[0].videoFileUrl, routine.exercises[0].videoFileUrl, 'the editable in-memory snapshot keeps complete media');
+  assert.equal(local.getItem('cadu:v2:student-a:cadu_ponce_admin_routines'), null, 'never persist a partial editable snapshot');
+});
+
+test('all confirmed remote writes succeed when localStorage throws quota errors', async () => {
+  const cloud = cloudDatabase();
+  const { storage, local } = setup({ query: cloud.query });
+  local.denyWrites(true);
+  await storage.saveWorkout({ id: randomUUID(), studentId: 'student-a', name: 'Treino', exercises: [] });
+  await storage.saveProgress({ id: randomUUID(), studentId: 'student-a', exerciseName: 'Remada', load: 0, reps: '10', date: '2026-11-05' });
+  await storage.saveAgendaEvent({ id: randomUUID(), title: 'Sessão', type: 'workout', date: '2026-11-05' });
+  await storage.saveFinancialInvoice({ id: randomUUID(), studentId: 'student-a', studentName: 'Aluno', amount: 10, dueDate: '2026-11-05', description: 'Mensalidade' });
+  await storage.savePaymentSettings({ pixKey: 'example', instructions: 'Fale com o personal' });
+  await storage.addMuscleGroup('Costas');
+  await storage.addCategory('Funcional');
+  assert.equal((await storage.fetchWorkouts('student-a')).length, 1);
+  assert.equal((await storage.fetchProgress('student-a')).length, 1);
+  assert.equal((await storage.fetchAgendaEvents()).length, 3);
+  assert.equal((await storage.fetchFinancialInvoices()).length, 1);
+  assert.equal((await storage.fetchPaymentSettings()).pixKey, 'example');
+  assert.deepEqual(Array.from(await storage.fetchMuscleGroups()), ['Costas']);
+  assert.deepEqual(Array.from(await storage.fetchCategories()), ['Funcional']);
+});
+
+test('quota recovery removes only confirmed disposable snapshots and preserves drafts, pending work and local files', async () => {
+  const { storage, local, context, blobs } = setup();
+  context.navigator.onLine = false;
+  await storage.savePhoto(photo('pending-photo'), new File(['original-image'], 'photo.jpg', { type: 'image/jpeg' }));
+  storage.setCacheItem('cadu_ponce_exercise_drafts', JSON.stringify([{ id: 'draft', image: 'data:image/jpeg;base64,original' }]));
+  local.setItem('cadu:v2:student-b:cadu_workout_logs', JSON.stringify([{ ...log('other-account'), studentId: 'student-b', syncStatus: 'pending' }]));
+  local.setItem('cadu_legacy_unsent', 'keep-original');
+  storage.saveUsersList([{ uid: 'remote', name: 'A'.repeat(6000) }]);
+  const protectedKeys = ['cadu:v2:student-a:cadu_ponce_photos', 'cadu:v2:student-a:cadu_ponce_exercise_drafts', 'cadu:v2:student-b:cadu_workout_logs', 'cadu_legacy_unsent'];
+  const originals = protectedKeys.map(key => local.getItem(key));
+  local.setQuota(local.usedBytes() + 10);
+  await storage.saveWorkoutLog(log('new-pending'));
+  protectedKeys.forEach((key, index) => assert.equal(local.getItem(key), originals[index], key));
+  assert.equal(blobs.size, 1);
+  assert.equal(storage.getWorkoutLogs()[0].syncStatus, 'pending');
+  const reloaded = setup({ local });
+  assert.equal(reloaded.storage.getWorkoutLogs()[0].id, 'new-pending');
+});
+
+test('an outbox that cannot persist rejects instead of claiming memory-only success', async () => {
+  const { storage, local, calls, blobs } = setup();
+  local.denyWrites(true);
+  await assert.rejects(storage.saveWorkoutLog(log('unsaved')), error => error.name === 'QuotaExceededError');
+  await assert.rejects(storage.savePhoto(photo('unsaved-photo'), new File(['original'], 'photo.jpg', { type: 'image/jpeg' })), error => error.name === 'QuotaExceededError');
+  assert.equal(storage.getWorkoutLogs().length, 0);
+  assert.equal(storage.getPhotos().length, 0);
+  assert.equal(calls.length, 0, 'no upload or remote mutation without durable outbox');
+  assert.equal(blobs.size, 1, 'a failed metadata write must not delete the original file');
+});
+
+test('cloud confirmation is not turned into a failed workout save when its cache update hits quota', async () => {
+  const local = localStorageFake();
+  const { storage } = setup({ local, query: async call => {
+    if (call.table === 'workout_logs' && call.operation === 'upsert') local.denyWrites(true);
+    return { data: [], error: null };
+  } });
+  await storage.saveWorkoutLog(log('confirmed'));
+  assert.equal(storage.getWorkoutLogs()[0].syncStatus, 'synced');
+  assert.equal(JSON.parse(local.getItem('cadu:v2:student-a:cadu_workout_logs'))[0].syncStatus, 'pending', 'durable retry copy remains until it can be replaced');
+});
+
+test('legacy media_storage records are never downloaded into the agenda cache or deleted', async () => {
+  const { storage, calls, local } = setup({ query: async () => ({ data: [
+    { id: 'media', type: 'media_storage', notes: 'data:video/mp4;base64,' + 'A'.repeat(10000) },
+    { id: 'event', type: 'appointment', title: 'Avaliação' },
+  ], error: null }) });
+  assert.equal((await storage.fetchAgendaEvents()).length, 1);
+  assert.ok(calls[0].filters.some(([op, column, value]) => op === 'neq' && column === 'type' && value === 'media_storage'));
+  assert.equal(local.getItem('cadu:v2:student-a:cp_agenda_events').includes('base64'), false);
+  assert.equal(calls.some(call => call.operation === 'delete'), false);
+});
+
+test('malformed optional caches cannot invalidate successful remote reads or saves', async () => {
+  const cloud = cloudDatabase();
+  const { storage, local } = setup({ query: cloud.query });
+  local.setItem('cadu:v2:student-a:cadu_ponce_admin_routines', '{broken');
+  assert.equal(storage.getAdminRoutines().length, 0);
+  await storage.saveAdminRoutine({ id: randomUUID(), name: 'Rotina', exercises: [] });
+  local.setItem('cadu:v2:student-a:cadu_ponce_workouts', '{broken');
+  assert.equal((await storage.fetchWorkouts()).length, 0);
+  assert.equal((await storage.fetchAdminRoutines())[0].name, 'Rotina');
+});
+
+test('failed server saves do not change confirmed cache or delete existing categories', async () => {
+  const { storage, calls } = setup({ query: async call => ({
+    data: call.operation === 'select' ? [{ id: 1, name: 'Existente' }] : null,
+    error: call.operation === 'select' ? null : new Error('Denied'),
+  }) });
+  storage.setCacheItem('cp_agenda_events', JSON.stringify([{ id: 'original' }]));
+  for (const action of [
+    () => storage.saveAgendaEvent({ id: 'new' }),
+    () => storage.deleteAgendaEvent('original'),
+    () => storage.saveFinancialInvoice({ id: 'invoice' }),
+    () => storage.deleteFinancialInvoice('invoice'),
+    () => storage.savePaymentSettings({}),
+    () => storage.addCategory('Nova'),
+    () => storage.addMuscleGroup('Novo'),
+  ]) await assert.rejects(action(), /Denied/);
+  assert.equal(storage.getAgendaEvents()[0].id, 'original');
+  assert.equal(calls.some(call => ['muscle_groups', 'exercise_categories'].includes(call.table) && call.operation === 'delete'), false);
+});
+
+test('a late response with full storage cannot leak cached progress into the next account', async () => {
+  const gate = deferred();
+  const { storage, local } = setup({ query: () => gate.promise });
+  local.denyWrites(true);
+  const saving = storage.saveProgress({ id: 'progress-a', studentId: 'student-a', exerciseName: 'Remada', load: 5, reps: '10', date: '2026-11-05' });
+  storage.setSessionUser('student-b');
+  gate.resolve({ data: [], error: null });
+  await saving;
+  assert.equal(storage.getProgress().length, 0);
+  storage.setSessionUser('student-a');
+  assert.equal(storage.getProgress()[0].id, 'progress-a');
+});
+
+test('a partial routine read keeps previous exercises instead of caching a destructive empty prescription', async () => {
+  const { storage } = setup({ query: async call => ({
+    data: call.table === 'admin_routines' ? [{ id: 'routine-a', name: 'Treino' }] : [],
+    error: call.table === 'admin_exercises' ? new Error('Offline') : null,
+  }) });
+  storage.setCacheItem('cadu_ponce_admin_routines', JSON.stringify([{ id: 'routine-a', name: 'Treino', exercises: [{ id: 'exercise-a', name: 'Remada' }] }]));
+  const routines = await storage.fetchAdminRoutines();
+  assert.equal(routines[0].exercises[0].id, 'exercise-a');
+  assert.equal(storage.getAdminRoutines()[0].exercises[0].id, 'exercise-a');
+});
+
+test('repeated legacy migrations never overwrite or erase a conflicting pending outbox', () => {
+  const local = localStorageFake();
+  local.setItem('cadu_ponce_user', JSON.stringify({ uid: 'student-a' }));
+  local.setItem('cadu_workout_logs', JSON.stringify([log('legacy-original')]));
+  local.setItem('cadu:v2:student-a:cadu_workout_logs', JSON.stringify([{ ...log('newer-original'), syncStatus: 'pending' }]));
+  setup({ local });
+  assert.match(local.getItem('cadu_workout_logs'), /legacy-original/);
+  assert.match(local.getItem('cadu:v2:student-a:cadu_workout_logs'), /newer-original/);
+});
+
+test('reclaiming an older disk snapshot retains the latest confirmed memory value', async () => {
+  const { storage, local, context } = setup();
+  storage.saveUsersList([{ uid: 'old', name: 'A'.repeat(3000) }]);
+  local.denyWrites(true);
+  storage.saveUsersList([{ uid: 'new', name: 'B'.repeat(6000) }]);
+  assert.equal(storage.getUsersList()[0].uid, 'new');
+  local.denyWrites(false);
+  local.setQuota(local.usedBytes() + 5);
+  context.navigator.onLine = false;
+  await storage.saveWorkoutLog(log('durable-after-reclaim'));
+  assert.equal(storage.getUsersList()[0].uid, 'new');
+  assert.equal(storage.getWorkoutLogs()[0].syncStatus, 'pending');
+});
+
+for (const [table, add, remove] of [
+  ['muscle_groups', 'addMuscleGroup', 'removeMuscleGroup'],
+  ['exercise_categories', 'addCategory', 'removeCategory'],
+]) {
+  test(`${table} edits apply a delta and preserve names another administrator added`, async () => {
+    const cloud = cloudDatabase();
+    cloud.tables.set(table, new Map([
+      ['Existente', { name: 'Existente' }], ['Outro administrador', { name: 'Outro administrador' }],
+    ]));
+    const { storage, calls } = setup({ query: cloud.query });
+    const added = await storage[add]('Nova');
+    assert.deepEqual(Array.from(added).sort(), ['Existente', 'Nova', 'Outro administrador'].sort());
+    const removed = await storage[remove]('Existente');
+    assert.deepEqual(Array.from(removed).sort(), ['Nova', 'Outro administrador'].sort());
+    assert.equal(cloud.tables.get(table).has('Outro administrador'), true);
+    assert.deepEqual(calls.find(call => call.operation === 'delete').filters, [['eq', 'name', 'Existente']]);
+  });
+
+  test(`${table} list failure after a delta never triggers a replacement or unrelated deletion`, async () => {
+    const { storage, calls } = setup({ query: async call => ({
+      data: call.operation === 'select' ? null : [], error: call.operation === 'select' ? new Error('Offline') : null,
+    }) });
+    await assert.rejects(storage[add]('Nova'), /alteração foi salva.*recarregar/);
+    assert.equal(calls.filter(call => call.operation === 'upsert').length, 1);
+    assert.equal(calls.some(call => call.operation === 'delete'), false);
+  });
+}
+
+test('legacy quota migration keeps the owner until every pending record has moved', () => {
+  const local = localStorageFake();
+  local.setItem('cadu_ponce_user', JSON.stringify({ uid: 'student-a' }));
+  local.setItem('cadu_workout_logs', JSON.stringify([log('legacy-pending')]));
+  local.setQuota(local.usedBytes());
+  const { storage } = setup({ local });
+  assert.match(local.getItem('cadu_ponce_user'), /student-a/);
+  assert.match(local.getItem('cadu_workout_logs'), /legacy-pending/);
+  local.setQuota(Infinity);
+  storage.setSessionUser('student-b');
+  assert.equal(local.getItem('cadu_workout_logs'), null);
+  assert.match(local.getItem('cadu:v2:student-a:cadu_workout_logs'), /legacy-pending/);
+  assert.equal(local.getItem('cadu:legacy:cadu_workout_logs'), null);
+  assert.equal(storage.getWorkoutLogs().length, 0);
+});
+
+test('a profile update must confirm the intended row before updating its cache', async () => {
+  for (const response of [
+    { data: null, error: null },
+    { data: { id: 'different-user' }, error: null },
+    { data: null, error: new Error('Profile update denied') },
+  ]) {
+    const { storage } = setup({ query: async () => response });
+    const original = storage.getUser();
+    await assert.rejects(storage.updateProfile({ ...original, name: 'Não salvo' }), /não foi atualizado|denied/);
+    assert.equal(storage.getUser().name, original.name);
+  }
+  const { storage, local } = setup({ query: async () => ({ data: { id: 'student-a' }, error: null }) });
+  local.denyWrites(true);
+  await storage.updateProfile({ ...storage.getUser(), name: 'Salvo na nuvem' });
+  assert.equal(storage.getUser().name, 'Salvo na nuvem');
+});
 
 test('role never comes from email or self-supplied metadata', async () => {
   const { storage } = setup({ query: async () => ({ data: { id: 'student-a', name: 'Pessoa A', email: 'cadu@example.test', role: 'student', metadata: { role: 'admin' } }, error: null }) });

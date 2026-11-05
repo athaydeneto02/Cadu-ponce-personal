@@ -10,34 +10,46 @@
 
 import { supabase } from './supabase';
 import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog, FinancialInvoice, TrainerPaymentSettings } from '../types';
-import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache } from './mediaDb';
+import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache, normalizeStoredMediaReference } from './mediaDb';
+import { LibraryExercise, readLibraryCache, storeLibrarySnapshot, markLibraryExerciseDeleted, hasExerciseChanges } from './exerciseLibrary';
 import { sessionCache as cacheStorage, cacheForUser, getCacheUser, setCacheUser, readCached } from './sessionCache';
 
-// ---------------------------------------------------------------------------
-// Safe localStorage helper - prevents QuotaExceededError crashes (white screen)
-// ---------------------------------------------------------------------------
+// Best effort only for snapshots already confirmed by the server. Local-only
+// drafts and outboxes must use the durable cache.setItem API instead.
 export function safeSetItem(key: string, value: string, cache = cacheStorage): boolean {
-  try {
-    cache.setItem(key, value);
-    return true;
-  } catch (err) {
-    console.warn(`[storage] Quota exceeded on cacheStorage.setItem(${key}):`, err);
-    try {
-      if (key === 'cadu_ponce_exercises_v3') {
-        const parsed = JSON.parse(value);
-        const cleaned = parsed.map((ex: any) => ({
-          ...ex,
-          image: ex.image && ex.image.length > 30000 ? 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200' : ex.image,
-          videoUrl: ex.videoUrl && ex.videoUrl.length > 30000 ? '' : ex.videoUrl,
-        }));
-        cache.setItem(key, JSON.stringify(cleaned));
-        return true;
-      }
-    } catch {
-      // ignore
-    }
-    return false;
+  return cache.setRemoteItem(key, value);
+}
+
+function persistOutbox<T extends { syncStatus?: string; localFileKey?: string; photoURL?: string }>(
+  cache: ReturnType<typeof cacheForUser>, key: string, entries: T[],
+): void {
+  try { cache.setItem(key, JSON.stringify(entries)); }
+  catch {
+    // Confirmed history can be fetched again. Pending/legacy records and their
+    // IndexedDB references must all survive; failure of this write is fatal.
+    const pending = entries.filter(entry => entry.syncStatus !== 'synced' || entry.localFileKey || /^(idb:|blob:)/.test(entry.photoURL ?? ''));
+    cache.setItem(key, JSON.stringify(pending));
   }
+}
+
+async function changeNamedValue(table: 'muscle_groups' | 'exercise_categories', name: string, remove: boolean): Promise<string[]> {
+  const actor = getCacheUser();
+  if (!actor) throw new Error('Entre na sua conta antes de salvar.');
+  const value = name.trim();
+  if (!value) throw new Error('Informe o nome.');
+  const cache = cacheForUser(actor);
+  // Never derive removals from a previously loaded list: another trainer may
+  // have added a name since that screen was opened.
+  const { error } = remove
+    ? await supabase.from(table).delete().eq('name', value)
+    : await supabase.from(table).upsert({ name: value }, { onConflict: 'name' });
+  if (error) throw error;
+  if (actor !== getCacheUser()) throw new Error('A alteração foi salva. Entre novamente para atualizar a lista.');
+  const { data, error: readError } = await supabase.from(table).select('name').order('id', { ascending: true });
+  if (readError || !data) throw new Error('A alteração foi salva, mas não foi possível recarregar a lista. Atualize a página.');
+  const names = data.map(row => row.name as string);
+  cache.setRemoteItem(table === 'muscle_groups' ? 'cadu_ponce_muscle_groups' : 'cadu_ponce_categories', JSON.stringify(names));
+  return names;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +163,7 @@ export const storage = {
   saveUser: (user: UserProfile): void => {
     if (user.uid !== getCacheUser()) return;
     const { password: _password, ...safeUser } = user;
-    cacheStorage.setItem(CACHE_KEYS.USER, JSON.stringify(safeUser));
+    cacheStorage.setRemoteItem(CACHE_KEYS.USER, JSON.stringify(safeUser));
   },
 
   /** Roles come only from the protected database profile. */
@@ -184,29 +196,27 @@ export const storage = {
       if (options.allowCached === false) {
         throw error ?? new Error('Não foi possível carregar a lista atual de usuários.');
       }
-      const cached = cacheStorage.getItem('cadu_ponce_all_users');
-      return cached ? JSON.parse(cached) : [];
+      return cacheStorage.readJson<UserProfile[]>('cadu_ponce_all_users', []);
     }
     const users = data.map(rowToUserProfile);
-    cacheStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+    cacheStorage.setRemoteItem('cadu_ponce_all_users', JSON.stringify(users));
     return users;
   },
 
   /** Returns cached users list (sync). */
   getUsersList: (): UserProfile[] => {
-    const data = cacheStorage.getItem('cadu_ponce_all_users');
-    return data ? JSON.parse(data) : [];
+    return cacheStorage.readJson<UserProfile[]>('cadu_ponce_all_users', []);
   },
 
   /** Saves users list to local cache. */
   saveUsersList: (users: UserProfile[]): void => {
-    cacheStorage.setItem('cadu_ponce_all_users', JSON.stringify(users));
+    cacheStorage.setRemoteItem('cadu_ponce_all_users', JSON.stringify(users));
   },
 
   /** Updates a user profile in Supabase. */
   updateProfile: async (user: UserProfile): Promise<void> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({
         name: user.name,
@@ -219,9 +229,12 @@ export const storage = {
         modality: user.modality ?? null,
         metadata: user.metadata ?? {},
       })
-      .eq('id', user.uid);
+      .eq('id', user.uid)
+      .select('id')
+      .single();
 
     if (error) throw error;
+    if (data?.id !== user.uid) throw new Error('O perfil não foi atualizado. Entre novamente e tente salvar.');
     if (user.uid === getCacheUser()) storage.saveUser(user);
   },
 
@@ -230,8 +243,8 @@ export const storage = {
     const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('profiles').delete().eq('id', userId);
     if (error) throw error;
-    const users = storage.getUsersList().filter(u => u.uid !== userId);
-    storage.saveUsersList(users);
+    const users = cacheStorage.readJson<UserProfile[]>('cadu_ponce_all_users', []).filter(u => u.uid !== userId);
+    cacheStorage.setRemoteItem('cadu_ponce_all_users', JSON.stringify(users));
   },
 
   /** Public registration never assigns privileged roles or assumes a session. */
@@ -282,7 +295,7 @@ export const storage = {
     let query = supabase.from('workouts').select('*').order('created_at', { ascending: false });
     if (studentId) query = query.eq('student_id', studentId);
     const { data, error } = await query;
-    const cached: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
+    const cached = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
     if (error || !data) return cached.filter(w => !studentId || w.studentId === studentId);
     const ids = data.map(row => row.id);
     const exercises = ids.length
@@ -291,7 +304,7 @@ export const storage = {
     if (exercises.error) throw exercises.error;
     const workouts = data.map(row => rowToWorkout({ ...row, exercises: (exercises.data ?? []).filter(exercise => exercise.workout_id === row.id) }));
     const others = studentId ? cached.filter(w => w.studentId !== studentId) : [];
-    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify([...others, ...workouts]));
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([...others, ...workouts]));
     return workouts;
   },
 
@@ -323,8 +336,8 @@ export const storage = {
       const { error } = await supabase.from('exercises').delete().eq('workout_id', workout.id).in('id', removed);
       if (error) throw error;
     }
-    const all: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
-    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify([workout, ...all.filter(w => w.id !== workout.id)]));
+    const all = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([workout, ...all.filter(w => w.id !== workout.id)]), { preserveLocal: true });
   },
 
   saveWorkouts: async (workouts: Workout[]): Promise<void> => {
@@ -341,15 +354,14 @@ export const storage = {
     });
     if (error) throw error;
     if (!data) throw new Error('Treino não encontrado para esse aluno. Atualize a lista.');
-    const all: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
-    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(all.filter(w => w.id !== workoutId || (studentId && w.studentId !== studentId))));
+    const all = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(all.filter(w => w.id !== workoutId || (studentId && w.studentId !== studentId))), { preserveLocal: true });
   },
 
   // ── Progress ──────────────────────────────────────────────────────────────
 
   getProgress: (): ProgressEntry[] => {
-    const data = cacheStorage.getItem(CACHE_KEYS.PROGRESS);
-    return data ? JSON.parse(data) : [];
+    return cacheStorage.readJson<ProgressEntry[]>(CACHE_KEYS.PROGRESS, []);
   },
 
   fetchProgress: async (studentId: string): Promise<ProgressEntry[]> => {
@@ -360,7 +372,7 @@ export const storage = {
       .eq('student_id', studentId)
       .order('date', { ascending: false });
 
-    if (error || !data) return storage.getProgress();
+    if (error || !data) return cacheStorage.readJson<ProgressEntry[]>(CACHE_KEYS.PROGRESS, []).filter(entry => entry.studentId === studentId);
 
     const entries: ProgressEntry[] = data.map((row) => ({
       id: row.id,
@@ -372,13 +384,13 @@ export const storage = {
       date: row.date,
     }));
 
-    cacheStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify(entries));
+    cacheStorage.setRemoteItem(CACHE_KEYS.PROGRESS, JSON.stringify(entries));
     return entries;
   },
 
   saveProgress: async (entry: ProgressEntry): Promise<void> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { error } = await supabase.from('progress_entries').insert({
+    const { error } = await supabase.from('progress_entries').upsert({
       id: entry.id,
       student_id: entry.studentId,
       exercise_name: entry.exerciseName,
@@ -388,8 +400,8 @@ export const storage = {
       date: entry.date,
     });
     if (error) throw error;
-    const all = storage.getProgress();
-    cacheStorage.setItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
+    const all = cacheStorage.readJson<ProgressEntry[]>(CACHE_KEYS.PROGRESS, []);
+    cacheStorage.setRemoteItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
   },
 
   // ── Evolution Photos ──────────────────────────────────────────────────────
@@ -419,7 +431,7 @@ export const storage = {
     const pending = latest.filter(photo => photo.studentId === studentId && (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')));
     const pendingIds = new Set(pending.map(photo => photo.id));
     const merged = [...pending, ...remote.filter(photo => !pendingIds.has(photo.id))];
-    cache.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([...latest.filter(photo => photo.studentId !== studentId), ...merged]));
+    cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify([...latest.filter(photo => photo.studentId !== studentId), ...merged]));
     return merged;
   },
 
@@ -445,7 +457,8 @@ export const storage = {
     let current: EvolutionPhoto = { ...photo, photoURL: reference, localFileKey: localKey, syncStatus: 'pending', syncError: undefined };
     const saveCache = () => {
       const all = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
-      cache.setItem(CACHE_KEYS.PHOTOS, JSON.stringify([current, ...all.filter(p => p.id !== photo.id)]));
+      if (current.syncStatus === 'pending') persistOutbox(cache, CACHE_KEYS.PHOTOS, [current, ...all.filter(p => p.id !== photo.id)]);
+      else cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify([current, ...all.filter(p => p.id !== photo.id)]));
     };
     saveCache();
     try {
@@ -478,8 +491,8 @@ export const storage = {
     if (legacyError) throw legacyError;
     const { error } = await supabase.from('evolution_photos').delete().eq('id', photoId);
     if (error) throw error;
-    const all: EvolutionPhoto[] = JSON.parse(cacheStorage.getItem(CACHE_KEYS.PHOTOS) ?? '[]');
-    cacheStorage.setItem(CACHE_KEYS.PHOTOS, JSON.stringify(all.filter(p => p.id !== photoId)));
+    const all = cacheStorage.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []);
+    persistOutbox(cacheStorage, CACHE_KEYS.PHOTOS, all.filter(p => p.id !== photoId));
   },
 
   updatePhotoNotes: async (photoId: string, notes: string): Promise<void> => {
@@ -505,6 +518,7 @@ export const storage = {
 
     const { data: routineRows, error: rErr } = routinesResult;
     let safeRoutineRows = routineRows;
+    let completeSnapshot = !rErr && !!routineRows && !agendaResult.error;
 
     if (rErr || !safeRoutineRows) {
       console.warn('fetchAdminRoutines fallback for admin_routines table:', rErr?.message);
@@ -516,11 +530,18 @@ export const storage = {
     const exercisesByRoutine: Record<string, AdminExercise[]> = {};
 
     if (routineIds.length > 0) {
-      const { data: exRows } = await supabase
+      const { data: exRows, error: exercisesError } = await supabase
         .from('admin_exercises')
         .select('*')
         .in('routine_id', routineIds)
         .order('sort_order', { ascending: true });
+
+      if (exercisesError) {
+        completeSnapshot = false;
+        const previous = cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
+        if (!previous.length) throw exercisesError;
+        for (const routine of previous) exercisesByRoutine[routine.id] = routine.exercises;
+      }
 
       if (exRows) {
         exRows.forEach(row => {
@@ -532,8 +553,8 @@ export const storage = {
     }
 
     // Merge Supabase data with local cache:
-    const localCached: AdminRoutine[] = JSON.parse(cacheStorage.getItem('cadu_ponce_admin_routines') ?? '[]');
-    const deletedList: string[] = JSON.parse(cacheStorage.getItem('cadu_ponce_deleted_routines') ?? '[]');
+    const localCached = cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
+    const deletedList = cacheStorage.readJson<string[]>('cadu_ponce_deleted_routines', []);
     const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
 
     // ONLY check unique ID — NEVER block by routine name!
@@ -577,7 +598,7 @@ export const storage = {
             if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
           }
         }
-        cacheStorage.setItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
+        cacheStorage.setRemoteItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
 
         for (const ev of cloudEvents) {
           if (ev.type === 'assigned_routine' && ev.notes) {
@@ -599,10 +620,10 @@ export const storage = {
 
     // Clean out deleted routines and workouts from local caches
     const finalRoutines = merged.filter(r => !isDeleted(r.id));
-    cacheStorage.setItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
+    if (completeSnapshot) cacheStorage.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
 
-    const cleanWorkouts = storage.getWorkouts().filter(w => !isDeleted(w.id));
-    cacheStorage.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
+    const cleanWorkouts = cacheStorage.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []).filter(w => !isDeleted(w.id));
+    if (completeSnapshot) cacheStorage.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
 
     return finalRoutines;
   },
@@ -610,8 +631,7 @@ export const storage = {
 
   /** Returns cached routines (sync, used while async fetch is in-flight). */
   getAdminRoutines: (): AdminRoutine[] => {
-    const data = cacheStorage.getItem('cadu_ponce_admin_routines');
-    return data ? JSON.parse(data) : [];
+    return cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
   },
 
   /** Save a prescription to its dedicated tables, with failures visible to callers. */
@@ -647,8 +667,8 @@ export const storage = {
       const { error } = await supabase.from('admin_exercises').delete().eq('routine_id', routine.id).in('id', removed);
       if (error) throw error;
     }
-    const all: AdminRoutine[] = JSON.parse(cache.getItem('cadu_ponce_admin_routines') ?? '[]');
-    cache.setItem('cadu_ponce_admin_routines', JSON.stringify([routine, ...all.filter(r => r.id !== routine.id)]));
+    const all = cache.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
+    cache.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify([routine, ...all.filter(r => r.id !== routine.id)]), { preserveLocal: true });
   },
 
   saveAdminRoutines: async (routines: AdminRoutine[]): Promise<void> => {
@@ -664,24 +684,24 @@ export const storage = {
     const { data, error } = await supabase.rpc('delete_admin_routine', { p_routine_id: id });
     if (error) throw error;
     if (!data) throw new Error('Rotina não encontrada. Atualize a lista.');
-    const routines: AdminRoutine[] = JSON.parse(cache.getItem('cadu_ponce_admin_routines') ?? '[]');
-    cache.setItem('cadu_ponce_admin_routines', JSON.stringify(routines.filter(r => r.id !== id)));
-    const workouts: Workout[] = JSON.parse(cache.getItem(CACHE_KEYS.WORKOUTS) ?? '[]');
-    cache.setItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts.filter(w => w.routineId !== id)));
+    const routines = cache.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
+    cache.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify(routines.filter(r => r.id !== id)), { preserveLocal: true });
+    const workouts = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts.filter(w => w.routineId !== id)), { preserveLocal: true });
   },
 
   fetchAgendaEvents: async (): Promise<any[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('agenda_events')
-      .select('*');
+      .select('*')
+      .neq('type', 'media_storage');
       
     if (error || !data) {
-      const cached = cacheStorage.getItem('cp_agenda_events');
-      return cached ? JSON.parse(cached) : [];
+      return cacheStorage.readJson<any[]>('cp_agenda_events', []).filter(event => event.type !== 'media_storage');
     }
     
-    const events = data.map(row => ({
+    const events = data.filter(row => row.type !== 'media_storage').map(row => ({
       id: row.id,
       studentId: row.student_id,
       studentName: row.student_name,
@@ -694,13 +714,12 @@ export const storage = {
       createdAt: row.created_at
     }));
     
-    cacheStorage.setItem('cp_agenda_events', JSON.stringify(events));
+    cacheStorage.setRemoteItem('cp_agenda_events', JSON.stringify(events));
     return events;
   },
 
   getAgendaEvents: (): any[] => {
-    const data = cacheStorage.getItem('cp_agenda_events');
-    return data ? JSON.parse(data) : [];
+    return cacheStorage.readJson<any[]>('cp_agenda_events', []).filter(event => event.type !== 'media_storage');
   },
 
   saveAgendaEvent: async (event: any): Promise<void> => {
@@ -718,111 +737,97 @@ export const storage = {
       created_at: event.createdAt
     });
     
-    if (error) console.error('saveAgendaEvent error:', error.message);
+    if (error) throw error;
 
     // Update local cache
-    const events = storage.getAgendaEvents();
+    const events = cacheStorage.readJson<any[]>('cp_agenda_events', []).filter(item => item.type !== 'media_storage');
     const existingIdx = events.findIndex((e: any) => e.id === event.id);
     if (existingIdx >= 0) {
       events[existingIdx] = event;
     } else {
       events.push(event);
     }
-    cacheStorage.setItem('cp_agenda_events', JSON.stringify(events));
+    cacheStorage.setRemoteItem('cp_agenda_events', JSON.stringify(events));
   },
 
   deleteAgendaEvent: async (id: string): Promise<void> => {
     const cacheStorage = cacheForUser(getCacheUser());
     const { error } = await supabase.from('agenda_events').delete().eq('id', id);
-    if (error) console.error('deleteAgendaEvent error:', error.message);
+    if (error) throw error;
     
-    const events = storage.getAgendaEvents();
+    const events = cacheStorage.readJson<any[]>('cp_agenda_events', []).filter(event => event.type !== 'media_storage');
     const newEvents = events.filter((e: any) => e.id !== id);
-    cacheStorage.setItem('cp_agenda_events', JSON.stringify(newEvents));
+    cacheStorage.setRemoteItem('cp_agenda_events', JSON.stringify(newEvents));
   },
 
   // ── Custom Exercises (Biblioteca de Exercícios) ───────────────────────────
 
-  /** Fetches custom exercises from Supabase. */
-  fetchCustomExercises: async (): Promise<any[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('custom_exercises')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
-    const localExercises: any[] = cached ? JSON.parse(cached) : [];
-
-    if (error || !data || data.length === 0) {
-      if (error) console.warn('fetchCustomExercises error:', error.message);
-      // If DB is empty or fails, return local cache (do NOT overwrite it with [])
-      return localExercises;
-    }
-
-    const dbExercises = data.map(row => ({
-      id: row.id,
-      title: row.title,
-      group: row.group,
-      category: row.category,
-      videoUrl: row.video_url ?? undefined,
-      videoFileUrl: row.video_file_url ?? undefined,
-      isCustom: true,
-      image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200',
-      description: 'Exercício personalizado adicionado pelo treinador.',
+  /** Read confirmed cloud rows while preserving explicitly unsaved legacy drafts. */
+  fetchCustomExercises: async (): Promise<LibraryExercise[]> => {
+    const cache = cacheForUser(getCacheUser());
+    const { data, error } = await supabase.from('custom_exercises').select('*').order('created_at', { ascending: false });
+    const local = readLibraryCache(cache);
+    if (error || !data) return local.all;
+    const remote: LibraryExercise[] = data.map(row => ({
+      id: row.id, title: row.title, group: row.group ?? '', category: row.category ?? '',
+      videoUrl: row.video_url ?? undefined, videoFileUrl: row.video_file_url ?? undefined,
+      image: row.image ?? '', description: row.description ?? '', isCustom: row.is_custom ?? true,
+      isFavorite: local.favorites[row.id] ?? local.all.find(item => item.id === row.id)?.isFavorite ?? false,
+      syncStatus: 'synced',
     }));
-
-    // Merge DB exercises with local exercises
-    const dbIds = new Set(dbExercises.map(e => e.id));
-    const unsyncedLocals = localExercises.filter(e => !dbIds.has(e.id));
-    const merged = [...dbExercises, ...unsyncedLocals];
-
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(merged), cacheStorage);
-    return merged;
+    const remoteIds = new Set(remote.map(item => item.id));
+    // A legacy same-ID draft may contain images/notes that the old client never
+    // uploaded. Back it up too; never erase it just because that ID exists remotely.
+    const drafts = local.all.filter(item => item.syncStatus !== 'synced' &&
+      (!remoteIds.has(item.id) || hasExerciseChanges(item, remote.find(row => row.id === item.id)!)))
+      .map(item => ({ ...item, syncStatus: 'pending' as const }));
+    storeLibrarySnapshot(cache, remote, drafts);
+    const visible = remote.map(item => {
+      const draft = drafts.find(localItem => localItem.id === item.id);
+      if (!draft) return item;
+      return { ...item, ...draft, syncStatus: 'pending' as const };
+    });
+    return [...visible, ...drafts.filter(item => !remoteIds.has(item.id))];
   },
 
-  /** Upserts a custom exercise to Supabase and updates local cache safely. */
-  saveCustomExercise: async (exercise: any): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    // Upsert to Supabase
-    try {
-      const { error } = await supabase.from('custom_exercises').upsert({
-        id: exercise.id,
-        title: exercise.title,
-        group: exercise.group,
-        category: exercise.category,
-        video_url: exercise.videoUrl ?? null,
-        video_file_url: exercise.videoFileUrl ?? null,
-      });
-      if (error) console.error('saveCustomExercise error:', error.message);
-    } catch (err) {
-      console.warn('saveCustomExercise cloud error:', err);
-    }
-
-    // Always update local cache safely
-    try {
-      const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
-      const all: any[] = cached ? JSON.parse(cached) : [];
-      const idx = all.findIndex((e: any) => e.id === exercise.id);
-      if (idx >= 0) all[idx] = exercise; else all.unshift(exercise);
-      safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all), cacheStorage);
-    } catch (err) {
-      console.warn('saveCustomExercise local cache error:', err);
+  /** Confirm database persistence before changing the visible library or its cache. */
+  saveCustomExercise: async (exercise: LibraryExercise): Promise<void> => {
+    const cache = cacheForUser(getCacheUser());
+    const saved: LibraryExercise = { ...exercise,
+      image: normalizeStoredMediaReference(exercise.image) ?? '',
+      videoUrl: normalizeStoredMediaReference(exercise.videoUrl) ?? undefined,
+      videoFileUrl: normalizeStoredMediaReference(exercise.videoFileUrl) ?? undefined,
+      syncStatus: 'synced',
+    };
+    const { data, error } = await supabase.from('custom_exercises').upsert({
+      id: saved.id, title: saved.title, group: saved.group, category: saved.category,
+      video_url: saved.videoUrl ?? null, video_file_url: saved.videoFileUrl ?? null,
+      image: saved.image || null, description: saved.description ?? '', is_custom: saved.isCustom,
+    }).select('id').single();
+    if (error) throw error;
+    if (!data?.id) throw new Error('Não foi possível confirmar o salvamento do exercício. Tente novamente.');
+    const local = readLibraryCache(cache);
+    const others = local.all.filter(item => item.id !== saved.id);
+    const cached = storeLibrarySnapshot(cache, [saved, ...others.filter(item => item.syncStatus === 'synced')],
+      others.filter(item => item.syncStatus !== 'synced'));
+    Object.assign(exercise, saved);
+    if (!cached && local.all.some(item => item.id === saved.id && item.syncStatus !== 'synced' && hasExerciseChanges(item, saved))) {
+      throw new Error('O exercício foi salvo na nuvem, mas o rascunho antigo não pôde ser atualizado neste dispositivo. Libere espaço e salve novamente.');
     }
   },
 
-  /** Deletes a custom exercise from Supabase. */
   deleteCustomExercise: async (id: string): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
+    const cache = cacheForUser(getCacheUser());
+    const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
+    if (error) throw error;
+    const remaining = readLibraryCache(cache).all.filter(item => item.id !== id);
     try {
-      const { error } = await supabase.from('custom_exercises').delete().eq('id', id);
-      if (error) console.error('deleteCustomExercise error:', error.message);
-    } catch (err) {
-      console.warn('deleteCustomExercise error:', err);
+      markLibraryExerciseDeleted(cache, id);
+    } catch {
+      throw new Error('Exercício removido da nuvem, mas não foi possível registrar a remoção do rascunho neste dispositivo. Libere espaço e tente novamente.');
     }
-    const cached = cacheStorage.getItem('cadu_ponce_exercises_v3');
-    const all: any[] = cached ? JSON.parse(cached) : [];
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(all.filter((e: any) => e.id !== id)), cacheStorage);
+    storeLibrarySnapshot(cache, remaining.filter(item => item.syncStatus === 'synced'),
+      remaining.filter(item => item.syncStatus !== 'synced'));
   },
 
   // ── Muscle Groups & Categories ────────────────────────────────────────────
@@ -834,23 +839,18 @@ export const storage = {
       .select('name')
       .order('id', { ascending: true });
 
-    if (error || !data || data.length === 0) return storage.getMuscleGroups();
+    if (error || !data) return cacheStorage.readJson<string[]>('cadu_ponce_muscle_groups', ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core']);
     const groups = data.map(r => r.name as string);
-    cacheStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
+    cacheStorage.setRemoteItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
     return groups;
   },
 
   getMuscleGroups: (): string[] => {
-    const data = cacheStorage.getItem('cadu_ponce_muscle_groups');
-    return data ? JSON.parse(data) : ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core'];
+    return cacheStorage.readJson<string[]>('cadu_ponce_muscle_groups', ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core']);
   },
 
-  saveMuscleGroups: async (groups: string[]): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    cacheStorage.setItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
-    await supabase.from('muscle_groups').delete().neq('id', 0);
-    if (groups.length > 0) await supabase.from('muscle_groups').insert(groups.map(name => ({ name })));
-  },
+  addMuscleGroup: (name: string): Promise<string[]> => changeNamedValue('muscle_groups', name, false),
+  removeMuscleGroup: (name: string): Promise<string[]> => changeNamedValue('muscle_groups', name, true),
 
   fetchCategories: async (): Promise<string[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
@@ -859,23 +859,18 @@ export const storage = {
       .select('name')
       .order('id', { ascending: true });
 
-    if (error || !data || data.length === 0) return storage.getCategories();
+    if (error || !data) return cacheStorage.readJson<string[]>('cadu_ponce_categories', ['Musculação', 'Funcional', 'Alongamento']);
     const cats = data.map(r => r.name as string);
-    cacheStorage.setItem('cadu_ponce_categories', JSON.stringify(cats));
+    cacheStorage.setRemoteItem('cadu_ponce_categories', JSON.stringify(cats));
     return cats;
   },
 
   getCategories: (): string[] => {
-    const data = cacheStorage.getItem('cadu_ponce_categories');
-    return data ? JSON.parse(data) : ['Musculação', 'Funcional', 'Alongamento'];
+    return cacheStorage.readJson<string[]>('cadu_ponce_categories', ['Musculação', 'Funcional', 'Alongamento']);
   },
 
-  saveCategories: async (categories: string[]): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    cacheStorage.setItem('cadu_ponce_categories', JSON.stringify(categories));
-    await supabase.from('exercise_categories').delete().neq('id', 0);
-    if (categories.length > 0) await supabase.from('exercise_categories').insert(categories.map(name => ({ name })));
-  },
+  addCategory: (name: string): Promise<string[]> => changeNamedValue('exercise_categories', name, false),
+  removeCategory: (name: string): Promise<string[]> => changeNamedValue('exercise_categories', name, true),
 
   uploadExerciseVideo: async (file: File, exerciseId: string): Promise<string> => {
     const cacheStorage = cacheForUser(getCacheUser());
@@ -912,7 +907,8 @@ export const storage = {
     let entry: WorkoutLog = { ...log, syncStatus: 'pending', syncError: undefined };
     const saveCache = () => {
       const all = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
-      cache.setItem('cadu_workout_logs', JSON.stringify([entry, ...all.filter(item => item.id !== entry.id)]));
+      if (entry.syncStatus === 'pending') persistOutbox(cache, 'cadu_workout_logs', [entry, ...all.filter(item => item.id !== entry.id)]);
+      else cache.setRemoteItem('cadu_workout_logs', JSON.stringify([entry, ...all.filter(item => item.id !== entry.id)]));
     };
     saveCache();
     try {
@@ -950,7 +946,7 @@ export const storage = {
     const pending = latest.filter(log => log.studentId === studentId && log.syncStatus === 'pending');
     const pendingIds = new Set(pending.map(log => log.id));
     const merged = [...pending, ...logs.filter(log => !pendingIds.has(log.id))];
-    cache.setItem('cadu_workout_logs', JSON.stringify([...latest.filter(log => log.studentId !== studentId), ...merged]));
+    cache.setRemoteItem('cadu_workout_logs', JSON.stringify([...latest.filter(log => log.studentId !== studentId), ...merged]));
     return merged;
   },
 
@@ -1040,7 +1036,7 @@ export const storage = {
     try {
       if (!notifPayload.id) notifPayload.id = `local_${Date.now()}`;
       const existing = JSON.parse(cacheStorage.getItem('cadu_notifs_admin') ?? '[]');
-      cacheStorage.setItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing.filter((item: any) => item.id !== notifUuid)]));
+      cacheStorage.setRemoteItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing.filter((item: any) => item.id !== notifUuid)]));
       window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notifPayload }));
     } catch {}
   },
@@ -1148,7 +1144,7 @@ export const storage = {
             createdAt: row.created_at,
           };
         });
-        cacheStorage.setItem('cadu_financial_invoices', JSON.stringify(invoices));
+        cacheStorage.setRemoteItem('cadu_financial_invoices', JSON.stringify(invoices));
         return invoices;
       }
     } catch (e) {
@@ -1177,8 +1173,7 @@ export const storage = {
       paidAt: invoice.paidAt,
     };
 
-    try {
-      await supabase.from('agenda_events').upsert({
+    const { error } = await supabase.from('agenda_events').upsert({
         id: invoice.id,
         student_id: invoice.studentId || null,
         student_name: invoice.studentName,
@@ -1188,31 +1183,20 @@ export const storage = {
         end_time: invoice.paymentMethod,
         type: 'financial_invoice',
         notes: JSON.stringify(payload),
-      });
-    } catch (e) {
-      console.warn('Erro ao salvar fatura no Supabase:', e);
-    }
-
-    try {
-      const cached: FinancialInvoice[] = JSON.parse(cacheStorage.getItem('cadu_financial_invoices') || '[]');
-      const filtered = cached.filter(i => i.id !== invoice.id);
-      cacheStorage.setItem('cadu_financial_invoices', JSON.stringify([...filtered, invoice]));
-    } catch {}
+    });
+    if (error) throw error;
+    const cached = cacheStorage.readJson<FinancialInvoice[]>('cadu_financial_invoices', []);
+    const filtered = cached.filter(i => i.id !== invoice.id);
+    cacheStorage.setRemoteItem('cadu_financial_invoices', JSON.stringify([...filtered, invoice]));
   },
 
   /** Exclui uma fatura do Supabase e do cache */
   deleteFinancialInvoice: async (id: string): Promise<void> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    try {
-      await supabase.from('agenda_events').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Erro ao deletar fatura no Supabase:', e);
-    }
-
-    try {
-      const cached: FinancialInvoice[] = JSON.parse(cacheStorage.getItem('cadu_financial_invoices') || '[]');
-      cacheStorage.setItem('cadu_financial_invoices', JSON.stringify(cached.filter(i => i.id !== id)));
-    } catch {}
+    const { error } = await supabase.from('agenda_events').delete().eq('id', id);
+    if (error) throw error;
+    const cached = cacheStorage.readJson<FinancialInvoice[]>('cadu_financial_invoices', []);
+    cacheStorage.setRemoteItem('cadu_financial_invoices', JSON.stringify(cached.filter(i => i.id !== id)));
   },
 
   // ── Formas de Pagamento Configuráveis pelo Personal ─────────────────────────
@@ -1238,7 +1222,7 @@ export const storage = {
 
       if (!error && data?.notes) {
         const parsed = JSON.parse(data.notes);
-        cacheStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(parsed));
+        cacheStorage.setRemoteItem('cadu_trainer_payment_settings', JSON.stringify(parsed));
         return { ...defaultSettings, ...parsed };
       }
     } catch {}
@@ -1254,8 +1238,7 @@ export const storage = {
   /** Salva as configurações de pagamento do personal no Supabase */
   savePaymentSettings: async (settings: TrainerPaymentSettings): Promise<void> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    try {
-      await supabase.from('agenda_events').upsert({
+    const { error } = await supabase.from('agenda_events').upsert({
         id: '00000000-0000-4000-8000-000000000002',
         title: 'Configurações de Pagamento',
         date: '2026-01-01',
@@ -1263,13 +1246,8 @@ export const storage = {
         end_time: '00:00',
         type: 'trainer_payment_settings',
         notes: JSON.stringify(settings),
-      });
-    } catch (e) {
-      console.warn('Erro ao salvar formas de pagamento no Supabase:', e);
-    }
-
-    try {
-      cacheStorage.setItem('cadu_trainer_payment_settings', JSON.stringify(settings));
-    } catch {}
+    });
+    if (error) throw error;
+    cacheStorage.setRemoteItem('cadu_trainer_payment_settings', JSON.stringify(settings));
   },
 };

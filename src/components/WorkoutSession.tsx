@@ -11,6 +11,8 @@ import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
+import { initialExerciseLoads, completedWorkoutVolume } from '../lib/workoutSession';
+import logoImg from '../assets/images/cadu_ponce_logo_new.png';
 
 interface WorkoutSessionProps {
   workout: Workout;
@@ -27,6 +29,10 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const completedLog = useRef<WorkoutLog | null>(null);
   const [logSaveMessage, setLogSaveMessage] = useState('');
   const [logSaveFailed, setLogSaveFailed] = useState(false);
+  const [progressError, setProgressError] = useState('');
+  const [savingProgress, setSavingProgress] = useState(false);
+  const progressIds = useRef<Record<string, string>>({});
+  const progressSaving = useRef(false);
 
   const persistCompletedLog = async (log: WorkoutLog) => {
     setLogSaveFailed(false);
@@ -61,16 +67,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const [loads, setLoads] = useState<Record<string, number[]>>(() => {
     const initial: Record<string, number[]> = {};
     workout.exercises.forEach(e => {
-      const setsCount = Math.max(1, Number(e.sets) || 1);
-      const defaultLoads = Array(setsCount).fill(e.currentLoad || 0);
-      if (e.prescribedLoads && e.prescribedLoads.length > 0) {
-        for (let i = 0; i < setsCount; i++) {
-          if (e.prescribedLoads[i] !== undefined && e.prescribedLoads[i] !== 0) {
-            defaultLoads[i] = e.prescribedLoads[i];
-          }
-        }
-      }
-      initial[e.id] = defaultLoads;
+      initial[e.id] = initialExerciseLoads(e);
     });
     return initial;
   });
@@ -226,23 +223,35 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
 
   const currentExercise = workout.exercises[currentIndex];
 
-  const toggleExercise = (id: string) => {
-    const newSet = new Set(completedExercises);
-    if (newSet.has(id)) newSet.delete(id);
-    else {
-      newSet.add(id);
-      // Log progress
-      storage.saveProgress({
-        id: crypto.randomUUID(),
+  const toggleExercise = async (id: string) => {
+    if (progressSaving.current) return;
+    setProgressError('');
+    if (completedExercises.has(id)) {
+      setCompletedExercises(previous => { const next = new Set(previous); next.delete(id); return next; });
+      return;
+    }
+    const exercise = workout.exercises.find(item => item.id === id);
+    if (!exercise) return;
+    progressSaving.current = true;
+    setSavingProgress(true);
+    progressIds.current[id] ??= crypto.randomUUID();
+    try {
+      await storage.saveProgress({
+        id: progressIds.current[id],
         studentId: workout.studentId,
-        exerciseName: currentExercise.name,
-        load: Math.max(...(loads[currentExercise.id] || [0])),
-        reps: parseInt(currentExercise.reps) || 0,
-        notes: userNotes[currentExercise.id],
+        exerciseName: exercise.name,
+        load: Math.max(0, ...(loads[id] || [])),
+        reps: parseInt(exercise.reps) || 0,
+        notes: userNotes[id],
         date: new Date().toISOString(),
       });
+      setCompletedExercises(previous => new Set([...previous, id]));
+    } catch {
+      setProgressError('Não foi possível salvar o exercício. Verifique a conexão e tente novamente.');
+    } finally {
+      progressSaving.current = false;
+      setSavingProgress(false);
     }
-    setCompletedExercises(newSet);
   };
 
   const updateLoad = (id: string, setIndex: number, value: number) => {
@@ -254,16 +263,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   };
 
   if (isFinished) {
-    let totalLoad = 0;
-    workout.exercises.forEach(ex => {
-      const exLoads = loads[ex.id] || [];
-      const setsCount = Math.max(1, Number(ex.sets) || 1);
-      const setsDone = getCheckedSetsForExercise(ex.id, setsCount).filter(c => c).length;
-      const reps = parseInt(ex.reps) || 1;
-      for (let i = 0; i < setsDone; i++) {
-        totalLoad += (exLoads[i] || 0) * reps;
-      }
-    });
+    const totalLoad = completedWorkoutVolume(workout.exercises, loads, checkedSets);
     return (
       <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col items-center justify-center p-8 overflow-hidden">
         <motion.div 
@@ -360,6 +360,13 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
     );
   }
 
+  if (!currentExercise) return (
+    <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center gap-4 p-6 text-white">
+      <p>Este treino ainda não tem exercícios. Entre em contato com o personal.</p>
+      <button onClick={onClose} className="rounded-xl bg-red-600 px-6 py-3">Voltar</button>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col">
       {/* Screen-wide rest alert blinking flash */}
@@ -429,7 +436,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
               <div className="bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-700">
                 <div className="aspect-video bg-slate-900 rounded-2xl mb-6 flex items-center justify-center overflow-hidden border border-slate-700 relative">
                   <img 
-                    src="/src/assets/images/cadu_ponce_logo_new.png" 
+                    src={logoImg}
                     className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm"
                   />
                   <div className="relative z-10 flex flex-col items-center text-white">
@@ -545,24 +552,26 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       </div>
 
       {/* Footer Controls */}
+      {progressError && <p role="alert" className="fixed bottom-28 left-4 right-4 z-50 rounded-xl bg-red-950 p-3 text-sm text-white">{progressError}</p>}
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-slate-950 border-t border-slate-800 z-50 flex items-center space-x-4">
         <button 
           onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
-          disabled={currentIndex === 0}
+          disabled={currentIndex === 0 || savingProgress}
           className="p-4 bg-slate-800 text-slate-400 rounded-2xl disabled:opacity-20 active:scale-95 transition-transform"
         >
           <ChevronLeft className="w-7 h-7" />
         </button>
         
         <button 
-          onClick={() => toggleExercise(currentExercise.id)}
+          onClick={() => void toggleExercise(currentExercise.id)}
+          disabled={savingProgress}
           className={`flex-1 p-5 rounded-2xl font-black text-sm uppercase italic tracking-tighter flex items-center justify-center space-x-2 transition-all active:scale-[0.98] ${
             completedExercises.has(currentExercise.id) 
             ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' 
             : 'bg-red-600 text-white shadow-lg shadow-red-900/20'
           }`}
         >
-          {completedExercises.has(currentExercise.id) ? (
+          {savingProgress ? <span>SALVANDO...</span> : completedExercises.has(currentExercise.id) ? (
             <><Check className="w-5 h-5" /> <span>CONCLUÍDO</span></>
           ) : (
             <span>FINALIZAR SÉRIE</span>
@@ -570,6 +579,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         </button>
 
         <button 
+          disabled={savingProgress}
           onClick={() => {
             if (currentIndex < workout.exercises.length - 1) {
               setCurrentIndex(currentIndex + 1);

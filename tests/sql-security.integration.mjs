@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 const db = new PGlite();
 const base = new URL('../', import.meta.url);
 const sql = await readFile(new URL('supabase/migrations/20261105125428_secure_access.sql', base), 'utf8');
+const gifSql = await readFile(new URL('supabase/migrations/20261105135939_exercise_gif_uploads.sql', base), 'utf8');
 const bootstrap = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE SCHEMA auth; CREATE SCHEMA storage;
@@ -21,7 +22,14 @@ const bootstrap = `
 await db.exec(bootstrap);
 await db.exec(sql);
 await db.exec(sql);
-assert.equal(await readFile(new URL('supabase_setup.sql', base),'utf8'), sql);
+await db.exec(gifSql);
+await db.exec(gifSql);
+const normalizeSql = value => value.replace(/\r\n/g, '\n').trim();
+assert.equal(normalizeSql(await readFile(new URL('supabase_setup.sql', base),'utf8')), [sql, gifSql].map(normalizeSql).join('\n\n'));
+const gifBucket = (await db.query("SELECT public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id='exercise-videos'")).rows[0];
+assert.equal(gifBucket.public, false);
+assert.equal(Number(gifBucket.file_size_limit), 104857600);
+assert.equal(gifBucket.allowed_mime_types.filter(type => type === 'image/gif').length, 1);
 console.log('PASS migration applies to fresh database and is repeatable');
 
 const a='a0000000-0000-4000-8000-000000000001';

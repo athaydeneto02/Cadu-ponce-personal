@@ -47,7 +47,8 @@ export default function App() {
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('cadu_ponce_theme') as 'light' | 'dark') || 'light';
+    try { return localStorage.getItem('cadu_ponce_theme') === 'dark' ? 'dark' : 'light'; }
+    catch { return 'light'; }
   });
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -165,7 +166,8 @@ export default function App() {
   }, [isAuthenticated, user?.uid, isOnline]);
 
   useEffect(() => {
-    localStorage.setItem('cadu_ponce_theme', theme);
+    // A display preference must not crash the app when browser storage is full.
+    try { localStorage.setItem('cadu_ponce_theme', theme); } catch { /* Keep the current theme in memory. */ }
   }, [theme]);
 
   const handleLogin = async (email: string, password?: string) => {
@@ -281,20 +283,10 @@ export default function App() {
           isDark={theme === 'dark'}
           onClose={() => setIsEditingProfile(false)}
           onSave={async (updatedUser) => {
-            try {
-              await storage.updateProfile(updatedUser);
-              setUser(updatedUser);
-              setIsEditingProfile(false);
-              setNotification({
-                title: "Perfil Atualizado",
-                body: "Seus dados pessoais foram salvos com sucesso."
-              });
-            } catch (err) {
-              setNotification({
-                title: "Erro ao salvar ❌",
-                body: "Não foi possível atualizar seu perfil. Tente novamente."
-              });
-            }
+            await storage.updateProfile(updatedUser);
+            setUser(updatedUser);
+            setIsEditingProfile(false);
+            setNotification({ title: "Perfil Atualizado", body: "Seus dados pessoais foram salvos com sucesso." });
           }}
         />
       );

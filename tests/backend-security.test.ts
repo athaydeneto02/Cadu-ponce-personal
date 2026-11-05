@@ -62,6 +62,9 @@ test('media signatures reject HTML disguised as a video or image', () => {
   assert.equal(matchesMediaType(Buffer.from('<html>hello</html>'), 'image/jpeg'), false);
   assert.equal(matchesMediaType(Buffer.from([255, 216, 255, 224]), 'image/jpeg'), true);
   assert.equal(matchesMediaType(Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]), 'video/mp4'), true);
+  assert.equal(matchesMediaType(Buffer.from('GIF89a'), 'image/gif'), true);
+  assert.equal(matchesMediaType(Buffer.from('GIF87a'), 'image/gif'), true);
+  assert.equal(matchesMediaType(Buffer.from('<html>GIF89a</html>'), 'image/gif'), false);
 });
 
 test('account creation has no default password and validates privileged inputs', () => {

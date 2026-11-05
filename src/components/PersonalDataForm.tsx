@@ -4,7 +4,7 @@ import { UserProfile } from '../types';
 
 interface PersonalDataFormProps {
   user: UserProfile | null;
-  onSave: (updatedUser: UserProfile) => void;
+  onSave: (updatedUser: UserProfile) => Promise<void> | void;
   onClose: () => void;
   isDark?: boolean;
 }
@@ -24,11 +24,16 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
   // Instagram
   // Note: For the admin, their instagram is in metadata.instagram too.
   const [instagram, setInstagram] = useState(user?.metadata?.instagram || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (user) {
-      onSave({
+    if (!user || isSaving) return;
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await onSave({
         ...user,
         name: `${firstName} ${lastName}`.trim(),
         metadata: {
@@ -37,6 +42,10 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
           instagram: instagram
         }
       } as UserProfile);
+    } catch {
+      setSaveError('Não foi possível salvar seus dados. Verifique a conexão e tente novamente.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -45,6 +54,7 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
       {/* Header Section */}
       <div className="pt-6 px-4 pb-8 shrink-0">
         <button 
+          disabled={isSaving}
           onClick={onClose} 
           className="flex items-center text-white/80 text-sm font-medium hover:text-white transition mb-6"
         >
@@ -130,11 +140,13 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
             />
           </div>
 
-          <button 
+          {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
+          <button
             type="submit"
+            disabled={isSaving}
             className="w-full bg-[#0070f3] text-white font-medium py-3 rounded-lg mt-8 active:scale-[0.98] transition-transform"
           >
-            Salvar
+            {isSaving ? 'Salvando...' : 'Salvar'}
           </button>
 
         </form>

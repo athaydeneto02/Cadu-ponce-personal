@@ -15,6 +15,7 @@ import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
 import { useMediaUrl, getCachedVideoBlobUrl } from '../lib/mediaDb';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
+import { isImageMedia, youtubeVideoId } from '../lib/mediaPresentation';
 import confetti from 'canvas-confetti';
 
 interface AdminWorkoutSessionProps {
@@ -110,8 +111,9 @@ export const getExerciseVideo = (ex: AdminExercise): string => {
         }
         return false;
       });
-      if (match && match.videoUrl && !match.videoUrl.includes('mov_bbb.mp4')) {
-        return match.videoUrl;
+      const matchedVideo = match?.videoFileUrl || match?.videoUrl;
+      if (matchedVideo && !matchedVideo.includes('mov_bbb.mp4')) {
+        return matchedVideo;
       }
     }
   } catch {}
@@ -120,9 +122,9 @@ export const getExerciseVideo = (ex: AdminExercise): string => {
 
 function VideoModalInner({ name, url, onClose }: { name: string; url?: string; onClose: () => void }) {
   const resolved = useMediaUrl(url);
-  const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
-  const m = resolved ? resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/) : null;
-  const ytId = m ? m[1] : null;
+  const ytId = youtubeVideoId(resolved);
+  const isYt = !!ytId;
+  const isImage = isImageMedia(url) || isImageMedia(resolved);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoSrc, setVideoSrc] = useState<string>(resolved || '');
@@ -132,7 +134,7 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    if (!resolved || isYt) {
+    if (!resolved || isYt || isImage) {
       setVideoSrc(resolved || '');
       setIsLoading(false);
       return;
@@ -154,7 +156,7 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
     });
 
     return () => { isMounted = false; };
-  }, [resolved, isYt, reloadKey]);
+  }, [resolved, isYt, isImage, reloadKey]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -202,6 +204,8 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
               allowFullScreen
             />
           </div>
+        ) : resolved && isImage ? (
+          <img src={resolved} alt={`Execução de ${name}`} className="max-w-full max-h-[65vh] object-contain rounded-2xl" />
         ) : resolved ? (
           <div className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-black flex items-center justify-center min-h-[260px]">
             {isLoading && !hasError && (

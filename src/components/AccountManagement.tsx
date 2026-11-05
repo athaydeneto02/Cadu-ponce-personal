@@ -77,9 +77,11 @@ import NotificationsModal from './NotificationsModal';
 import { UserProfile, Workout, TrainerPaymentSettings } from '../types';
 import { storage, safeSetItem } from '../lib/storage';
 import { supabase } from '../lib/supabase';
-import { useMediaUrl, resolveMediaUrl } from '../lib/mediaDb';
+import { useMediaUrl, resolveMediaUrl, normalizeStoredMediaReference } from '../lib/mediaDb';
+import { LibraryExercise, exerciseVideoFields } from '../lib/exerciseLibrary';
+import { youtubeVideoId, isImageMedia } from '../lib/mediaPresentation';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
-import { TRAINER_CONFIG } from '../lib/trainerConfig';
+import { TRAINER_CONFIG, getTrainerWhatsAppUrl } from '../lib/trainerConfig';
 
 function PrivateImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
   const resolved = useMediaUrl(src);
@@ -162,8 +164,7 @@ function triggerVibration() {
 
 function ExerciseVideoPlayer({ url, className }: { url?: string; className?: string }) {
   const resolved = useMediaUrl(url);
-  const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
-  const ytId = isYt ? (resolved.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1] ?? null) : null;
+  const ytId = youtubeVideoId(resolved);
 
   if (!resolved) {
     return (
@@ -173,7 +174,9 @@ function ExerciseVideoPlayer({ url, className }: { url?: string; className?: str
     );
   }
 
-  if (isYt && ytId) {
+  if (isImageMedia(url) || isImageMedia(resolved)) return <img src={resolved} alt="Demonstração do exercício" className={className} />;
+
+  if (ytId) {
     return (
       <iframe
         src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
@@ -261,10 +264,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const handleSavePaymentSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPaymentSettings(true);
-    await storage.savePaymentSettings(paymentSettings);
-    setIsSavingPaymentSettings(false);
-    setPaymentSettingsSavedToast(true);
-    setTimeout(() => setPaymentSettingsSavedToast(false), 3500);
+    try {
+      await storage.savePaymentSettings(paymentSettings);
+      setPaymentSettingsSavedToast(true);
+      setTimeout(() => setPaymentSettingsSavedToast(false), 3500);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar as formas de pagamento.');
+    } finally {
+      setIsSavingPaymentSettings(false);
+    }
   };
 
   const [adminNotifs, setAdminNotifs] = useState<any[]>([]);
@@ -388,30 +396,38 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
   };
 
-  const handleAddOption = () => {
-    if (!newOptionValue.trim()) return;
-    if (editingOptionType === 'muscle') {
-      const updated = [...appMuscleGroups, newOptionValue.trim()];
-      setAppMuscleGroups(updated);
-      storage.saveMuscleGroups(updated);
-    } else {
-      const updated = [...appCategories, newOptionValue.trim()];
-      setAppCategories(updated);
-      storage.saveCategories(updated);
-    }
-    setNewOptionValue('');
+  const optionsSaveLock = useRef(false);
+  const handleAddOption = async () => {
+    if (!newOptionValue.trim() || optionsSaveLock.current) return;
+    optionsSaveLock.current = true;
+    try {
+      if (editingOptionType === 'muscle') {
+        const updated = await storage.addMuscleGroup(newOptionValue.trim());
+        setAppMuscleGroups(updated);
+      } else {
+        const updated = await storage.addCategory(newOptionValue.trim());
+        setAppCategories(updated);
+      }
+      setNewOptionValue('');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar a opção. Tente novamente.');
+    } finally { optionsSaveLock.current = false; }
   };
 
-  const handleRemoveOption = (val: string) => {
-    if (editingOptionType === 'muscle') {
-      const updated = appMuscleGroups.filter(g => g !== val);
-      setAppMuscleGroups(updated);
-      storage.saveMuscleGroups(updated);
-    } else {
-      const updated = appCategories.filter(c => c !== val);
-      setAppCategories(updated);
-      storage.saveCategories(updated);
-    }
+  const handleRemoveOption = async (val: string) => {
+    if (optionsSaveLock.current) return;
+    optionsSaveLock.current = true;
+    try {
+      if (editingOptionType === 'muscle') {
+        const updated = await storage.removeMuscleGroup(val);
+        setAppMuscleGroups(updated);
+      } else {
+        const updated = await storage.removeCategory(val);
+        setAppCategories(updated);
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível excluir a opção. Tente novamente.');
+    } finally { optionsSaveLock.current = false; }
   };
 
   const [activeTab, setActiveTab] = useState<'home' | 'menu'>('home');
@@ -553,7 +569,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [exerciseTab, setExerciseTab] = useState<'grupos' | 'categorias'>('grupos');
   const [exerciseFilter, setExerciseFilter] = useState<'favoritos' | 'app' | 'mine'>('mine');
 
-  const [exercises, setExercises] = useState(() => {
+  const [exercises, setExercises] = useState<LibraryExercise[]>(() => {
     const saved = storage.getCacheItem('cadu_ponce_exercises_v3');
     if (saved) {
       try {
@@ -576,23 +592,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       storage.fetchCategories(),
       storage.fetchAgendaEvents(),
     ]).then(([routines, customExercises, muscleGroups, categories, agendaEvents]) => {
-      if (routines && routines.length > 0) setAdminRoutines(routines);
-      if (customExercises && customExercises.length > 0) setExercises(customExercises);
-      if (muscleGroups && muscleGroups.length > 0) setAppMuscleGroups(muscleGroups);
-      if (categories && categories.length > 0) setAppCategories(categories);
+      if (routines) setAdminRoutines(routines);
+      if (customExercises) setExercises(customExercises);
+      if (muscleGroups) setAppMuscleGroups(muscleGroups);
+      if (categories) setAppCategories(categories);
       setIsDataLoaded(true);
     }).catch(() => setIsDataLoaded(true));
   }, []);
-
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    storage.saveMuscleGroups(appMuscleGroups as string[]);
-  }, [appMuscleGroups, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    storage.saveCategories(appCategories as string[]);
-  }, [appCategories, isDataLoaded]);
 
   useEffect(() => {
     if (selectedDetailTab === 'progresso' && selectedStudent?.uid) {
@@ -604,26 +610,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
   }, [selectedDetailTab, selectedStudent?.uid]);
 
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    // Sync custom exercises to Supabase: save only newly added/modified ones
-    // (bulk save - iterate and upsert each)
-    const cached = storage.getCacheItem('cadu_ponce_exercises_v3');
-    const cachedList = cached ? JSON.parse(cached) : [];
-    exercises.forEach((ex: any) => {
-      const was = cachedList.find((c: any) => c.id === ex.id);
-      if (!was || JSON.stringify(was) !== JSON.stringify(ex)) {
-        storage.saveCustomExercise(ex);
-      }
-    });
-    safeSetItem('cadu_ponce_exercises_v3', JSON.stringify(exercises));
-  }, [exercises, isDataLoaded]);
-
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [editingExerciseOriginalTitle, setEditingExerciseOriginalTitle] = useState<string | null>(null);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
 
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [newExName, setNewExName] = useState('');
@@ -632,6 +623,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [newExImage, setNewExImage] = useState('');
   const [newExVideo, setNewExVideo] = useState('');
   const [newExDesc, setNewExDesc] = useState('');
+  const [exerciseSaveError, setExerciseSaveError] = useState('');
+  const [isSavingExercise, setIsSavingExercise] = useState(false);
+  const exerciseSaveLock = useRef(false);
+  const exerciseDraftId = useRef(crypto.randomUUID());
+  const [isSavingRoutine, setIsSavingRoutine] = useState(false);
+  const routineSaveLock = useRef(false);
   const [isUploadingExerciseImage, setIsUploadingExerciseImage] = useState(false);
   const [isUploadingExerciseVideo, setIsUploadingExerciseVideo] = useState(false);
   const [uploadImageError, setUploadImageError] = useState<string | null>(null);
@@ -639,7 +636,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [uploadImageProgress, setUploadImageProgress] = useState<string>('');
   const [uploadVideoProgress, setUploadVideoProgress] = useState<string>('');
 
-  const [previewingExercise, setPreviewingExercise] = useState<{ title: string; group: string; category: string; image: string; isFavorite: boolean; isCustom: boolean; videoUrl?: string; description?: string; } | null>(null);
+  const [previewingExercise, setPreviewingExercise] = useState<LibraryExercise | null>(null);
 
 
   // Workout Form State
@@ -666,7 +663,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const handleSaveAdminRoutine = async () => {
-    if (!routineName || routineName === 'NOME DA ROTINA') return;
+    if (!isDataLoaded || !routineName || routineName === 'NOME DA ROTINA' || routineSaveLock.current || uploadingVideoIdx !== null) return;
+    routineSaveLock.current = true;
+    setIsSavingRoutine(true);
     const studentNames = routineStudentIds.map(id => {
       const s = users.find(u => u.uid === id);
       return s ? s.name : '';
@@ -689,9 +688,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       createdAt: editingRoutine?.createdAt || new Date().toISOString(),
     };
     try {
+      routine.exercises = routine.exercises.map(ex => ({ ...ex,
+        videoUrl: normalizeStoredMediaReference(ex.videoUrl) ?? undefined,
+        videoFileUrl: normalizeStoredMediaReference(ex.videoFileUrl) ?? undefined,
+      }));
       await storage.saveAdminRoutine(routine);
     setEditingRoutine(routine);
-    setAdminRoutines(storage.getAdminRoutines());
+    setAdminRoutines(prev => [routine, ...prev.filter(item => item.id !== routine.id)]);
 
     // Automatically create Workouts for assigned students
     if (routineStudentIds.length > 0) {
@@ -725,11 +728,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setHomeSubView('workout_library');
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Não foi possível salvar todas as atribuições. Tente novamente.');
+    } finally {
+      routineSaveLock.current = false;
+      setIsSavingRoutine(false);
     }
   };
 
   const handleSaveRoutineAssignment = async () => {
-    if (!assigningRoutine) return;
+    if (!assigningRoutine || !isDataLoaded) return;
     const studentNames = routineStudentIds.map(id => {
       const s = users.find(u => u.uid === id);
       return s ? s.name : '';
@@ -789,6 +795,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const handleDeleteAdminRoutine = async (id: string) => {
+    if (!isDataLoaded) return;
     try {
       await storage.deleteAdminRoutine(id);
       setAdminRoutines(storage.getAdminRoutines());
@@ -799,6 +806,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const handleEditAdminRoutine = (routine: import('../types').AdminRoutine) => {
+    if (!isDataLoaded) return;
     setEditingRoutine(routine);
     setRoutineName(routine.name);
     setRoutineGoal(routine.goal);
@@ -810,7 +818,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setRoutineStartDate(routine.startDate || '');
     setRoutineEndDate(routine.endDate || '');
     setRoutineGroupName(routine.routineGroupName || '');
-    setRoutineExercises(routine.exercises);
+    setRoutineExercises(routine.exercises.map(ex => ({ ...ex, prescribedLoads: ex.prescribedLoads ? [...ex.prescribedLoads] : undefined })));
     setRoutineStudentIds(routine.studentIds || []);
     setHomeSubView('create_routine');
   };
@@ -846,11 +854,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const handleExerciseVideoUpload = async (idx: number, file: File) => {
     setUploadingVideoIdx(idx);
     try {
-      const exId = routineExercises[idx]?.id || `ex_${Date.now()}`;
+      const exId = routineExercises[idx]?.id;
+      if (!exId) return;
       const url = await storage.uploadExerciseVideo(file, exId);
-      updateRoutineExercise(idx, 'videoFileUrl', url);
+      setRoutineExercises(prev => prev.map(ex => ex.id === exId ? { ...ex, videoFileUrl: url } : ex));
     } catch (e) {
-      console.error('Video upload failed', e);
+      alert(e instanceof Error ? e.message : 'Não foi possível enviar o vídeo. Tente novamente.');
     } finally {
       setUploadingVideoIdx(null);
     }
@@ -1186,11 +1195,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const mockFeedbacks: any[] = [];
 
   // Quick sales link templates
-  const salesLinks = [
-    { id: 'mensal', title: 'Consultoria Individual - Mensal', price: 'R$ 149,90/mês', url: 'https://pay.caduponce.com/consultoria-mensal' },
-    { id: 'trimestral', title: 'Consultoria Individual - Trimestral', price: 'R$ 119,90/mês (Total 359,70)', url: 'https://pay.caduponce.com/consultoria-trimestral' },
-    { id: 'semestral', title: 'Consultoria Individual - Semestral', price: 'R$ 99,90/mês (Total 599,40)', url: 'https://pay.caduponce.com/consultoria-semestral' },
-  ];
+  const salesLinks = [{ id: 'consultoria', title: 'Contato do personal', url: getTrainerWhatsAppUrl() }];
 
   // Training updates timeline
   const recentUpdates: any[] = [];
@@ -1350,10 +1355,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               Cadastrar aluno
                             </button>
                             <button 
-                              onClick={() => handleCopyLink('https://caduponce.app/registro', 'reg')}
+                              onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
                               className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-600 font-black py-4 rounded-xl transition-all active:scale-95 text-xs uppercase tracking-wider"
                             >
-                              {copiedLink === 'reg' ? '✓ Link Copiado!' : 'Link de cadastro'}
+                              {copiedLink === 'reg' ? '✓ Contato copiado!' : 'Copiar contato do personal'}
                             </button>
                           </div>
                        </div>
@@ -1413,7 +1418,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                </button>
 
                                <button 
-                                 onClick={() => handleCopyLink('https://caduponce.app/registro', 'reg')}
+                                 onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
                                  className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
                                >
                                   <LinkIcon className="w-6 h-6 rotate-45" />
@@ -1729,81 +1734,66 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               grouped[key].push(ex);
                            });
 
-                           const handleToggleFavorite = (title: string, e: any) => {
+                           const handleToggleFavorite = (id: string, e: React.MouseEvent) => {
                               e.stopPropagation();
-                              setExercises(prev => prev.map(ex => 
-                                 ex.title === title ? { ...ex, isFavorite: !ex.isFavorite } : ex
-                              ));
+                              if (!isDataLoaded) return;
+                              const updated = exercises.map(ex => ex.id === id ? { ...ex, isFavorite: !ex.isFavorite } : ex);
+                              setExercises(updated);
+                              safeSetItem('cadu_exercise_favorites', JSON.stringify(Object.fromEntries(updated.map(ex => [ex.id, !!ex.isFavorite]))));
                            };
 
-                           const handleDeleteExercise = (title, e) => {
+                           const handleDeleteExercise = async (exercise: LibraryExercise, e: React.MouseEvent) => {
                               e.stopPropagation();
-                              if (window.confirm(`Tem certeza que deseja excluir o exercício "${title}"?`)) {
-                                 setExercises(prev => prev.filter(ex => ex.title !== title));
+                              if (!isDataLoaded) return;
+                              if (!window.confirm('Excluir o exercício "' + exercise.title + '" da biblioteca? Os treinos já prescritos serão mantidos.')) return;
+                              try {
+                                await storage.deleteCustomExercise(exercise.id);
+                                setExercises(prev => prev.filter(ex => ex.id !== exercise.id));
+                              } catch (error) {
+                                alert(error instanceof Error ? error.message : 'Não foi possível excluir o exercício. Tente novamente.');
                               }
                            };
 
                            const handleAddExerciseSubmit = async (e: React.FormEvent) => {
                               e.preventDefault();
-                              if (!newExName.trim()) return;
-
-                              const valImg = newExImage.trim() || 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=200';
-                              const valVid = newExVideo.trim();
-                              const valDesc = newExDesc.trim() || 'Exercício personalizado adicionado pelo treinador Cadu Ponce.';
-
-                              const newExObj = {
-                                 id: editingExerciseOriginalTitle 
-                                      ? exercises.find((ex: any) => ex.title === editingExerciseOriginalTitle)?.id || crypto.randomUUID()
-                                      : crypto.randomUUID(),
-                                 title: newExName.trim(),
-                                 group: newExGroup,
-                                 category: newExCategory,
-                                 image: valImg,
-                                 isFavorite: editingExerciseOriginalTitle ? exercises.find((ex: any) => ex.title === editingExerciseOriginalTitle)?.isFavorite || false : false,
-                                 isCustom: true,
-                                 videoUrl: valVid,
-                                 description: valDesc
-                              };
-
-                              if (editingExerciseOriginalTitle) {
-                                const origTitle = editingExerciseOriginalTitle;
-                                try {
-                                  const updatedRoutines = adminRoutines.map(routine => {
-                                    let changed = false;
-                                    const updatedExs = routine.exercises.map(ex => {
-                                      if (ex.id !== newExObj.id && ex.name?.toLowerCase().trim() !== origTitle.toLowerCase().trim()) return ex;
-                                      changed = true;
-                                      const isFile = valVid.startsWith('storage://') || /\.(mp4|mov|webm)(\?|$)/i.test(valVid) || valVid.includes('supabase.co') || valVid.includes('files.catbox');
-                                      return { ...ex, name: newExObj.title, videoUrl: isFile ? '' : valVid, videoFileUrl: isFile ? valVid : '', notes: newExObj.description || ex.notes };
-                                    });
-                                    return changed ? { ...routine, exercises: updatedExs } : routine;
-                                  });
-                                  for (let index = 0; index < updatedRoutines.length; index++) {
-                                    if (updatedRoutines[index] !== adminRoutines[index]) await storage.saveAdminRoutine(updatedRoutines[index]);
-                                  }
-                                  setExercises(prev => prev.map(ex => ex.title === origTitle ? newExObj : ex));
-                                  setAdminRoutines(updatedRoutines);
-                                } catch (error) {
-                                  alert(error instanceof Error ? error.message : 'Não foi possível atualizar todos os treinos. Tente novamente.');
-                                  return;
-                                }
-
-                                setEditingExerciseOriginalTitle(null);
-                              } else {
-                                setExercises((prev: any[]) => [newExObj, ...prev]);
-                                // Auto switch to "Seus exercícios" tab so the new exercise is visible immediately
+                              if (!newExName.trim() || exerciseSaveLock.current || !isDataLoaded) return;
+                              if (isUploadingExerciseImage || isUploadingExerciseVideo) {
+                                setExerciseSaveError('Aguarde o envio dos arquivos antes de salvar.');
+                                return;
+                              }
+                              if (uploadImageError || uploadVideoError) {
+                                setExerciseSaveError('Corrija o envio do arquivo ou informe outro link antes de salvar.');
+                                return;
+                              }
+                              exerciseSaveLock.current = true;
+                              setIsSavingExercise(true);
+                              setExerciseSaveError('');
+                              try {
+                                const original = exercises.find(ex => ex.id === editingExerciseId);
+                                const newExObj: LibraryExercise = {
+                                  id: editingExerciseId || exerciseDraftId.current,
+                                  title: newExName.trim(), group: newExGroup, category: newExCategory,
+                                  image: normalizeStoredMediaReference(newExImage) || '',
+                                  description: newExDesc.trim(), isCustom: original?.isCustom ?? true,
+                                  isFavorite: original?.isFavorite ?? false,
+                                  ...exerciseVideoFields(newExVideo.trim(), original),
+                                };
+                                await storage.saveCustomExercise(newExObj);
+                                setExercises(prev => [newExObj, ...prev.filter(ex => ex.id !== newExObj.id)]);
                                 setExerciseFilter('mine');
                                 setSelectedGroupFilter(null);
                                 setSelectedCategoryFilter(null);
                                 setExerciseSearch('');
+                                setIsCreatingExercise(false);
+                                setEditingExerciseId(null);
+                                exerciseDraftId.current = crypto.randomUUID();
+                                setNewExName(''); setNewExImage(''); setNewExVideo(''); setNewExDesc('');
+                              } catch (error) {
+                                setExerciseSaveError(error instanceof Error ? error.message : 'Não foi possível salvar o exercício. Tente novamente.');
+                              } finally {
+                                exerciseSaveLock.current = false;
+                                setIsSavingExercise(false);
                               }
-                              setIsCreatingExercise(false);
-
-                              // reset
-                              setNewExName('');
-                              setNewExImage('');
-                              setNewExVideo('');
-                              setNewExDesc('');
                            };
 
                            return (
@@ -1820,9 +1810,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  </div>
 
                                  <div className="flex-1 overflow-y-auto bg-white m-4 rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 space-y-4 relative">
+                                    {!isDataLoaded && <p role="status" className="text-sm text-slate-500">Carregando a biblioteca...</p>}
                                     {/* Create button */}
                                     <button 
-                                      onClick={() => setIsCreatingExercise(true)}
+                                      disabled={!isDataLoaded}
+                                      onClick={() => {
+                                        setEditingExerciseId(null); setExerciseSaveError('');
+                                        setUploadImageError(null); setUploadVideoError(null);
+                                        setUploadImageProgress(''); setUploadVideoProgress('');
+                                        setNewExName(''); setNewExImage(''); setNewExVideo(''); setNewExDesc('');
+                                        exerciseDraftId.current = crypto.randomUUID();
+                                        setIsCreatingExercise(true);
+                                      }}
                                       className="w-full py-4 border-2 border-[#dc2626] rounded-xl text-[#dc2626] text-xs font-black italic uppercase tracking-widest hover:bg-red-50 transition cursor-pointer"
                                     >
                                        + Criar exercício
@@ -2049,6 +2048,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                             <h5 className="text-[11px] font-black italic uppercase text-slate-900 tracking-tight leading-tight mb-2 truncate group-hover:text-[#dc2626] transition-colors">
                                                                {ex.title}
                                                             </h5>
+                                                            {ex.syncStatus === 'pending' && <span className="block mb-2 text-[10px] font-bold text-amber-700">Rascunho neste dispositivo · abra para salvar</span>}
                                                             <div className="flex flex-wrap gap-1.5">
                                                                <span className="px-2 py-0.5 bg-slate-50 border border-slate-150 rounded-full text-[8px] font-bold text-slate-500 uppercase tracking-tight">
                                                                   {ex.group}
@@ -2060,14 +2060,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                          </div>
                                                          <div className="flex items-center">
                                                               <button 
+                                                                disabled={!isDataLoaded}
+                                                                aria-label={`Editar exercício ${ex.title}`}
                                                                 onClick={(evt) => {
                                                                   evt.stopPropagation();
-                                                                  setEditingExerciseOriginalTitle(ex.title);
+                                                                  if (!isDataLoaded) return;
+                                                                  setEditingExerciseId(ex.id);
+                                                                  setExerciseSaveError('');
+                                                                  setUploadImageError(null);
+                                                                  setUploadVideoError(null);
                                                                   setNewExName(ex.title);
                                                                   setNewExGroup(ex.group);
                                                                   setNewExCategory(ex.category);
                                                                   setNewExImage(ex.image);
-                                                                  setNewExVideo(ex.videoUrl || '');
+                                                                  setNewExVideo(ex.videoFileUrl || ex.videoUrl || '');
                                                                   setNewExDesc(ex.description || '');
                                                                   setIsCreatingExercise(true);
                                                                 }}
@@ -2078,7 +2084,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                                  </div>
                                                               </button>
                                                            <button 
-                                                             onClick={(evt) => handleToggleFavorite(ex.title, evt)}
+                                                             onClick={(evt) => handleToggleFavorite(ex.id, evt)}
                                                              className="pr-2 cursor-pointer focus:outline-none shrink-0"
                                                            >
                                                               <div className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${ex.isFavorite ? 'bg-amber-50 border-amber-300 text-amber-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'}`}>
@@ -2086,8 +2092,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                               </div>
                                                            </button>
                                                            <button 
-                                                             onClick={(evt) => handleDeleteExercise(ex.title, evt)}
+                                                             onClick={(evt) => handleDeleteExercise(ex, evt)}
                                                              className="pr-2 cursor-pointer focus:outline-none shrink-0"
+                                                             disabled={!isDataLoaded}
                                                              title="Excluir exercício"
                                                            >
                                                               <div className="w-7 h-7 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center transition-all text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-200">
@@ -2134,7 +2141,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
                                              <ExerciseVideoPlayer 
                                                key={previewingExercise.title}
-                                               url={previewingExercise.videoUrl || ''} 
+                                               url={previewingExercise.videoFileUrl || previewingExercise.videoUrl || ''}
                                                className="w-full h-full object-cover" 
                                              />
                                              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1.5 pointer-events-none">
@@ -2158,7 +2165,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           <div className="flex gap-2">
                                              <button 
                                                onClick={(evt) => {
-                                                  handleToggleFavorite(previewingExercise.title, evt);
+                                                  handleToggleFavorite(previewingExercise.id, evt);
                                                   setPreviewingExercise(prev => prev ? { ...prev, isFavorite: !prev.isFavorite } : null);
                                                }}
                                                className="flex-1 py-3 border border-slate-200 rounded-xl text-xs font-black italic uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-50 cursor-pointer"
@@ -2187,12 +2194,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        >
                                           <div className="flex justify-between items-center text-left mb-6">
                                               <h3 className="text-xl font-black italic uppercase text-slate-900 tracking-tight leading-none">
-                                                {editingExerciseOriginalTitle ? 'Editar Exercício' : 'Novo Exercício'}
+                                                {editingExerciseId ? 'Editar Exercício' : 'Novo Exercício'}
                                               </h3>
                                               <button 
+                                                disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
                                                 onClick={() => {
                                                   setIsCreatingExercise(false);
-                                                  setEditingExerciseOriginalTitle(null);
+                                                  setEditingExerciseId(null);
                                                   // reset
                                                   setNewExName('');
                                                   setNewExImage('');
@@ -2206,6 +2214,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                            </div>
 
                                           <form onSubmit={handleAddExerciseSubmit} className="space-y-4 text-left">
+                                             {exerciseSaveError && <p role="alert" className="text-sm text-red-600">{exerciseSaveError}</p>}
+                                             {editingExerciseId && <p className="text-xs text-slate-500">Treinos já prescritos mantêm suas configurações. Edite a rotina para alterá-los.</p>}
                                              <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Nome do exercício *</label>
                                                 <input 
@@ -2275,7 +2285,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    }`}>
                                                      <input
                                                        type="file"
-                                                       accept="image/*"
+                                                       accept="image/jpeg,image/png,image/webp,image/gif"
                                                        className="hidden"
                                                        onChange={async (e) => {
                                                          const file = e.target.files?.[0];
@@ -2283,7 +2293,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                          setIsUploadingExerciseImage(true);
                                                          setUploadImageError(null);
                                                          setUploadImageProgress(`Enviando ${file.name}…`);
-                                                          setNewExImage(URL.createObjectURL(file));
+
                                                          try {
                                                            const url = await storage.uploadExerciseVideo(file, `img-${Date.now()}`);
                                                            setNewExImage(url);
@@ -2347,7 +2357,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    }`}>
                                                      <input
                                                        type="file"
-                                                       accept="video/*"
+                                                       accept="video/mp4,video/webm,video/quicktime"
                                                        className="hidden"
                                                        onChange={async (e) => {
                                                          const file = e.target.files?.[0];
@@ -2355,7 +2365,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                          setIsUploadingExerciseVideo(true);
                                                          setUploadVideoError(null);
                                                          setUploadVideoProgress(`Enviando ${file.name}…`);
-                                                          setNewExVideo(URL.createObjectURL(file));
+
                                                          try {
                                                            const url = await storage.uploadExerciseVideo(file, `vid-${Date.now()}`);
                                                            setNewExVideo(url);
@@ -2383,7 +2393,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    </label>
 
                                                    <p className="text-[9px] text-slate-400 text-center leading-relaxed">
-                                                     Formatos aceitos: MP4, MOV, AVI · Recomendado: max 50MB via arquivo.<br />
+                                                     Formatos aceitos: MP4, WebM e MOV · Máximo: 100 MB.<br />
                                                      Para vídeos maiores, use uma URL do YouTube no campo acima.
                                                    </p>
                                                  </div>
@@ -2403,16 +2413,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                              <div className="flex gap-2 pt-2">
                                                 <button 
                                                   type="button"
-                                                  onClick={() => setIsCreatingExercise(false)}
+                                                  disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
+                                                  onClick={() => { setIsCreatingExercise(false); setEditingExerciseId(null); }}
                                                   className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-slate-200 cursor-pointer"
                                                 >
                                                    Cancelar
                                                 </button>
                                                 <button 
                                                   type="submit"
-                                                  className="flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-[#ef4444] cursor-pointer"
+                                                  disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
+                                                  className="disabled:opacity-50 disabled:cursor-not-allowed flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-[#ef4444] cursor-pointer"
                                                 >
-                                                   Salvar
+                                                   {isSavingExercise ? 'Salvando...' : 'Salvar'}
                                                 </button>
                                              </div>
                                           </form>
@@ -2686,7 +2698,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 </div>
                                 <datalist id="exercise-library-list">
                                   {exercises.map(libEx => (
-                                    <option key={libEx.title} value={libEx.title} />
+                                    <option key={libEx.id} value={libEx.title} />
                                   ))}
                                 </datalist>
 
@@ -2753,13 +2765,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         value={ex.name}
                                         onChange={(e) => {
                                           const newName = e.target.value;
-                                          const libEx = exercises.find(lib => lib.title.toLowerCase() === newName.toLowerCase());
+                                          const matches = exercises.filter(lib => lib.title.toLowerCase() === newName.toLowerCase());
+                                          const libEx = matches.length === 1 ? matches[0] : undefined;
                                           if (libEx) {
-                                            const isMp4 = libEx.videoUrl?.includes('.mp4') || libEx.videoUrl?.includes('.mov') || libEx.videoUrl?.includes('supabase.co/storage');
                                             updateRoutineExercise(idx, {
                                               name: newName,
-                                              videoUrl: isMp4 ? '' : (libEx.videoUrl || ''),
-                                              videoFileUrl: isMp4 ? (libEx.videoUrl || '') : '',
+                                              ...exerciseVideoFields(libEx.videoFileUrl || libEx.videoUrl || '', libEx),
                                               notes: libEx.description || ''
                                             });
                                           } else {
@@ -2879,7 +2890,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       </label>
                                       {ex.videoFileUrl ? (
                                         <div className="flex items-center gap-2">
-                                          <video src={ex.videoFileUrl} className="w-full rounded-lg h-24 object-cover bg-black" controls />
+                                          <ExerciseVideoPlayer url={ex.videoFileUrl} className="w-full rounded-lg h-24 object-cover bg-black" />
                                           <button
                                             onClick={() => updateRoutineExercise(idx, 'videoFileUrl', '')}
                                             className="text-slate-400 hover:text-red-500 shrink-0"
@@ -2891,7 +2902,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-lg border-2 border-dashed border-slate-200 cursor-pointer hover:border-[#dc2626]/40 transition ${uploadingVideoIdx === idx ? 'opacity-50 pointer-events-none' : ''}`}>
                                           <input
                                             type="file"
-                                            accept="video/*"
+                                            accept="video/mp4,video/webm,video/quicktime"
                                             className="hidden"
                                             onChange={(e) => {
                                               const file = e.target.files?.[0];
@@ -2939,10 +2950,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="mx-4 mb-4">
                                <button
                                  onClick={handleSaveAdminRoutine}
-                                 disabled={!routineName || routineName === 'NOME DA ROTINA'}
+                                 disabled={!isDataLoaded || !routineName || routineName === 'NOME DA ROTINA' || isSavingRoutine || uploadingVideoIdx !== null}
                                  className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-[#ef4444] transition disabled:opacity-40 disabled:cursor-not-allowed"
                                >
-                                 {editingRoutine ? 'Salvar Alterações' : 'Salvar Rotina'}
+                                 {isSavingRoutine ? 'Salvando...' : editingRoutine ? 'Salvar Alterações' : 'Salvar Rotina'}
                                </button>
                              </div>
                           </div>
@@ -4122,7 +4133,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 ) : (
                   <div className="flex justify-between items-center px-6 py-5 border-b border-slate-900">
                     <span className="text-[10px] font-black tracking-widest text-red-500 uppercase">
-                      {activePanel === 'sales_links' && '🚀 Links de Checkout'}
+                      {activePanel === 'sales_links' && 'Contato do personal'}
                       {activePanel === 'feedbacks' && '💬 Feedbacks Recebidos'}
 
                     </span>
@@ -4144,7 +4155,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   {activePanel === 'sales_links' && (
                     <div className="space-y-4">
                       <p className="text-xs text-slate-400 font-semibold leading-normal">
-                        Copie qualquer link e envie diretamente para prospects no WhatsApp. O checkout é automático e libera a conta de aluno instantaneamente após pagar.
+                        Copie o contato do personal para conversar sobre a consultoria e combinar o pagamento pelo WhatsApp.
                       </p>
 
                       <div className="space-y-3">
@@ -4153,7 +4164,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             <div className="flex justify-between items-start">
                               <div>
                                 <h4 className="text-xs font-black text-white">{link.title}</h4>
-                                <span className="text-emerald-400 font-black text-[10.5px] block mt-0.5">{link.price}</span>
                               </div>
                               <button 
                                 onClick={() => handleCopyLink(link.url, link.id)}
@@ -5879,8 +5889,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             createdAt: new Date().toISOString(),
                           };
 
-                          await storage.saveAdminRoutine(newRoutine);
-                          setAdminRoutines(storage.getAdminRoutines());
+                          try {
+                            await storage.saveAdminRoutine(newRoutine);
+                            setAdminRoutines(prev => [newRoutine, ...prev.filter(item => item.id !== newRoutine.id)]);
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : 'Não foi possível salvar a rotina. Tente novamente.');
+                            return;
+                          }
 
                           setCriarRotinaForm({
                             nome: '',
@@ -6896,11 +6911,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <button
                       key={libEx.title}
                       onClick={() => {
-                        const isMp4 = libEx.videoUrl?.includes('.mp4') || libEx.videoUrl?.includes('.mov') || libEx.videoUrl?.includes('supabase.co/storage');
                         updateRoutineExercise(selectingExerciseForIdx, {
                           name: libEx.title,
-                          videoUrl: isMp4 ? '' : (libEx.videoUrl || ''),
-                          videoFileUrl: isMp4 ? (libEx.videoUrl || '') : '',
+                          ...exerciseVideoFields(libEx.videoFileUrl || libEx.videoUrl || '', libEx),
                           notes: libEx.description || ''
                         });
                         setSelectingExerciseForIdx(null);

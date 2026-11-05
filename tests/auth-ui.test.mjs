@@ -13,7 +13,7 @@ const compiled = ts.transpileModule(source, { compilerOptions: {
   jsx: ts.JsxEmit.ReactJSX,
 } }).outputText;
 
-function harness({ profileRole = 'student', status = 'active', pathname = '/', profileFailure = false, verified = true } = {}) {
+function harness({ profileRole = 'student', status = 'active', pathname = '/', profileFailure = false, verified = true, storageBlocked = false } = {}) {
   const state = [];
   const effects = [];
   const calls = { profileReads: 0, signIns: 0, scopes: [] };
@@ -66,7 +66,10 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     },
     window: { location, history: { replaceState(_state, _unused, path) { location.pathname = path; } }, addEventListener() {}, removeEventListener() {} },
     navigator: { onLine: true },
-    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    localStorage: {
+      getItem() { if (storageBlocked) throw new Error('Storage unavailable'); return null; },
+      setItem() { if (storageBlocked) throw new Error('QuotaExceededError'); }, removeItem() {},
+    },
     setTimeout,
     clearTimeout,
     console,
@@ -105,6 +108,13 @@ test('email and user metadata cannot override a student database role', async ()
 
 test('verified administrator gets the admin screen', async () => {
   const app = harness({ profileRole: 'admin' });
+  app.emit('SIGNED_IN');
+  await settle();
+  assert.equal(app.render().type, 'AccountManagement');
+});
+
+test('unavailable browser storage cannot crash initial render or a verified session', async () => {
+  const app = harness({ profileRole: 'admin', storageBlocked: true });
   app.emit('SIGNED_IN');
   await settle();
   assert.equal(app.render().type, 'AccountManagement');
