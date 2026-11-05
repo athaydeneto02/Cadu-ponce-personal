@@ -173,7 +173,7 @@ export const storage = {
   },
 
   /** Fetches all profiles from Supabase (admin use). */
-  fetchUsersList: async (): Promise<UserProfile[]> => {
+  fetchUsersList: async (options: { allowCached?: boolean } = {}): Promise<UserProfile[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
     const { data, error } = await supabase
       .from('profiles')
@@ -181,6 +181,9 @@ export const storage = {
       .order('created_at', { ascending: false });
 
     if (error || !data) {
+      if (options.allowCached === false) {
+        throw error ?? new Error('Não foi possível carregar a lista atual de usuários.');
+      }
       const cached = cacheStorage.getItem('cadu_ponce_all_users');
       return cached ? JSON.parse(cached) : [];
     }

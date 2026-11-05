@@ -82,6 +82,40 @@ test('role never comes from email or self-supplied metadata', async () => {
   assert.equal((await storage.fetchProfile('student-a')).role, 'student');
 });
 
+test('an empty server user list replaces cached students instead of restoring them', async () => {
+  const { storage } = setup();
+  storage.setSessionUser('admin-a');
+  storage.saveUsersList([{ uid: 'removed-student', name: 'Aluno removido', role: 'student' }]);
+  assert.equal((await storage.fetchUsersList({ allowCached: false })).length, 0);
+  assert.equal(storage.getUsersList().length, 0);
+});
+
+test('a server list containing only administrators removes cached students and preserves administrators', async () => {
+  const { storage } = setup({ query: async () => ({
+    data: [{ id: 'admin-a', name: 'Administrador', email: 'admin@example.test', role: 'admin', status: 'active' }], error: null,
+  }) });
+  storage.setSessionUser('admin-a');
+  storage.saveUsersList([{ uid: 'removed-student', name: 'Aluno removido', role: 'student' },
+    { uid: 'admin-a', name: 'Administrador', role: 'admin' }]);
+  const users = await storage.fetchUsersList({ allowCached: false });
+  assert.equal(users.length, 1);
+  assert.equal(users[0].uid, 'admin-a');
+  assert.equal(users[0].role, 'admin');
+  assert.equal(storage.getUsersList().filter(user => user.role === 'student').length, 0);
+  assert.equal(storage.getUsersList()[0].uid, 'admin-a');
+});
+
+test('account management rejects unavailable server lists without returning cached deleted students', async () => {
+  for (const response of [{ data: null, error: new Error('Offline') }, { data: null, error: null }]) {
+    const { storage } = setup({ query: async () => response });
+    storage.setSessionUser('admin-a');
+    storage.saveUsersList([{ uid: 'removed-student', name: 'Aluno removido', role: 'student' }]);
+    await assert.rejects(storage.fetchUsersList({ allowCached: false }), /Offline|lista atual/);
+    // Other callers retain their existing explicit cache policy; no account is deleted locally or remotely.
+    assert.equal((await storage.fetchUsersList())[0].uid, 'removed-student');
+  }
+});
+
 test('failed upload retains a durable local photo and never writes blob/idb to the server', async () => {
   const { storage, calls } = setup({ mediaUpload: async () => ({ error: new Error('Offline') }) });
   const result = await storage.savePhoto(photo('photo-a'), new File(['image'], 'photo.jpg', { type: 'image/jpeg' }));

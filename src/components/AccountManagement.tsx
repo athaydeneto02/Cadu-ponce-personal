@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
@@ -160,108 +160,6 @@ function triggerVibration() {
   }
 }
 
-// Ensure initial list has the students in the screenshot
-const DEFAULT_STUDENTS: UserProfile[] = [
-  {
-    uid: '11111111-1111-1111-1111-111111111111',
-    name: 'Aline Rocha',
-    email: 'aline.rocha@gmail.com',
-    weight: 59,
-    height: 164,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Presencial',
-    photoURL: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120',
-    createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '22222222-2222-2222-2222-222222222222',
-    name: 'Carla Pereira',
-    email: 'carla.pereira@gmail.com',
-    weight: 65,
-    height: 168,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Online',
-    createdAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '33333333-3333-3333-3333-333333333333',
-    name: 'José Soares',
-    email: 'jose.soares@gmail.com',
-    weight: 85,
-    height: 182,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Online',
-    photoURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120',
-    createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '44444444-4444-4444-4444-444444444444',
-    name: 'ATHAYDE FELIPPE LEITAO NETO',
-    email: 'athaydefelippeleitao@gmail.com',
-    weight: 85,
-    height: 182,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Presencial',
-    createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '55555555-5555-5555-5555-555555555555',
-    name: 'Carolina Santos',
-    email: 'carol.santos@email.com',
-    weight: 62,
-    height: 168,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Online',
-    createdAt: new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '66666666-6666-6666-6666-666666666666',
-    name: 'João Pereira',
-    email: 'joao.p@email.com',
-    weight: 92,
-    height: 178,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'inactive',
-    modality: 'Presencial',
-    createdAt: new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '77777777-7777-7777-7777-777777777777',
-    name: 'Sônia Maria',
-    email: 'sonia.m@email.com',
-    weight: 65,
-    height: 160,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Online',
-    createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
-  },
-  {
-    uid: '88888888-8888-8888-8888-888888888888',
-    name: 'Aluno Teste',
-    email: 'aluno.teste@caduponce.com',
-    weight: 70,
-    height: 170,
-    trainerPhone: '5511999999999',
-    role: 'student',
-    status: 'active',
-    modality: 'Online',
-    createdAt: new Date().toISOString()
-  }
-];
-
 function ExerciseVideoPlayer({ url, className }: { url?: string; className?: string }) {
   const resolved = useMediaUrl(url);
   const isYt = resolved?.includes('youtube') || resolved?.includes('youtu.be');
@@ -312,6 +210,7 @@ function ExerciseImagePreview({ url }: { url?: string }) {
 export default function AccountManagement({ onClose, isDark }: AccountManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [usersLoadError, setUsersLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [studentTab, setStudentTab] = useState<'alunos' | 'grupos'>('alunos');
   const [studentGroupSearch, setStudentGroupSearch] = useState('');
@@ -971,41 +870,26 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [formRole, setFormRole] = useState<'student' | 'admin'>('student');
   const [formPassword, setFormPassword] = useState('');
 
-  // Load and clean users & load workouts
+  // Account management requires the current server list: deleted students must
+  // not reappear from this device's previous cache when the network is unavailable.
+  const loadUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    setUsersLoadError('');
+    setUsers([]);
+    try {
+      const currentUsers = await storage.fetchUsersList({ allowCached: false });
+      setUsers(currentUsers);
+    } catch {
+      setUsersLoadError('Não foi possível carregar os alunos. Verifique sua conexão e tente novamente.');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
   useEffect(() => {
     setWorkouts(storage.getWorkouts());
-    const list = storage.getUsersList();
-    
-    // Filter out legacy and dummy students
-    const isRealUUID = (id: string) => {
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
-      // Filter out the repeating fake UUIDs (like 44444444-4444-...)
-      if (/^(\d)\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$/.test(id)) return false;
-      return true;
-    };
-
-    const realUsers = list.filter(u => isRealUUID(u.uid));
-    
-    storage.saveUsersList(realUsers);
-    setUsers(realUsers);
-
-    // Asynchronously fetch from Supabase to get real users
-    storage.fetchUsersList().then((supabaseUsers) => {
-      if (supabaseUsers && supabaseUsers.length > 0) {
-        const validUsers = supabaseUsers.filter(u => isRealUUID(u.uid));
-        setUsers(validUsers);
-        storage.saveUsersList(validUsers);
-      } else {
-        // If Supabase is empty, force empty state to override any lingering cache
-        setUsers([]);
-        storage.saveUsersList([]);
-      }
-    }).catch(err => {
-      console.error('Error fetching data for admin:', err);
-    }).finally(() => {
-      setIsLoadingUsers(false);
-    });
-  }, []);
+    void loadUsers();
+  }, [loadUsers]);
 
   // Selected Student Form synchronization
   useEffect(() => {
@@ -1166,10 +1050,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Não foi possível excluir o treino. Tente novamente.');
     }
-  };
-
-  const refreshList = () => {
-    setUsers(storage.getUsersList());
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -1441,13 +1321,23 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <div className="w-10 h-10 border-4 border-[#E23737] border-t-transparent rounded-full animate-spin mb-4" />
                           <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Carregando...</span>
                        </div>
+                    ) : usersLoadError ? (
+                       <div className="flex flex-col items-center gap-4 pt-20 px-6 text-center" role="alert">
+                          <p className="text-slate-600 text-sm font-semibold">{usersLoadError}</p>
+                          <button
+                            onClick={() => { void loadUsers(); }}
+                            className="rounded-xl bg-[#dc2626] px-5 py-3 text-sm font-bold text-white hover:bg-red-700"
+                          >
+                            Tentar novamente
+                          </button>
+                       </div>
                     ) : users.filter(u => u.role === 'student').length === 0 ? (
                        /* WELCOME VIEW */
                        <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
                           <div className="w-24 h-24 bg-[#E23737] rounded-full flex items-center justify-center shadow-lg mb-8">
                              <Dumbbell className="w-12 h-12 text-white" />
                           </div>
-                          <h3 className="text-2xl font-black text-slate-900 leading-tight mb-2">Bem-vindo à MFIT</h3>
+                          <h3 className="text-2xl font-black text-slate-900 leading-tight mb-2">Bem-vindo ao Cadu Ponce</h3>
                           <p className="text-slate-500 text-sm font-semibold mb-10 max-w-[280px]">
                             Bora dar o primeiro passo e cadastrar seu primeiro aluno no app?
                           </p>
