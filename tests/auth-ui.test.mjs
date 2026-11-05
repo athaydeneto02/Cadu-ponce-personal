@@ -159,38 +159,67 @@ test('an expired recovery link displays login with a recovery error', () => {
   assert.match(app.render().props.errorMessage, /link.*inválido|expirou/i);
 });
 
-test('consulting plans only prepare WhatsApp contact with the selected plan', () => {
+test('consulting screen only offers centralized WhatsApp and Instagram contact without plans or checkout', () => {
   const componentSource = readFileSync(new URL('../src/components/AcquireConsulting.tsx', import.meta.url), 'utf8');
   const componentCode = ts.transpileModule(componentSource, { compilerOptions: {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
   } }).outputText;
-  let selected;
+  const trainer = {
+    name: 'Personal de teste', role: 'Personal Trainer', phone: '5500000000000',
+    instagramHandle: 'personal_teste', instagramUrl: 'https://instagram.com/personal_teste',
+  };
+  const expectedMessage = 'Olá Cadu! Tenho interesse na consultoria e gostaria de conversar sobre os planos disponíveis.';
+  const contactMessages = [];
   const jsx = (type, props) => ({ type, props });
   const context = {
     exports: {},
     require(name) {
-      if (name === 'react') return { useState: initial => [selected ?? initial, value => { selected = value; }] };
+      if (name === 'react') return {};
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === 'motion/react') return { motion: { div: 'motion.div' } };
       if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => String(key) });
-      if (name === '../lib/trainerConfig') return { getTrainerWhatsAppUrl: message => 'https://wa.me/5500000000000?text=' + encodeURIComponent(message) };
+      if (name === '../lib/trainerConfig') return {
+        TRAINER_CONFIG: trainer,
+        getTrainerWhatsAppUrl: message => {
+          contactMessages.push(message);
+          return 'https://wa.me/' + trainer.phone + '?text=' + encodeURIComponent(message);
+        },
+      };
       throw new Error('Unexpected dependency in consulting flow: ' + name);
     },
   };
   vm.runInNewContext(componentCode, context);
   const flatten = item => !item || typeof item !== 'object' ? [] : Array.isArray(item)
     ? item.flatMap(flatten) : [item, ...flatten(item.props?.children)];
-  const render = () => flatten(context.exports.default({ onCancel() {} }));
-  let nodes = render();
-  assert.equal(nodes.filter(node => node.type === 'input').length, 0);
-  const plans = nodes.filter(node => node.type === 'button' && 'aria-pressed' in node.props);
-  assert.equal(plans.length, 3);
-  plans[0].props.onClick();
-  nodes = render();
-  const contact = nodes.find(node => node.type === 'a' && node.props.id === 'btn-plans-continue');
+  let cancelled = false;
+  const tree = context.exports.default({ onCancel() { cancelled = true; } });
+  const nodes = flatten(tree);
+  const visibleText = item => typeof item === 'string' || typeof item === 'number' ? String(item)
+    : !item ? '' : Array.isArray(item) ? item.map(visibleText).join(' ') : visibleText(item.props?.children);
+  const text = visibleText(tree).replace(/\s+/g, ' ').trim();
+  assert.match(text, /Fale diretamente com o personal/i);
+  assert.doesNotMatch(text, /R\$|\bmensal\b|trimestral|semestral|economize|valor total|cartão|Pix/i);
+  assert.equal(nodes.filter(node => ['input', 'form', 'select', 'textarea'].includes(node.type)).length, 0);
+  assert.equal(nodes.filter(node => 'aria-pressed' in node.props || node.props.role === 'radio').length, 0);
+  assert.equal(nodes.filter(node => node.type === 'ul' || node.type === 'ol').length, 0);
+
+  const contact = nodes.find(node => node.type === 'a' && node.props.id === 'btn-contact-whatsapp');
+  const instagram = nodes.find(node => node.type === 'a' && node.props.id === 'btn-contact-instagram');
+  assert.ok(contact, 'WhatsApp contact link is available');
+  assert.ok(instagram, 'Instagram contact link is available');
+  assert.equal(nodes.filter(node => node.type === 'a').length, 2);
   const target = new URL(contact.props.href);
   assert.equal(target.hostname, 'wa.me');
-  assert.match(target.searchParams.get('text'), /Mensal/);
-  assert.match(target.searchParams.get('text'), /149,90/);
+  assert.equal(target.pathname, '/' + trainer.phone);
+  assert.equal(target.searchParams.get('text'), expectedMessage);
+  assert.deepEqual(contactMessages, [expectedMessage]);
+  assert.equal(instagram.props.href, trainer.instagramUrl);
   assert.equal(contact.props.rel, 'noopener noreferrer');
+  assert.equal(instagram.props.rel, 'noopener noreferrer');
+  assert.equal(contact.props.target, '_blank');
+  assert.equal(instagram.props.target, '_blank');
+  const back = nodes.find(node => node.type === 'button' && node.props.id === 'btn-quit-acquire');
+  assert.ok(back);
+  back.props.onClick();
+  assert.equal(cancelled, true);
 });
