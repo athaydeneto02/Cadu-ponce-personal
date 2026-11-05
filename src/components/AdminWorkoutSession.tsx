@@ -15,6 +15,9 @@ import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
 import { useWorkoutFrequency } from '../lib/useWorkoutFrequency';
 import { localWorkoutDateKey } from '../lib/workoutFrequency';
+import { elapsedWorkoutSeconds, pauseWorkoutClock, readWorkoutDraft, removeWorkoutDraft, saveWorkoutDraft, workoutDraftFingerprint, type WorkoutClock } from '../lib/workoutDraft';
+import { useWorkoutClock } from '../lib/useWorkoutClock';
+import { generateWorkoutPDF } from '../lib/pdfGenerator';
 import { useMediaUrl, getCachedVideoBlobUrl } from '../lib/mediaDb';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { isImageMedia, youtubeVideoId } from '../lib/mediaPresentation';
@@ -369,23 +372,29 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const exercises = routine.exercises;
   const total = exercises.length;
   const checklistItems = useMemo(() => buildChecklistItems(exercises), [exercises]);
+  const prescriptionFingerprint = useRef(workoutDraftFingerprint(exercises, [routine.generalNotes, routine.notes].filter(Boolean).join('\n')));
+  const [initialDraft] = useState(() => readWorkoutDraft(storage.getUser()?.uid, routine.id, exercises.map(ex => ex.id), storage.getWorkoutLogs(), prescriptionFingerprint.current));
+  const [draftError, setDraftError] = useState('');
 
   // ── Screen state ──────────────────────────────────────────────────────────
   const [screen, setScreen] = useState<'intro' | 'session' | 'finish'>('intro');
 
   // ── Timer ─────────────────────────────────────────────────────────────────
-  const [sessionTime, setSessionTime] = useState(0);
-  const [sessionActive, setSessionActive] = useState(false);
-  const [startTimestamp, setStartTimestamp] = useState<Date | null>(null);
-  const [endTimestamp, setEndTimestamp] = useState<Date | null>(null);
+  const [clock, setClock] = useState<WorkoutClock>(() => initialDraft ? pauseWorkoutClock(initialDraft.clock) : { elapsedSeconds: 0, runStartedAt: null });
+  const sessionTime = useWorkoutClock(clock);
+  const setSessionActive = (active: boolean) => setClock(current => active
+    ? { ...current, runStartedAt: current.runStartedAt ?? Date.now() }
+    : pauseWorkoutClock(current, Date.now(), sessionTime));
+  const [startTimestamp, setStartTimestamp] = useState<Date | null>(() => initialDraft ? new Date(initialDraft.startedAt) : null);
+  const [endTimestamp, setEndTimestamp] = useState<Date | null>(() => initialDraft?.stoppedAt ? new Date(initialDraft.stoppedAt) : null);
 
   // ── Exercise state ────────────────────────────────────────────────────────
-  const [completedExs, setCompletedExs] = useState<Set<string>>(new Set());
+  const [completedExs, setCompletedExs] = useState<Set<string>>(() => new Set(initialDraft?.completed || []));
 
   const [loads, setLoads] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     exercises.forEach(e => {
-      const pl = e.prescribedLoads;
+      const pl = initialDraft?.loads[e.id] || e.prescribedLoads;
       if (pl && pl.length > 0) {
         const max = Math.max(...pl.filter(l => l > 0));
         init[e.id] = max > 0 ? max : 0;
@@ -401,14 +410,14 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
   // ── Completion modal ──────────────────────────────────────────────────────
   const [showCompletionModal, setShowCompletionModal] = useState(false);
-  const [activityRating, setActivityRating] = useState('');
-  const [activityComment, setActivityComment] = useState('');
+  const [activityRating, setActivityRating] = useState(initialDraft?.rating || '');
+  const [activityComment, setActivityComment] = useState(initialDraft?.comment || '');
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [saveLogError, setSaveLogError] = useState('');
   const [saveLogStatus, setSaveLogStatus] = useState('');
-  const sessionLogId = useRef(crypto.randomUUID());
+  const sessionLogId = useRef(initialDraft?.id || crypto.randomUUID());
   const sessionStudentId = useRef(storage.getUser()?.uid);
-  const completedLog = useRef<WorkoutLog | null>(null);
+  const completedLog = useRef<WorkoutLog | null>(initialDraft?.completion || null);
   const savingLog = useRef(false);
   const completedDate = completedLog.current ? new Date(completedLog.current.completedAt) : new Date();
   const frequency = useWorkoutFrequency(sessionStudentId.current, completedDate, screen, completedDate);
@@ -433,15 +442,26 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   }, []);
 
   useEffect(() => {
-    if (!sessionActive) return;
-    const id = setInterval(() => setSessionTime(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [sessionActive]);
+    if (!startTimestamp || !sessionStudentId.current || screen === 'finish') return;
+    const snapshot = {
+      id: sessionLogId.current, studentId: sessionStudentId.current, routineId: routine.id,
+      exerciseIds: exercises.map(ex => ex.id), prescriptionFingerprint: prescriptionFingerprint.current, startedAt: startTimestamp.toISOString(), stoppedAt: endTimestamp?.toISOString(),
+      clock, completed: [...completedExs], loads: Object.fromEntries(Object.entries(loads).map(([id, load]) => [id, [load]])),
+      rating: activityRating, comment: activityComment, completion: completedLog.current || undefined,
+    };
+    const persist = () => {
+      if (storage.getUser()?.uid !== snapshot.studentId) return;
+      try { saveWorkoutDraft(snapshot); setDraftError(''); }
+      catch { setDraftError('Não foi possível salvar a retomada neste aparelho. Mantenha a tela aberta até concluir o treino.'); }
+    };
+    persist(); window.addEventListener('pagehide', persist);
+    return () => window.removeEventListener('pagehide', persist);
+  }, [clock, startTimestamp, endTimestamp, completedExs, loads, activityRating, activityComment, screen, routine.id, exercises]);
 
   // Auto-trigger completion modal when all exercises checked
   useEffect(() => {
     if (screen === 'session' && total > 0 && completedExs.size >= total) {
-      const end = new Date();
+      const end = completedLog.current ? new Date(completedLog.current.completedAt) : new Date();
       setEndTimestamp(end);
       setSessionActive(false);
       // Small delay so the last check animation is visible
@@ -509,7 +529,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         routineId: routine.id,
         routineName: routine.name,
         completedAt: completedLog.current?.completedAt || (endTimestamp || new Date()).toISOString(),
-        durationSeconds: completedLog.current?.durationSeconds ?? sessionTime,
+        durationSeconds: completedLog.current?.durationSeconds ?? elapsedWorkoutSeconds(clock, Date.now(), sessionTime),
         rpe: rpeMap[activityRating] ?? 0,
         comment: activityComment.trim() || undefined,
         exercisesSummary: exercises.map(ex => ({
@@ -523,6 +543,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
       completedLog.current = log;
       const saved = await storage.saveWorkoutLog(log);
       completedLog.current = saved;
+      try { removeWorkoutDraft(user.uid, routine.id); } catch { /* The durable completion also prevents resuming this ID. */ }
       setEndTimestamp(new Date(saved.completedAt));
       setSaveLogStatus(saved.syncStatus === 'pending'
         ? 'Treino salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
@@ -887,16 +908,28 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
         {/* INICIAR Banner */}
         <div className="bg-[#1976D2] px-4 py-3 shrink-0 space-y-2.5">
+          {startTimestamp && <div className="rounded-xl bg-white/10 p-3 text-sm text-white space-y-2">
+            <p>Treino em andamento desde {startTimestamp.toLocaleString('pt-BR')}. {completedExs.size}/{total} exercícios marcados · {fmtDuration(sessionTime)}.</p>
+            <button onClick={() => {
+              if (!window.confirm('Descartar esta sessão em andamento e iniciar outra?')) return;
+              if (sessionStudentId.current) { try { removeWorkoutDraft(sessionStudentId.current, routine.id); } catch { setDraftError('Não foi possível descartar a sessão. Tente novamente.'); return; } }
+              sessionLogId.current = crypto.randomUUID(); completedLog.current = null;
+              setStartTimestamp(null); setEndTimestamp(null); setClock({ elapsedSeconds: 0, runStartedAt: null });
+              setCompletedExs(new Set()); setActivityComment(''); setActivityRating('');
+            }} className="underline">Descartar sessão</button>
+          </div>}
+          {draftError && <p role="alert" className="text-amber-100 text-xs">{draftError}</p>}
           <button
             onClick={() => {
-              setStartTimestamp(new Date());
+              if (!startTimestamp) setStartTimestamp(new Date());
               setScreen('session');
               setSessionActive(true);
             }}
             className="w-full bg-[#43A047] hover:bg-[#388E3C] active:scale-[0.99] text-white font-black uppercase py-3.5 rounded-lg text-base tracking-[0.12em] transition shadow-md cursor-pointer"
           >
-            INICIAR
+            {startTimestamp ? 'RETOMAR TREINO' : 'INICIAR'}
           </button>
+          {routine.allowPdf !== false && <button onClick={() => generateWorkoutPDF({ id: routine.id, name: routine.name, description: routine.generalNotes || routine.notes, exercises: routine.exercises, studentId: sessionStudentId.current || '', createdAt: routine.createdAt })} className="w-full text-white border border-white/40 rounded-lg p-2 text-sm">Baixar ficha em PDF</button>}
           <p className="text-white/90 text-center text-[13px] leading-snug">
             Você está no "modo visualização".<br />
             Aperte <strong>INICIAR</strong> para começar seu treino.
@@ -1361,10 +1394,11 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         </h2>
 
         {/* Timer pill */}
-        <div className="mt-3 bg-[#111827] rounded-xl px-4 py-3 flex items-center justify-center gap-2">
+        {routine.showTimer !== false && <div className="mt-3 bg-[#111827] rounded-xl px-4 py-3 flex items-center justify-center gap-2">
           <Clock className="w-4 h-4 text-white/60" />
           <span className="text-white font-bold text-base">{fmtDuration(sessionTime)}</span>
-        </div>
+        </div>}
+        {draftError && <p role="alert" className="text-amber-200 text-xs mt-2">{draftError}</p>}
       </div>
 
       {/* ── Exercise checklist ─────────────────────────────────────────────── */}

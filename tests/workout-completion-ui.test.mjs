@@ -56,7 +56,7 @@ function sessionHarness(componentName) {
   const events = { addEventListener(name, fn) { const list = listeners.get(name) || new Set(); list.add(fn); listeners.set(name, list); }, removeEventListener(name, fn) { listeners.get(name)?.delete(fn); } };
   const jsx = (type, props) => ({ type, props });
   const context = { exports: {}, Date: ClockDate, crypto: { randomUUID }, console, URL, Error,
-    window: { ...events, location: { origin: 'https://example.test' } }, document: {}, navigator: {},
+    window: { ...events, location: { origin: 'https://example.test' } }, document: events, navigator: {},
     setTimeout: fn => { const id = ++timerId; timeouts.set(id, fn); return id; }, clearTimeout: id => timeouts.delete(id),
     setInterval: () => ++timerId, clearInterval() {},
     require(name) {
@@ -65,6 +65,12 @@ function sessionHarness(componentName) {
       if (name === '../lib/storage') return { storage };
       if (name === '../lib/workoutFrequency') return pure.exports;
       if (name === '../lib/workoutSession') return volume.exports;
+      if (name === '../lib/workoutDraft') return {
+        readWorkoutDraft: () => null, saveWorkoutDraft() {}, removeWorkoutDraft() {}, workoutDraftFingerprint: exercises => JSON.stringify(exercises),
+        elapsedWorkoutSeconds: (clock, time = now, previous = 0) => Math.max(previous, clock.elapsedSeconds + (clock.runStartedAt === null ? 0 : Math.max(0, Math.floor((time - clock.runStartedAt) / 1000)))),
+        pauseWorkoutClock: (clock, time = now, previous = 0) => ({ elapsedSeconds: Math.max(previous, clock.elapsedSeconds + (clock.runStartedAt === null ? 0 : Math.max(0, Math.floor((time - clock.runStartedAt) / 1000)))), runStartedAt: null }),
+      };
+      if (name === '../lib/useWorkoutClock') return { useWorkoutClock: clock => clock.elapsedSeconds + (clock.runStartedAt === null ? 0 : Math.max(0, Math.floor((now - clock.runStartedAt) / 1000))) };
       if (name === '../lib/useWorkoutFrequency') return { useWorkoutFrequency: (uid, month, key, anchor) => {
         const dates = pure.exports.completedWorkoutDates(cached, uid), weekDates = pure.exports.workoutWeekDates(anchor);
         return { dates, weekDates, monthCompletedDays: pure.exports.completedDaysInMonth(dates, month), weekCompletedDays: weekDates.map(day => dates.has(pure.exports.localWorkoutDateKey(day))), loading: false, error: '' };

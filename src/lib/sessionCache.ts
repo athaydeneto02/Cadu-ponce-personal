@@ -5,7 +5,7 @@ const PREFIX = 'cadu:v2:';
 // path: setItem succeeds only after the browser has persisted the value.
 const remoteMemory = new Map<string, { value: string; diskValue: string | null }>();
 const disposableSnapshots = new Map<string, string>();
-const durableKeys = new Set(['cadu_workout_logs', 'cadu_ponce_photos', 'cadu_ponce_exercise_drafts', 'cadu_ponce_deleted_routines', 'cadu_ponce_deleted_custom_exercises']);
+const durableKeys = new Set(['cadu_workout_logs', 'cadu_ponce_photos', 'cadu_deleted_photos', 'cadu_media_cleanup', 'cadu_ponce_exercise_drafts', 'cadu_ponce_deleted_routines', 'cadu_ponce_deleted_custom_exercises']);
 
 function diskRead(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -128,7 +128,7 @@ export function cacheForUser(userId: string | null) {
         try { localStorage.setItem(fullKey, value); }
         catch { reclaimRemoteSnapshots(fullKey); localStorage.setItem(fullKey, value); }
         remoteMemory.delete(fullKey);
-        if (policy.disposable && !options.preserveLocal && !durableKeys.has(key)) disposableSnapshots.set(fullKey, value);
+        if (policy.disposable && !options.preserveLocal && !durableKeys.has(key) && !key.startsWith('cadu_workout_session_')) disposableSnapshots.set(fullKey, value);
         else disposableSnapshots.delete(fullKey);
         return true;
       } catch {

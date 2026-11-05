@@ -17,6 +17,8 @@ const compiled = await build({
          export const resolveMediaUrl = async value => value;
          export const toStorageReference = (bucket, path) => 'storage://' + bucket + '/' + path;
          export const normalizeStoredMediaReference = value => value;
+         export const deleteLocalFile = globalThis.testMedia.deleteLocalFile;
+         export const deleteStoredMedia = globalThis.testMedia.deleteStoredMedia;
          export const clearMediaCache = () => {};`, loader: 'js' }));
   } }],
 });
@@ -79,7 +81,8 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
   const module = { exports: {} };
   const context = {
     module, exports: module.exports, testSupabase: supabase, localStorage: local,
-    testMedia: { storeLocalFile: async blob => { const key = `idb:${randomUUID()}`; blobs.set(key, blob); return key; }, getLocalBlob: async key => blobs.get(key) ?? null },
+    testMedia: { storeLocalFile: async blob => { const key = `idb:${randomUUID()}`; blobs.set(key, blob); return key; }, getLocalBlob: async key => blobs.get(key) ?? null,
+      deleteLocalFile: async key => { blobs.delete(key); }, deleteStoredMedia: async reference => { calls.push({ removedMedia: reference }); } },
     navigator: { onLine: true }, window: { dispatchEvent(event) { events.push(event); } }, Event, CustomEvent, AbortSignal,
     fetch: async (url, options) => { pushes.push({ url, options }); return { ok: true, json: async () => push(url, options) }; },
     crypto: { randomUUID }, console: { warn() {}, error() {}, log() {} },
@@ -99,6 +102,33 @@ const finishAsync = () => new Promise(resolve => setImmediate(resolve));
 function cloudDatabase() {
   const tables = new Map();
   const query = async call => {
+    if (call.operation === 'rpc') {
+      if (call.table === 'media_reference_in_use') return { data: false,error: null };
+      if (call.table === 'delete_evolution_photo') {
+        const row=tables.get('evolution_photos')?.get(call.values.p_photo_id);
+        tables.get('evolution_photos')?.delete(call.values.p_photo_id);
+        tables.get('agenda_events')?.delete(call.values.p_photo_id);
+        return {data:row?[row.photo_url]:[],error:null};
+      }
+      const routine = call.table === 'save_admin_routine' || call.values.p_kind === 'routine';
+      const parentTable = routine ? 'admin_routines' : 'workouts', childTable = routine ? 'admin_exercises' : 'exercises', parentColumn = routine ? 'routine_id' : 'workout_id';
+      if (call.table === 'read_prescriptions') {
+        const data=[...(tables.get(parentTable)?.values()??[])].filter(row=>!call.values.p_student_id||row.student_id===call.values.p_student_id)
+          .sort((a,b)=>a.id.localeCompare(b.id)).slice(call.values.p_offset,call.values.p_offset+call.values.p_limit)
+          .map(row=>({...row,exercises:[...(tables.get(childTable)?.values()??[])].filter(ex=>ex[parentColumn]===row.id)}));
+        return {data:structuredClone(data),error:null};
+      }
+      if (['save_admin_routine','save_workout'].includes(call.table)) {
+        const payload=structuredClone(call.values.p_payload), table=tables.get(parentTable)??new Map(), children=tables.get(childTable)??new Map();
+        const existing=table.get(payload.id);
+        if(existing && existing.version!==call.values.p_expected_version)return {data:null,error:{code:'40001',message:'stale'}};
+        const {exercises,...row}=payload;row.version=(existing?.version??0)+1;
+        table.set(row.id,row);tables.set(parentTable,table);tables.set(childTable,children);
+        for(const [id,ex] of children)if(ex[parentColumn]===row.id)children.delete(id);
+        for(const [index,ex] of exercises.entries())children.set(ex.id,{...ex,[parentColumn]:row.id,sort_order:index});
+        return {data:structuredClone({...row,exercises:[...children.values()].filter(ex=>ex[parentColumn]===row.id)}),error:null};
+      }
+    }
     const table = tables.get(call.table) ?? new Map();
     tables.set(call.table, table);
     if (call.operation === 'upsert' || call.operation === 'insert') {
@@ -282,6 +312,15 @@ test('an outbox that cannot persist rejects instead of claiming memory-only succ
   assert.equal(blobs.size, 1, 'a failed metadata write must not delete the original file');
 });
 
+test('quota recovery never discards a workout session draft even if stored through the snapshot API', async () => {
+  const {storage,local,context}=setup();
+  context.module.exports.safeSetItem('cadu_workout_session_routine',JSON.stringify({routineId:'r',loads:[10,15],notes:'A'.repeat(4000)}));
+  const key='cadu:v2:student-a:cadu_workout_session_routine', before=local.getItem(key);
+  local.setQuota(local.usedBytes()+5);context.navigator.onLine=false;
+  await assert.rejects(storage.saveWorkoutLog(log('would-evict-session')),error=>error.name==='QuotaExceededError');
+  assert.equal(local.getItem(key),before);
+});
+
 test('cloud confirmation is not turned into a failed workout save when its cache update hits quota', async () => {
   const local = localStorageFake();
   const { storage } = setup({ local, query: async call => {
@@ -347,15 +386,11 @@ test('a late response with full storage cannot leak cached progress into the nex
   assert.equal(storage.getProgress()[0].id, 'progress-a');
 });
 
-test('a partial routine read keeps previous exercises instead of caching a destructive empty prescription', async () => {
-  const { storage } = setup({ query: async call => ({
-    data: call.table === 'admin_routines' ? [{ id: 'routine-a', name: 'Treino' }] : [],
-    error: call.table === 'admin_exercises' ? new Error('Offline') : null,
-  }) });
-  storage.setCacheItem('cadu_ponce_admin_routines', JSON.stringify([{ id: 'routine-a', name: 'Treino', exercises: [{ id: 'exercise-a', name: 'Remada' }] }]));
-  const routines = await storage.fetchAdminRoutines();
-  assert.equal(routines[0].exercises[0].id, 'exercise-a');
-  assert.equal(storage.getAdminRoutines()[0].exercises[0].id, 'exercise-a');
+test('a failed prescription snapshot cannot expose an editable cached routine', async () => {
+  const {storage}=setup({query:async()=>({data:null,error:new Error('Offline')})});
+  storage.setCacheItem('cadu_ponce_admin_routines',JSON.stringify([{id:'r',name:'Old',exercises:[{id:'e',name:'Exercise'}]}]));
+  await assert.rejects(storage.fetchAdminRoutines(),/Offline/);
+  assert.equal(storage.getAdminRoutines()[0].exercises.length,1);
 });
 
 test('repeated legacy migrations never overwrite or erase a conflicting pending outbox', () => {
@@ -476,7 +511,7 @@ test('account management rejects unavailable server lists without returning cach
     const { storage } = setup({ query: async () => response });
     storage.setSessionUser('admin-a');
     storage.saveUsersList([{ uid: 'removed-student', name: 'Aluno removido', role: 'student' }]);
-    await assert.rejects(storage.fetchUsersList({ allowCached: false }), /Offline|lista atual/);
+    await assert.rejects(storage.fetchUsersList({ allowCached: false }), /Offline|lista atual|todos os registros/);
     // Other callers retain their existing explicit cache policy; no account is deleted locally or remotely.
     assert.equal((await storage.fetchUsersList())[0].uid, 'removed-student');
   }
@@ -631,20 +666,7 @@ test('photo upload finishing after a session switch cannot write metadata with t
 
 for (const kind of ['routine', 'workout']) {
   test(`${kind} prescribed loads survive saving and loading on another device, including zero and decimals`, async () => {
-    const rows = new Map();
-    const query = async call => {
-      const table = rows.get(call.table) ?? new Map();
-      rows.set(call.table, table);
-      if (call.operation === 'upsert') {
-        for (const row of Array.isArray(call.values) ? call.values : [call.values]) {
-          table.set(row.id, JSON.parse(JSON.stringify(row)));
-        }
-      }
-      const selected = [...table.values()].filter(row => call.filters.every(([operator, column, value]) =>
-        operator === 'in' ? value.includes(row[column]) : row[column] === value));
-      if (call.operation === 'delete') for (const row of selected) table.delete(row.id);
-      return { data: JSON.parse(JSON.stringify(selected)), error: null };
-    };
+    const cloud = cloudDatabase(), rows = cloud.tables, query = cloud.query;
     const trainer = setup({ query }).storage;
     const student = setup({ query }).storage;
     const prescription = { id: randomUUID(), name: 'Treino', studentId: 'student-a', studentIds: ['student-a'],
@@ -666,3 +688,49 @@ for (const kind of ['routine', 'workout']) {
     assert.equal([...rows.get(kind === 'routine' ? 'admin_exercises' : 'exercises').values()][0].prescribed_loads, null);
   });
 }
+
+
+test('an old photo fetch cannot erase a photo confirmed while it was in flight', async () => {
+  const cloud=cloudDatabase(),gate=deferred();let first=true;
+  const {storage}=setup({query:call=>{if(first&&call.table==='evolution_photos'&&call.operation==='select'){first=false;return gate.promise;}return cloud.query(call);}});
+  const reading=storage.fetchPhotos('student-a');
+  await storage.savePhoto({...photo('fresh-photo'),photoURL:'storage://evolution-photos/student-a/fresh-photo.jpg'});
+  gate.resolve({data:[],error:null});
+  assert.equal((await reading)[0].id,'fresh-photo');assert.equal(storage.getPhotos()[0].id,'fresh-photo');
+});
+
+test('deletion cancels an in-flight upload and a durable tombstone rejects stale snapshots after reload', async () => {
+  const cloud=cloudDatabase(),gate=deferred();
+  const app=setup({query:cloud.query,mediaUpload:()=>gate.promise});
+  const saving=app.storage.savePhoto(photo('deleted-photo'),new File(['original'],'photo.jpg',{type:'image/jpeg'}));
+  const rejected=assert.rejects(saving,/excluída/);
+  while(!app.calls.some(call=>call.upload))await finishAsync();
+  const deleting=app.storage.deletePhoto('deleted-photo');
+  gate.resolve({error:null});await rejected;await deleting;
+  assert.equal(app.storage.getPhotos().length,0);assert.equal(cloud.tables.get('evolution_photos')?.size??0,0);
+  assert.ok(app.calls.some(call=>call.removedMedia));assert.equal(app.blobs.size,0);
+  const reload=setup({local:app.local,query:async call=>({data:call.table==='evolution_photos'?[{id:'deleted-photo',student_id:'student-a',photo_url:'https://example.test/photo',date:'2026-11-05'}]:[],error:null})});
+  assert.equal((await reload.storage.fetchPhotos('student-a')).length,0);
+  await assert.rejects(reload.storage.savePhoto({...photo('deleted-photo'),photoURL:'https://example.test/photo'}),/excluída/);
+});
+
+test('deleting a photo preserves a stored file still referenced by an avatar', async () => {
+  const cloud=cloudDatabase(); const app=setup({query:call=>call.table==='media_reference_in_use'?Promise.resolve({data:true,error:null}):cloud.query(call)});
+  await app.storage.savePhoto({...photo('shared-photo'),photoURL:'storage://evolution-photos/student-a/shared.jpg'});
+  await app.storage.deletePhoto('shared-photo');
+  assert.equal(app.calls.some(call=>call.removedMedia),false);
+});
+
+test('prescriptions are paginated as complete snapshots and cleared server fields remain cleared', async () => {
+  const cloud=cloudDatabase();
+  cloud.tables.set('admin_routines',new Map(Array.from({length:201},(_,i)=>['r'+String(i).padStart(3,'0'),{id:'r'+String(i).padStart(3,'0'),name:'Treino '+i,version:1,general_notes:null}])));
+  cloud.tables.set('admin_exercises',new Map([['ex',{id:'ex',routine_id:'r200',name:'Last exercise',sets:3,reps:'10'}]]));
+  const {storage,calls}=setup({query:cloud.query});
+  storage.setCacheItem('cadu_ponce_admin_routines',JSON.stringify([{id:'r200',generalNotes:'Stale',exercises:[]}]));
+  const routines=await storage.fetchAdminRoutines();
+  assert.equal(routines.length,201);assert.equal(routines[200].exercises.length,1);assert.equal(routines[200].generalNotes,undefined);
+  assert.equal(calls.filter(call=>call.table==='read_prescriptions').length,3);
+  const stale={...routines[200]};routines[200].name='New';await storage.saveAdminRoutine(routines[200]);
+  await assert.rejects(storage.saveAdminRoutine(stale),/Recarregue/);
+  assert.equal(storage.getAdminRoutines().find(item=>item.id==='r200').name,'New');
+});

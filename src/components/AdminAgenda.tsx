@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
   Clock, User, Video, MapPin, AlignLeft, X, Trash2, Edit2
@@ -29,6 +29,10 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   const [pendingAction, setPendingAction] = useState<'save' | 'delete' | null>(null);
   const [formError, setFormError] = useState('');
   const mutationPending = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
+  const mounted = useRef(true);
   
   // Form State
   const [formData, setFormData] = useState<Partial<AgendaEvent>>({
@@ -37,11 +41,30 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
     endTime: '09:00',
   });
 
-  useEffect(() => {
-    // The legacy table also holds media and app settings, which are not appointments.
-    setEvents(storage.getAgendaEvents().filter(event => ['presential', 'online', 'other'].includes(event.type)));
-    setUsers(storage.getUsersList().filter(u => u.role === 'student'));
+  const refresh = useCallback(async () => {
+    if (mutationPending.current) return;
+    const request = ++requestId.current;
+    setLoading(true); setLoadError('');
+    try {
+      const [appointments, students] = await Promise.all([
+        storage.fetchAgendaEvents({ allowCached: false }), storage.fetchUsersList({ allowCached: false }),
+      ]);
+      if (!mounted.current || request !== requestId.current) return;
+      setEvents(appointments.filter(event => ['presential', 'online', 'other'].includes(event.type)));
+      setUsers(students.filter(user => user.role === 'student' && user.status !== 'excluded'));
+    } catch (error) {
+      if (mounted.current && request === requestId.current) setLoadError(error instanceof Error ? error.message : 'Não foi possível atualizar a agenda.');
+    } finally { if (mounted.current && request === requestId.current) setLoading(false); }
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void refresh();
+    const onRefresh = () => { if (document.visibilityState === 'visible') void refresh(); };
+    window.addEventListener('focus', onRefresh);
+    window.addEventListener('online', onRefresh);
+    const interval = window.setInterval(onRefresh, 30_000);
+    return () => { mounted.current = false; requestId.current++; window.removeEventListener('focus', onRefresh); window.removeEventListener('online', onRefresh); window.clearInterval(interval); };
+  }, [refresh]);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
@@ -114,6 +137,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
     };
 
     mutationPending.current = true;
+    requestId.current++; setLoading(false);
     setPendingAction('save');
     setFormError('');
     try {
@@ -131,6 +155,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
   const handleDelete = async (id: string) => {
     if (mutationPending.current || !window.confirm('Tem certeza que deseja excluir este evento?')) return;
     mutationPending.current = true;
+    requestId.current++; setLoading(false);
     setPendingAction('delete');
     setFormError('');
     try {
@@ -197,6 +222,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
 
       {/* Calendar Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#f4f7fa]">
+        <div className="mb-3 flex items-center gap-3 text-sm text-slate-700"><button disabled={loading || pendingAction !== null} className="text-blue-700 underline" onClick={() => void refresh()}>Atualizar agenda</button>{loading && <span role="status">Carregando agendamentos…</span>}</div>
+        {loadError && <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-red-800">{loadError} Os agendamentos já exibidos foram mantidos.</p>}
         {view === 'week' && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {/* Week Header */}

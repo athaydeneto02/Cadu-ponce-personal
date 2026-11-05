@@ -3,19 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle, CreditCard, Copy, Trash2, Edit2, Maximize2, User as UserIcon, Loader2, X as CloseIcon } from 'lucide-react';
 import { storage } from '../lib/storage';
-import { Workout, UserProfile, Goal } from '../types';
+import { Workout, UserProfile } from '../types';
 import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
 import { supabase } from '../lib/supabase';
-import LoadHistory from './LoadHistory';
-import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
 import { useWorkoutFrequency } from '../lib/useWorkoutFrequency';
 import { localWorkoutDateKey } from '../lib/workoutFrequency';
 import WorkoutList from './WorkoutList';
-import { TRAINER_CONFIG } from '../lib/trainerConfig';
+import { TRAINER_CONFIG, getTrainerWhatsAppUrl } from '../lib/trainerConfig';
+import StudentFiles from './StudentFiles';
+import StudentAssessments from './StudentAssessments';
+import StudentAnamneses from './StudentAnamneses';
+import StudentAgenda from './StudentAgenda';
 import { compressImage, useMediaUrl } from '../lib/mediaDb';
 import { ensurePushSubscription } from '../lib/pushSubscription';
 
@@ -26,72 +28,17 @@ function PrivateImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElemen
   return <img {...props} src={resolved || undefined} />;
 }
 
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  Cell,
-  LineChart,
-  Line
-} from 'recharts';
-
 interface DashboardProps {
   user: UserProfile | null;
   workouts: Workout[];
   onStartWorkout: (workout: Workout) => void;
   onUpdateUser?: (updated: UserProfile) => void;
+  resetKey?: number;
 }
 
-const mockGoals: Goal[] = [];
-
-const progressData: {name: string, load: number}[] = [];
-
-const weeklyData: {day: string, load: number}[] = [];
-
-export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser }: DashboardProps) {
-  const currentWorkout = workouts[0]; // Suggest the first one
-
-  const currentWeight = user?.weight || 82;
-  const [weightHistory, setWeightHistory] = useState<{ week: string; peso: number }[]>(() => {
-    const saved = storage.getCacheItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // Fallback below
-      }
-    }
-    // Fallback to empty array if no saved data
-    return user?.weight ? [{ week: 'Semana 1', peso: user.weight }] : [];
-  });
-
-  const [newWeight, setNewWeight] = useState('');
-  const [isUpdating, setIsUpdating] = useState(false);
+export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser, resetKey = 0 }: DashboardProps) {
   const [pushStatus, setPushStatus] = useState<'unsupported' | 'needs-permission' | 'denied' | 'syncing' | 'ready' | 'error'>('unsupported');
   const [pushAttempt, setPushAttempt] = useState(0);
-
-  // Sync the current weight from user profile to the final week if it changed
-  React.useEffect(() => {
-    if (user?.weight) {
-      setWeightHistory(prev => {
-        const updated = [...prev];
-        if (updated.length > 0) {
-          updated[updated.length - 1] = { 
-            ...updated[updated.length - 1], 
-            peso: user.weight 
-          };
-        }
-        storage.setCacheItem(`cadu_ponce_weight_history_${user.uid || 'guest'}`, JSON.stringify(updated));
-        return updated;
-      });
-    }
-  }, [user?.weight, user?.uid]);
 
   // Renew an existing permission silently; first consent requires a user click.
   React.useEffect(() => {
@@ -144,35 +91,6 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     } catch { setPushStatus('error'); }
   };
 
-  const handleAddWeight = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = parseFloat(newWeight);
-    if (!isNaN(parsed) && parsed > 0) {
-      // 1. Update the user profile weight
-      if (user && onUpdateUser) {
-        onUpdateUser({
-          ...user,
-          weight: parsed
-        });
-      }
-
-      // 2. Append/Update weight history list
-      setWeightHistory(prev => {
-        const updated = [
-          { week: 'Semana 1', peso: prev[1]?.peso || parsed },
-          { week: 'Semana 2', peso: prev[2]?.peso || parsed },
-          { week: 'Semana 3', peso: prev[3]?.peso || parsed },
-          { week: 'Semana 4', peso: parsed }
-        ];
-        storage.setCacheItem(`cadu_ponce_weight_history_${user?.uid || 'guest'}`, JSON.stringify(updated));
-        return updated;
-      });
-
-      setNewWeight('');
-      setIsUpdating(false);
-    }
-  };
-
   const [showFreqCalendar, setShowFreqCalendar] = useState(false);
   const [calMonth, setCalMonth] = useState(() => new Date());
   const frequency = useWorkoutFrequency(user?.uid, calMonth, showFreqCalendar);
@@ -196,9 +114,6 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [showAvaliacoes, setShowAvaliacoes] = useState(false);
   const [showFaturas, setShowFaturas] = useState(false);
   const [showArquivos, setShowArquivos] = useState(false);
-  const [arquivosUploading, setArquivosUploading] = useState(false);
-  const [arquivosError, setArquivosError] = useState('');
-  const [arquivosSucesso, setArquivosSucesso] = useState('');
 
 
   // ── Meu Progresso ──
@@ -208,6 +123,9 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   const [progressPreview, setProgressPreview] = useState<string>('');
   const [progressComment, setProgressComment] = useState('');
   const [progressSending, setProgressSending] = useState(false);
+  const progressSendingLock = useRef(false);
+  const photoSelectionRevision = useRef(0);
+  const photoRequestRevision = useRef(0);
   const [progressSendError, setProgressSendError] = useState('');
   const [progressEditingId, setProgressEditingId] = useState<string | null>(null);
   const [progressEditComment, setProgressEditComment] = useState('');
@@ -215,32 +133,40 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
   useEffect(() => {
     if (!showMeuProgresso || !user?.uid) return;
+    let active = true;
+    const studentId = user.uid;
+    const request = ++photoRequestRevision.current;
+    const current = () => active && request === photoRequestRevision.current && storage.getUser()?.uid === studentId;
+    setProgressPhotos(storage.getPhotos().filter(photo => photo.studentId === studentId));
     setProgressLoadingPhotos(true);
-    storage.fetchPhotos(user.uid)
-      .then(photos => setProgressPhotos(photos))
-      .catch(() => setProgressPhotos(storage.getPhotos()))
-      .finally(() => setProgressLoadingPhotos(false));
+    storage.fetchPhotos(studentId)
+      .then(photos => { if (current()) setProgressPhotos(photos.filter(photo => photo.studentId === studentId)); })
+      .catch(() => { if (current()) setProgressSendError('Não foi possível atualizar as fotos. Exibindo as salvas neste aparelho.'); })
+      .finally(() => { if (current()) setProgressLoadingPhotos(false); });
+    return () => { active = false; };
   }, [showMeuProgresso, user?.uid]);
 
   useEffect(() => {
-    const refresh = () => setProgressPhotos(storage.getPhotos().filter(photo => photo.studentId === user?.uid));
+    const refresh = () => {
+      if (storage.getUser()?.uid !== user?.uid) return;
+      // Other outbox records can synchronize while the gallery is still loading.
+      // Keep that read alive; photo mutations invalidate stale reads separately.
+      setProgressPhotos(storage.getPhotos().filter(photo => photo.studentId === user?.uid));
+    };
     window.addEventListener('cadu_data_synced', refresh);
     return () => window.removeEventListener('cadu_data_synced', refresh);
   }, [user?.uid]);
 
-  // Configurações de pagamento do personal (carregadas do Supabase)
-  const [paymentSettings, setPaymentSettings] = useState<{
-    pixKey: string; pixType: string; pixHolder: string;
-    cardLink?: string; instructions?: string;
-  }>({
-    pixKey: '554384639369', pixType: 'Telefone', pixHolder: 'Carlos Eduardo Ponce',
-    cardLink: '', instructions: 'Envie o comprovante no WhatsApp após realizar o pagamento.',
-  });
-  const [pixCopied, setPixCopied] = useState(false);
-
+  const [showAnamneses, setShowAnamneses] = useState(false);
+  const [showAgenda, setShowAgenda] = useState(false);
   useEffect(() => {
-    storage.fetchPaymentSettings().then(cfg => setPaymentSettings(cfg as any));
-  }, []);
+    setShowFreqCalendar(false); setShowTreinosExtra(false); setShowTreinos(false);
+    setShowMeuProgresso(false); setShowAvaliacoes(false); setShowFaturas(false);
+    setShowArquivos(false); setShowAnamneses(false); setShowAgenda(false);
+  }, [resetKey]);
+
+  if (showAnamneses && user) return <StudentAnamneses studentId={user.uid} onBack={() => setShowAnamneses(false)} />;
+  if (showAgenda && user) return <StudentAgenda studentId={user.uid} onBack={() => setShowAgenda(false)} />;
 
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
@@ -310,60 +236,30 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
-  if (showTreinosExtra) {
-    return (
-      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
-        {/* Voltar */}
-        <div className="px-4 pt-4 pb-2">
-          <button onClick={() => setShowTreinosExtra(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
-            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
-          </button>
-        </div>
-        <h2 className="text-white text-xl font-semibold px-4 pb-4">Treinos Extra</h2>
-
-        {/* Empty state card */}
-        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center justify-center py-16 px-6">
-          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-3-3v6M5 8.5A2.5 2.5 0 017.5 6h9A2.5 2.5 0 0119 8.5v9a2.5 2.5 0 01-2.5 2.5h-9A2.5 2.5 0 015 17.5v-9z" />
-            </svg>
-          </div>
-          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
-            Seu professor ainda não adicionou<br />nenhum treino extra!
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (showTreinos) {
-    return (
-      <WorkoutList
-        workouts={workouts}
-        onSelectWorkout={onStartWorkout}
-        trainerPhone={user?.trainerPhone}
-        onBack={() => setShowTreinos(false)}
-      />
-    );
+  if (showTreinosExtra || showTreinos) {
+    return <WorkoutList workouts={workouts} onSelectWorkout={onStartWorkout} trainerPhone={user?.trainerPhone}
+      initialKind={showTreinosExtra ? 'extra' : 'strength'} onBack={() => { setShowTreinos(false); setShowTreinosExtra(false); }} />;
   }
 
   if (showMeuProgresso) {
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
+        const selection = ++photoSelectionRevision.current;
+        setProgressPreview('');
         setProgressSelectedFile(file);
         try {
           // Comprime a imagem para 800px max a 80% qualidade garantindo tamanho leve (<80KB)
           const compressedBlob = await compressImage(file, 800, 0.8);
           const reader = new FileReader();
           reader.onloadend = () => {
-            setProgressPreview(reader.result as string);
+            if (selection === photoSelectionRevision.current) setProgressPreview(reader.result as string);
           };
           reader.readAsDataURL(compressedBlob);
         } catch {
           const reader = new FileReader();
           reader.onloadend = () => {
-            setProgressPreview(reader.result as string);
+            if (selection === photoSelectionRevision.current) setProgressPreview(reader.result as string);
           };
           reader.readAsDataURL(file);
         }
@@ -371,7 +267,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     };
 
     const handleSendProgress = async () => {
-      if (!progressPreview || !user?.uid) return;
+      if (!progressPreview || !user?.uid || progressSendingLock.current) return;
+      progressSendingLock.current = true;
       setProgressSending(true);
       setProgressSendError('');
       try {
@@ -386,6 +283,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         };
 
         const photoURL = await storage.savePhoto(newPhoto, progressSelectedFile || undefined);
+        photoRequestRevision.current++; setProgressLoadingPhotos(false);
         const savedPhoto = storage.getPhotos().find(photo => photo.id === photoId) ?? { ...newPhoto, photoURL };
         setProgressPhotos(prev => [savedPhoto, ...prev.filter(photo => photo.id !== photoId)]);
         if ('syncStatus' in savedPhoto && savedPhoto.syncStatus === 'pending') {
@@ -398,6 +296,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         console.error('Erro ao enviar foto de progresso:', err);
         setProgressSendError('Não foi possível salvar a foto. Tente novamente; sua seleção foi mantida.');
       } finally {
+        progressSendingLock.current = false;
         setProgressSending(false);
       }
     };
@@ -410,16 +309,17 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         setProgressSendError('Não foi possível excluir a foto. Tente novamente.');
         return;
       }
-      const updated = progressPhotos.filter(p => p.id !== photoId);
-      setProgressPhotos(updated);
-      storage.setCacheItem('cadu_ponce_photos', JSON.stringify(updated));
+      photoRequestRevision.current++; setProgressLoadingPhotos(false);
+      setProgressPhotos(previous => previous.filter(p => p.id !== photoId));
     };
 
     const handleSaveEditComment = async (photoId: string) => {
       try {
         await storage.updatePhotoNotes(photoId, progressEditComment.trim());
-        const updatedList = progressPhotos.map(p => p.id === photoId ? { ...p, notes: progressEditComment.trim() } : p);
-        setProgressPhotos(updatedList);
+        photoRequestRevision.current++; setProgressLoadingPhotos(false);
+        const saved = storage.getPhotos().find(photo => photo.id === photoId);
+        setProgressPhotos(previous => previous.map(photo => photo.id === photoId ? saved || { ...photo, notes: progressEditComment.trim() } : photo));
+        if (saved?.syncStatus === 'pending') setProgressSendError('Comentário salvo neste aparelho. Será enviado quando a conexão voltar.');
       } catch (err) {
         console.warn('Erro ao atualizar comentário:', err);
         setProgressSendError('Não foi possível salvar o comentário. Tente novamente.');
@@ -684,350 +584,18 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     );
   }
 
-  if (showAvaliacoes) {
-    return (
-      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
-        <div className="px-4 pt-4 pb-2">
-          <button onClick={() => setShowAvaliacoes(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
-            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
-          </button>
-        </div>
-        <h2 className="text-white text-xl font-semibold px-4 pb-4">Suas Avaliações</h2>
-        <div className="mx-4 bg-white rounded-xl shadow-xl flex flex-col items-center justify-center py-16 px-6">
-          <div className="w-20 h-20 rounded-full bg-[#dbeafe] flex items-center justify-center mb-6">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h4" />
-            </svg>
-          </div>
-          <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
-            Seu professor ainda não disponibilizou nenhuma avaliação
-          </p>
-        </div>
+  if (showAvaliacoes && user) return <StudentAssessments studentId={user.uid} onBack={() => setShowAvaliacoes(false)} />;
+  if (showArquivos && user) return <StudentFiles studentId={user.uid} onBack={() => setShowArquivos(false)} />;
+  if (showFaturas) return (
+    <div className="min-h-full bg-[#1c2b3e] p-4 space-y-5">
+      <button onClick={() => setShowFaturas(false)} className="text-white text-sm">← Voltar</button>
+      <h2 className="text-white text-xl font-semibold">Pagamento da consultoria</h2>
+      <div className="bg-white rounded-xl p-6 space-y-4">
+        <p className="text-slate-700">Combine o pagamento, os planos e a renovação diretamente com o Cadu pelo WhatsApp.</p>
+        <a href={getTrainerWhatsAppUrl('Olá Cadu! Gostaria de conversar sobre o pagamento da minha consultoria.')} target="_blank" rel="noopener noreferrer" className="block text-center rounded-xl bg-emerald-600 p-4 font-bold text-white">Conversar sobre pagamento</a>
       </div>
-    );
-  }
-
-
-  if (showFaturas) {
-    const handleCopyPix = () => {
-      navigator.clipboard.writeText(paymentSettings.pixKey).then(() => {
-        setPixCopied(true);
-        setTimeout(() => setPixCopied(false), 2500);
-      }).catch(() => {
-        // fallback para mobile
-        const el = document.createElement('textarea');
-        el.value = paymentSettings.pixKey;
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        setPixCopied(true);
-        setTimeout(() => setPixCopied(false), 2500);
-      });
-    };
-
-    return (
-      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
-        {/* Header */}
-        <div className="px-4 pt-4 pb-2">
-          <button onClick={() => setShowFaturas(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
-            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
-          </button>
-        </div>
-        <h2 className="text-white text-xl font-bold px-4 pb-4">Formas de Pagamento</h2>
-
-        <div className="px-4 space-y-4 pb-8">
-
-          {/* Card PIX */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="bg-gradient-to-r from-[#0070f3] to-[#005cc5] px-5 py-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                {/* Ícone PIX */}
-                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M17.05 4.652a3.394 3.394 0 0 0-2.406.996l-2.116 2.116a1.13 1.13 0 0 1-1.598 0L8.82 5.648a3.394 3.394 0 0 0-2.406-.996H5.3l3.652 3.651a3.18 3.18 0 0 0 4.496 0l3.652-3.651h-2.054ZM5.3 19.348a3.394 3.394 0 0 0 2.406-.996l2.116-2.116a1.13 1.13 0 0 1 1.598 0l2.116 2.116a3.394 3.394 0 0 0 2.406.996h2.054l-3.652-3.651a3.18 3.18 0 0 0-4.496 0L5.3 19.348Z"/>
-                  <path d="M4.652 6.95a3.394 3.394 0 0 0-.996 2.406v5.288a3.394 3.394 0 0 0 .996 2.406l.996-.996V9.356L4.652 6.95Zm14.696 0-.996 2.406v6.698l.996.996a3.394 3.394 0 0 0 .996-2.406V9.356a3.394 3.394 0 0 0-.996-2.406Z"/>
-                </svg>
-              </div>
-              <div>
-                <p className="text-white font-black text-[15px]">PIX</p>
-                <p className="text-white/75 text-[11px]">Transferência instantânea</p>
-              </div>
-            </div>
-            <div className="px-5 py-4 space-y-3">
-              <div>
-                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Tipo de chave</p>
-                <p className="text-slate-800 font-bold text-[15px]">{paymentSettings.pixType}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Chave PIX</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-slate-800 font-bold text-[15px] flex-1 break-all">{paymentSettings.pixKey}</p>
-                  <button
-                    onClick={handleCopyPix}
-                    className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all ${
-                      pixCopied
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-[#0070f3] text-white active:scale-95'
-                    }`}
-                  >
-                    {pixCopied ? (
-                      <><Check className="w-3.5 h-3.5" /> Copiado!</>
-                    ) : (
-                      <><Copy className="w-3.5 h-3.5" /> Copiar</>
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mb-1">Titular</p>
-                <p className="text-slate-800 font-medium text-[14px]">{paymentSettings.pixHolder}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Card Cartão de Crédito */}
-          {paymentSettings.cardLink ? (
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-700 to-slate-900 px-5 py-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                  <CreditCard className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-white font-black text-[15px]">Cartão de Crédito</p>
-                  <p className="text-white/75 text-[11px]">Parcelamento disponível</p>
-                </div>
-              </div>
-              <div className="px-5 py-4">
-                <p className="text-slate-500 text-[13px] mb-3">Clique no botão abaixo para ser redirecionado ao link de pagamento seguro.</p>
-                <a
-                  href={paymentSettings.cardLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 bg-slate-800 text-white font-bold text-[14px] rounded-xl py-3 active:scale-95 transition-all"
-                >
-                  <CreditCard className="w-4 h-4" /> Pagar com Cartão
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-700 to-slate-900 px-5 py-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                  <CreditCard className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-white font-black text-[15px]">Cartão de Crédito</p>
-                  <p className="text-white/75 text-[11px]">Parcelamento disponível</p>
-                </div>
-              </div>
-              <div className="px-5 py-4 flex flex-col items-center py-6">
-                <p className="text-slate-400 text-[13px] text-center">Pagamento via cartão em breve. Entre em contato com seu professor.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Instrução do personal */}
-          {paymentSettings.instructions && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex gap-3">
-              <MessageSquare className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-amber-800 text-[13px] font-medium leading-snug">{paymentSettings.instructions}</p>
-            </div>
-          )}
-
-          {/* Contato WhatsApp */}
-          <a
-            href={`https://wa.me/${TRAINER_CONFIG.phone}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[14px] rounded-xl py-3.5 shadow-md active:scale-95 transition-all"
-          >
-            <MessageSquare className="w-4 h-4" /> Falar com o Professor
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (showArquivos) {
-    const categories = [
-      { label: 'Planos alimentares', icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h.01M12 3v1M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zM9 12a3 3 0 006 0" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 19l2-5h10l2 5" />
-        </svg>
-      )},
-      { label: 'Exames médicos', icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0 3.314-3.134 6-7 6s-7-2.686-7-6 3.134-6 7-6c1.94 0 3.694.757 4.97 1.984" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l1.5-1.5M18 6l-1.5 1.5M12 9v3l2 1" />
-        </svg>
-      )},
-      { label: 'Planners', icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9h18M9 21V9" />
-        </svg>
-      )},
-      { label: 'Arquivos diversos', icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-      )},
-    ];
-
-    const handleArquivosUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files: File[] = Array.from(e.currentTarget.files ?? []);
-      if (!files.length) return;
-      if (!user?.uid) {
-        setArquivosError('Você precisa estar logado para enviar arquivos.');
-        return;
-      }
-
-      setArquivosUploading(true);
-      setArquivosError('');
-      setArquivosSucesso('');
-
-      let successCount = 0;
-      const errors: string[] = [];
-
-      for (const file of files) {
-        try {
-          const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain',
-            'application/msword', 'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'video/mp4', 'video/quicktime'];
-          if (!allowedTypes.includes(file.type)) {
-            errors.push(`${file.name}: formato não suportado. Use JPG, PNG, WebP, PDF, DOC, DOCX, XLS, XLSX, TXT, MP4 ou MOV.`);
-            continue;
-          }
-          if (file.size > 20 * 1024 * 1024) {
-            errors.push(`${file.name}: o limite é 20 MB por arquivo.`);
-            continue;
-          }
-          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const filePath = `${user.uid}/${Date.now()}_${safeName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from('arquivos-alunos')
-            .upload(filePath, file, { upsert: false });
-
-          if (uploadError) {
-            errors.push(`${file.name}: ${uploadError.message}`);
-            continue;
-          }
-
-          // Registra o envio na tabela agenda_events para notificar o admin
-          const { error: recordError } = await supabase.from('agenda_events').insert({
-            id: crypto.randomUUID(),
-            student_id: user.uid,
-            student_name: user.name || 'Aluno',
-            title: `Arquivo enviado: ${file.name}`,
-            date: new Date().toISOString().split('T')[0],
-            start_time: new Date().toISOString().substring(11, 16),
-            end_time: new Date().toISOString().substring(11, 16),
-            type: 'student_file',
-            notes: JSON.stringify({ fileName: file.name, filePath, fileSize: file.size, fileType: file.type }),
-          });
-          if (recordError) {
-            await supabase.storage.from('arquivos-alunos').remove([filePath]);
-            errors.push(`${file.name}: não foi possível registrar o envio. Tente novamente.`);
-            continue;
-          }
-
-          successCount++;
-        } catch (err: any) {
-          errors.push(`${file.name}: erro inesperado`);
-        }
-      }
-
-      setArquivosUploading(false);
-
-      if (successCount > 0) {
-        setArquivosSucesso(`✅ ${successCount} arquivo${successCount > 1 ? 's' : ''} enviado${successCount > 1 ? 's' : ''} com sucesso!`);
-      }
-      if (errors.length > 0) {
-        setArquivosError(`Erro ao enviar: ${errors.join('; ')}`);
-      }
-
-      // Limpa o input
-      e.target.value = '';
-    };
-
-    return (
-      <div className="flex flex-col min-h-full bg-[#1c2b3e]">
-        <div className="px-4 pt-4 pb-2">
-          <button onClick={() => setShowArquivos(false)} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
-            <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
-          </button>
-        </div>
-        <h2 className="text-white text-xl font-semibold px-4 pb-4">Arquivos</h2>
-
-        <div className="mx-4 bg-white rounded-xl shadow-xl overflow-hidden">
-          {/* Icon + headline */}
-          <div className="flex flex-col items-center pt-8 pb-4 px-6">
-            <div className="w-16 h-16 rounded-full bg-[#dbeafe] flex items-center justify-center mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-[#0070f3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-            </div>
-            <p className="text-slate-800 font-bold text-[16px] text-center leading-snug">
-              Envie <span className="text-[#0070f3]">arquivos</span> para o seu professor!
-            </p>
-          </div>
-
-          {/* Category list */}
-          <div className="divide-y divide-slate-100 px-4 pb-2">
-            {categories.map((cat, i) => (
-              <div key={i} className="flex items-center gap-4 py-4">
-                <div className="w-10 h-10 rounded-full bg-[#eff6ff] flex items-center justify-center shrink-0">
-                  {cat.icon}
-                </div>
-                <span className="text-slate-700 font-medium text-sm">{cat.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Feedback */}
-          {arquivosSucesso && (
-            <div className="mx-4 mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-700 text-sm font-medium">{arquivosSucesso}</p>
-            </div>
-          )}
-          {arquivosError && (
-            <div className="mx-4 mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-600 text-sm font-medium">{arquivosError}</p>
-            </div>
-          )}
-
-          {/* Button */}
-          <div className="px-4 pb-6 pt-2">
-            <label className={`w-full text-white font-semibold py-3.5 rounded-md flex items-center justify-center cursor-pointer transition text-sm gap-2 ${arquivosUploading ? 'bg-[#0070f3]/60 cursor-not-allowed' : 'bg-[#0070f3] hover:bg-[#005ccc] active:scale-95'}`}>
-              {arquivosUploading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Enviando...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4" />
-                  Adicionar arquivos
-                </>
-              )}
-              <input
-                type="file"
-                className="hidden"
-                multiple
-                accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.mp4,.mov"
-                disabled={arquivosUploading}
-                onChange={handleArquivosUpload}
-              />
-            </label>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
@@ -1072,10 +640,15 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
         </button>
 
 
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => setShowAnamneses(true)} className="bg-white rounded-xl p-4 text-left text-slate-800 font-semibold">Questionários de saúde</button>
+          <button onClick={() => setShowAgenda(true)} className="bg-white rounded-xl p-4 text-left text-slate-800 font-semibold">Minha agenda</button>
+        </div>
+
         {/* Grid de Botões */}
         <div className="grid grid-cols-2 gap-3 mt-4">
           <button
-            onClick={() => { setShowTreinos(true); setTreinosTab('rotinas'); }}
+            onClick={() => { setShowTreinos(true); }}
             className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
           >
             <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">

@@ -37,10 +37,22 @@ export interface Exercise {
   notes?: string;
   currentLoad?: number;
   prescribedLoads?: number[];
+  videoUrl?: string;
+  videoFileUrl?: string;
+  combinedWithNext?: boolean;
+  combinedGroup?: string;
 }
 
 export interface Workout {
   id: string;
+  version?: number;
+  kind?: 'strength' | 'aerobic' | 'extra';
+  hideBeforeStart?: boolean;
+  hideAfterEnd?: boolean;
+  allowPdf?: boolean;
+  showTimer?: boolean;
+  startDate?: string;
+  endDate?: string;
   routineId?: string;
   name: string;
   description?: string;
@@ -97,6 +109,12 @@ export interface AdminExercise {
 
 export interface AdminRoutine {
   id: string;
+  version?: number;
+  kind?: 'strength' | 'aerobic' | 'extra';
+  hideBeforeStart?: boolean;
+  hideAfterEnd?: boolean;
+  allowPdf?: boolean;
+  showTimer?: boolean;
   name: string;
   goal: string;
   difficulty: string;
@@ -170,4 +188,28 @@ export interface TrainerPaymentSettings {
   bankName?: string;
   cardLink?: string;
   instructions?: string;
+}
+
+export interface Assessment {
+  id: string; studentId: string; date: string;
+  weight?: number; height?: number; bodyFat?: number;
+  measurements?: Record<string, number>; notes?: string; createdAt?: string;
+}
+export interface Anamnesis {
+  id: string; studentId: string; title: string;
+  questions: { id: string; label: string; answer?: string }[];
+  status: 'pending' | 'answered'; version?: number; createdAt?: string; updatedAt?: string;
+}
+export interface StudentFile {
+  id: string; studentId: string; name: string; storagePath: string;
+  mimeType: string; size: number; category?: string; createdAt: string;
+}
+export interface WorkoutFeedback {
+  id: string; studentId: string; routineId: string; routineName: string;
+  rating: number; comment: string; createdAt: string; updatedAt?: string;
+  source?: 'feedback' | 'completion'; logId?: string;
+}
+export interface StudentNotification {
+  id: string; recipientId: string; title: string; body: string;
+  type: string; createdAt: string; readAt?: string;
 }

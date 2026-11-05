@@ -7,23 +7,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, 
-  Link as LinkIcon, 
-  MessageSquare, 
-  Calendar, 
-  Search, 
-  Plus, 
+import {
+  X,
+  Link as LinkIcon,
+  MessageSquare,
+  Calendar,
+  Search,
+  Plus,
   Edit3,
-  Phone, 
-  ArrowLeft, 
-  Check, 
-  Copy, 
-  Home, 
-  HelpCircle, 
-  Menu, 
-  User, 
-  Mail, 
+  Phone,
+  ArrowLeft,
+  Check,
+  Copy,
+  Home,
+  HelpCircle,
+  Menu,
+  User,
+  Mail,
   ArrowUpRight,
   TrendingUp,
   Award,
@@ -73,6 +73,11 @@ import {
   QrCode,
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
+import AdminStudentModules, { newAnamnesis } from './AdminStudentModules';
+import AdminRoutineModule from './AdminRoutineModule';
+import StudentProfileEditor from './StudentProfileEditor';
+import AdminStudentGroups from './AdminStudentGroups';
+import { normalizeStudentPhone, studentWhatsAppUrl } from '../lib/studentContact';
 import NotificationsModal from './NotificationsModal';
 import { UserProfile, Workout, TrainerPaymentSettings } from '../types';
 import { storage, safeSetItem } from '../lib/storage';
@@ -182,13 +187,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [searchTerm, setSearchTerm] = useState('');
   const [studentTab, setStudentTab] = useState<'alunos' | 'grupos'>('alunos');
   const [studentGroupSearch, setStudentGroupSearch] = useState('');
-  const [studentGroups, setStudentGroups] = useState<string[]>(() => {
-    const saved = storage.getCacheItem('cadu_ponce_student_groups');
-    if (saved) {
-      try { return JSON.parse(saved); } catch(e){}
-    }
-    return ['Online', 'Presencial'];
-  });
+  const studentGroups = [...new Set(users.filter(user => user.role === 'student' && user.status !== 'excluded').map(user => user.metadata?.group).filter(Boolean))] as string[];
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [selectedGroupForView, setSelectedGroupForView] = useState<string | null>(null);
@@ -263,21 +262,24 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     return () => clearTimeout(timeout);
   }, [bannerNotif]);
 
+  const persistStudent = async (updated: UserProfile) => {
+    if (updated.role !== 'student' || updated.uid === storage.getUser()?.uid) {
+      alert('Esta ação é exclusiva para fichas de alunos. Contas de treinadores foram preservadas.');
+      return;
+    }
+    if (studentMutationLock.current) return;
+    studentMutationLock.current = true; setStudentMutationBusy(true);
+    try {
+      await storage.updateProfile(updated);
+      setUsers(previous => previous.map(user => user.uid === updated.uid ? updated : user));
+      setSelectedStudent(previous => previous?.uid === updated.uid ? updated : previous);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível salvar o aluno.'); }
+    finally { studentMutationLock.current = false; setStudentMutationBusy(false); }
+  };
   const handleDeleteStudent = async (uid: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
-      const student = users.find(u => u.uid === uid);
-      if (student) {
-        const updatedStudent = { ...student, status: 'excluded' as const };
-        try {
-          setUsers(users.map(u => u.uid === uid ? updatedStudent : u));
-          await storage.updateProfile(updatedStudent);
-        } catch (err) {
-          console.error("Failed to exclude student", err);
-          alert('Erro ao excluir aluno. Tente novamente.');
-          // Revert if failed
-          setUsers(users);
-        }
-      }
+    const student = users.find(user => user.uid === uid && user.role === 'student');
+    if (student && window.confirm('Excluir este aluno da lista ativa e bloquear seu acesso? O histórico será preservado.')) {
+      await persistStudent({ ...student, status: 'excluded' });
     }
   };
 
@@ -333,7 +335,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     { label: 'Sem treino no mês', count: activeCount - engagedCount, percent: activeCount ? Math.round((activeCount - engagedCount) / activeCount * 100) : 0, color: 'bg-slate-300' },
   ];
 
-  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra' | 'arquivos'>('inicio');
+  const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra' | 'arquivos' | 'avaliacoes' | 'anamneses' | 'editar_aluno'>('inicio');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
@@ -384,6 +386,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   // Modals / Overlays
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
+  const [studentMutationBusy, setStudentMutationBusy] = useState(false);
+  const studentMutationLock = useRef(false);
+  const [createdAccess, setCreatedAccess] = useState<{ name: string; email: string; password: string; warning?: string } | null>(null);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const createUserLock = useRef(false);
   const [trainerProgressPhotos, setTrainerProgressPhotos] = useState<any[]>([]);
   const [trainerLoadingPhotos, setTrainerLoadingPhotos] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -417,7 +424,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [routineNotes, setRoutineNotes] = useState('');
   const [showRoutineNotes, setShowRoutineNotes] = useState(false);
   const [routinePdfPermission, setRoutinePdfPermission] = useState('Não');
-  const [routineShowTime, setRoutineShowTime] = useState('Não');
+  const [routineShowTime, setRoutineShowTime] = useState('Sim');
+  const [routineHideBeforeStart, setRoutineHideBeforeStart] = useState(false);
+  const [routineHideAfterEnd, setRoutineHideAfterEnd] = useState(false);
   const [routineDayOfWeek, setRoutineDayOfWeek] = useState('');
   const [routineMuscleGroup, setRoutineMuscleGroup] = useState('');
   const [routineGeneralNotes, setRoutineGeneralNotes] = useState('');
@@ -461,9 +470,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   });
 
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState('');
+  const [dataReload, setDataReload] = useState(0);
 
   // Load admin data from dedicated Supabase tables on mount
   useEffect(() => {
+    let alive = true;
+    setIsDataLoaded(false); setDataLoadError('');
     Promise.all([
       storage.fetchAdminRoutines(),
       storage.fetchCustomExercises(),
@@ -471,22 +484,27 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       storage.fetchCategories(),
       storage.fetchAgendaEvents(),
     ]).then(([routines, customExercises, muscleGroups, categories, agendaEvents]) => {
+      if (!alive) return;
       if (routines) setAdminRoutines(routines);
       if (customExercises) setExercises(customExercises);
       if (muscleGroups) setAppMuscleGroups(muscleGroups);
       if (categories) setAppCategories(categories);
       setIsDataLoaded(true);
-    }).catch(() => setIsDataLoaded(true));
-  }, []);
+    }).catch(error => { if (alive) setDataLoadError(error instanceof Error ? error.message : 'Falha ao carregar a biblioteca.'); });
+    return () => { alive = false; };
+  }, [dataReload]);
 
   useEffect(() => {
+    let alive = true;
     if (selectedDetailTab === 'progresso' && selectedStudent?.uid) {
+      setTrainerProgressPhotos([]);
       setTrainerLoadingPhotos(true);
       storage.fetchPhotos(selectedStudent.uid)
-        .then(photos => setTrainerProgressPhotos(photos))
-        .catch(() => setTrainerProgressPhotos([]))
-        .finally(() => setTrainerLoadingPhotos(false));
+        .then(photos => { if (alive) setTrainerProgressPhotos(photos); })
+        .catch(() => { if (alive) setTrainerProgressPhotos([]); })
+        .finally(() => { if (alive) setTrainerLoadingPhotos(false); });
     }
+    return () => { alive = false; };
   }, [selectedDetailTab, selectedStudent?.uid]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string | null>(null);
@@ -525,16 +543,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   const handleSaveWorkout = () => {
     if (!newWorkoutDay || !newWorkoutName) return;
-    
+
     const newWorkout = {
       day: newWorkoutDay,
       name: newWorkoutName,
       notes: newWorkoutNotes
     };
-    
+
     setRoutineWorkouts([...routineWorkouts, newWorkout]);
     setIsCreateWorkoutModalOpen(false);
-    
+
     // Reset form
     setNewWorkoutDay('');
     setNewWorkoutName('');
@@ -550,7 +568,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       return s ? s.name : '';
     });
     const routine: import('../types').AdminRoutine = {
-      id: editingRoutine?.id || `routine_${Date.now()}`,
+      ...editingRoutine,
+      id: editingRoutine?.id || crypto.randomUUID(),
       name: routineName,
       goal: routineGoal,
       difficulty: routineDifficulty,
@@ -561,12 +580,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       endDate: routineEndDate || undefined,
       routineGroupName: routineGroupName || undefined,
       notes: routineNotes,
+      allowPdf: routinePdfPermission === 'Sim',
+      showTimer: routineShowTime === 'Sim',
+      hideBeforeStart: routineHideBeforeStart,
+      hideAfterEnd: routineHideAfterEnd,
       studentIds: routineStudentIds,
       studentNames,
       exercises: routineExercises,
       createdAt: editingRoutine?.createdAt || new Date().toISOString(),
     };
     try {
+      if (routine.startDate && routine.endDate && routine.endDate < routine.startDate) throw new Error('A data final deve ser posterior à inicial.');
+      if (routine.hideBeforeStart && !routine.startDate) throw new Error('Informe a data inicial para restringir a exibição.');
+      if (routine.hideAfterEnd && !routine.endDate) throw new Error('Informe a data final para ocultar o treino após o vencimento.');
+      if (!routine.exercises.length || routine.exercises.some(exercise => !exercise.name.trim() || !exercise.reps.trim())) throw new Error('Adicione pelo menos um exercício e preencha nome e repetições de todos.');
       routine.exercises = routine.exercises.map(ex => ({ ...ex,
         videoUrl: normalizeStoredMediaReference(ex.videoUrl) ?? undefined,
         videoFileUrl: normalizeStoredMediaReference(ex.videoFileUrl) ?? undefined,
@@ -575,30 +602,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setEditingRoutine(routine);
     setAdminRoutines(prev => [routine, ...prev.filter(item => item.id !== routine.id)]);
 
-    // Automatically create Workouts for assigned students
-    if (routineStudentIds.length > 0) {
-      for (const studentId of routineStudentIds) {
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
-        if (!isUUID) {
-          console.warn(`Skipping assignment for legacy student ID: ${studentId}`);
-          continue;
-        }
-
-        const newWorkout: import('../types').Workout = {
-          id: storage.getWorkouts().find(workout => workout.routineId === routine.id && workout.studentId === studentId)?.id || crypto.randomUUID(),
-          studentId,
-          routineId: routine.id,
-          name: routine.name,
-          description: routine.notes || routine.goal,
-          exercises: routine.exercises.map((ex, idx) => ({
-            ...ex,
-            id: crypto.randomUUID()
-          })),
-          createdAt: new Date().toISOString()
-        };
-        await storage.saveWorkout(newWorkout);
-      }
-    }
+    // Memberships and student copies are committed atomically by saveAdminRoutine.
     setEditingRoutine(null);
     setRoutineExercises([]);
     setRoutineStudentIds([]);
@@ -614,67 +618,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   const handleSaveRoutineAssignment = async () => {
-    if (!assigningRoutine || !isDataLoaded) return;
-    const studentNames = routineStudentIds.map(id => {
-      const s = users.find(u => u.uid === id);
-      return s ? s.name : '';
-    });
-    const updatedRoutine = {
-      ...assigningRoutine,
-      studentIds: routineStudentIds,
-      studentNames,
-    };
+    if (!assigningRoutine || !isDataLoaded || routineSaveLock.current) return;
+    routineSaveLock.current = true; setIsSavingRoutine(true);
+    const updatedRoutine = { ...assigningRoutine, studentIds: routineStudentIds,
+      studentNames: routineStudentIds.map(id => users.find(user => user.uid === id)?.name || '') };
     try {
       await storage.saveAdminRoutine(updatedRoutine);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Não foi possível atribuir o treino.');
-      return;
-    }
-    setAdminRoutines(storage.getAdminRoutines());
-
-    // Create a Workout for each student so it shows up on their end
-    let successCount = 0;
-    for (const studentId of routineStudentIds) {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
-      if (!isUUID) {
-        alert(`O aluno com ID "${studentId}" é um usuário antigo/fantasma. A ficha foi ignorada para ele.`);
-        continue;
-      }
-
-      const newWorkout: import('../types').Workout = {
-        id: storage.getWorkouts().find(workout => workout.routineId === assigningRoutine.id && workout.studentId === studentId)?.id || crypto.randomUUID(),
-        studentId,
-        routineId: assigningRoutine.id,
-        name: assigningRoutine.name,
-        description: assigningRoutine.notes || assigningRoutine.goal,
-        exercises: assigningRoutine.exercises.map((ex, idx) => ({
-          ...ex,
-          id: crypto.randomUUID()
-        })),
-        createdAt: new Date().toISOString()
-      };
-      try {
-        await storage.saveWorkout(newWorkout);
-        successCount++;
-      } catch (err: any) {
-        console.error('Failed to assign workout to student:', err);
-        alert('Erro ao atribuir treino ao aluno: ' + JSON.stringify(err));
-      }
-    }
-    
-    if (successCount > 0) {
-      alert(`Treino atribuído com sucesso a ${successCount} aluno(s) no Supabase!`);
-    }
-
-    setWorkouts(storage.getWorkouts());
-    if (successCount === routineStudentIds.length) {
-      setAssigningRoutine(null);
-      setRoutineStudentIds([]);
-    }
+      setAdminRoutines(previous => [updatedRoutine, ...previous.filter(item => item.id !== updatedRoutine.id)]);
+      setAssigningRoutine(null); setRoutineStudentIds([]);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível atribuir o treino.'); }
+    finally { routineSaveLock.current = false; setIsSavingRoutine(false); }
   };
 
   const handleDeleteAdminRoutine = async (id: string) => {
-    if (!isDataLoaded) return;
+    if (!isDataLoaded || !window.confirm('Excluir esta rotina da biblioteca e de TODOS os alunos vinculados? O histórico de conclusões será preservado.')) return;
     try {
       await storage.deleteAdminRoutine(id);
       setAdminRoutines(storage.getAdminRoutines());
@@ -691,6 +648,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     setRoutineGoal(routine.goal);
     setRoutineDifficulty(routine.difficulty);
     setRoutineNotes(routine.notes || '');
+    setRoutinePdfPermission(routine.allowPdf === false ? 'Não' : 'Sim');
+    setRoutineShowTime(routine.showTimer === false ? 'Não' : 'Sim');
+    setRoutineHideBeforeStart(!!routine.hideBeforeStart);
+    setRoutineHideAfterEnd(!!routine.hideAfterEnd);
     setRoutineDayOfWeek(routine.dayOfWeek || '');
     setRoutineMuscleGroup(routine.muscleGroup || '');
     setRoutineGeneralNotes(routine.generalNotes || '');
@@ -786,132 +747,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       setExpandedCategory(null);
       setEditWeight(selectedStudent.weight?.toString() || '');
       setEditHeight(selectedStudent.height?.toString() || '');
-      
+
       const savedBF = storage.getCacheItem(`cadu_bf_${selectedStudent.uid}`) || '';
       setEditBF(savedBF);
-      
+
       const savedPayment = storage.getCacheItem(`cadu_payment_${selectedStudent.uid}`) as 'pago' | 'pendente' | null;
       setEditPaymentStatus(savedPayment || 'pago');
-      
+
       const savedPresc = storage.getCacheItem(`cadu_presc_${selectedStudent.uid}`) || '';
       setExtraPrescription(savedPresc);
 
     }
   }, [selectedStudent]);
-
-  const handleSaveAssessment = () => {
-    if (!selectedStudent) return;
-    const parsedWeight = editWeight ? parseFloat(editWeight) : undefined;
-    const parsedHeight = editHeight ? parseInt(editHeight) : undefined;
-    
-    const updatedUsers = users.map(u => {
-      if (u.uid === selectedStudent.uid) {
-        return {
-          ...u,
-          weight: parsedWeight,
-          height: parsedHeight
-        };
-      }
-      return u;
-    });
-    
-    storage.saveUsersList(updatedUsers);
-    setUsers(updatedUsers);
-    setSelectedStudent(prev => prev ? {
-      ...prev,
-      weight: parsedWeight,
-      height: parsedHeight
-    } : null);
-    
-    storage.setCacheItem(`cadu_bf_${selectedStudent.uid}`, editBF);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  };
-
-  const handleSavePrescription = () => {
-    if (!selectedStudent) return;
-    storage.setCacheItem(`cadu_presc_${selectedStudent.uid}`, extraPrescription);
-    setPrescSuccess(true);
-    setTimeout(() => setPrescSuccess(false), 2000);
-  };
-
-  const handleTogglePayment = () => {
-    if (!selectedStudent) return;
-    const nextPayment = editPaymentStatus === 'pago' ? 'pendente' : 'pago';
-    setEditPaymentStatus(nextPayment);
-    storage.setCacheItem(`cadu_payment_${selectedStudent.uid}`, nextPayment);
-  };
-
-  const handleToggleModality = () => {
-    if (!selectedStudent) return;
-    const nextModality: UserProfile['modality'] = selectedStudent.modality === 'Presencial' ? 'Online' : 'Presencial';
-    
-    const updatedUsers = users.map(u => {
-      if (u.uid === selectedStudent.uid) {
-        return { ...u, modality: nextModality };
-      }
-      return u;
-    });
-    
-    storage.saveUsersList(updatedUsers);
-    setUsers(updatedUsers);
-    setSelectedStudent(prev => prev ? { ...prev, modality: nextModality } : null);
-  };
-
-  const handleAddWorkout = async (templateType: 'inferiores' | 'superiores' | 'cardio') => {
-    if (!selectedStudent) return;
-    
-    let name = '';
-    let description = '';
-    let exercises: any[] = [];
-    
-    const count = workouts.filter(w => w.studentId === selectedStudent.uid).length;
-    const letter = String.fromCharCode(65 + count); // A, B, C...
-    
-    if (templateType === 'inferiores') {
-      name = `Treino ${letter} - Membros Inferiores`;
-      description = 'Foco em força de membros inferiores e estabilização de joelhos';
-      exercises = [
-        { id: `ex_i1_${Date.now()}`, name: 'Cadeira Extensora (Série Pirâmide)', sets: 4, reps: '12-10-8-6', rest: '60s', currentLoad: 40 },
-        { id: `ex_i2_${Date.now()}`, name: 'Leg Press 45º Integrado', sets: 4, reps: '12', rest: '60s', currentLoad: 160 },
-        { id: `ex_i3_${Date.now()}`, name: 'Agachamento Búlgaro', sets: 3, reps: '10 de cada lado', rest: '45s', currentLoad: 12 },
-        { id: `ex_i4_${Date.now()}`, name: 'Cadeira Flexora Unilateral', sets: 3, reps: '15', rest: '45s', currentLoad: 30 }
-      ];
-    } else if (templateType === 'superiores') {
-      name = `Treino ${letter} - Superiores Completo`;
-      description = 'Definição e fortalecimento do core e membros superiores';
-      exercises = [
-        { id: `ex_s1_${Date.now()}`, name: 'Supino Reto com Halteres', sets: 4, reps: '10', rest: '60s', currentLoad: 18 },
-        { id: `ex_s2_${Date.now()}`, name: 'Puxada Alta Pronada', sets: 4, reps: '12', rest: '60s', currentLoad: 40 },
-        { id: `ex_s3_${Date.now()}`, name: 'Elevação Lateral', sets: 3, reps: '15', rest: '45s', currentLoad: 8 },
-        { id: `ex_s4_${Date.now()}`, name: 'Rosca Direta Polia', sets: 3, reps: '12', rest: '45s', currentLoad: 20 }
-      ];
-    } else {
-      name = `Treino ${letter} - Hipertrofia e Core`;
-      description = 'Combinação de exercícios multiarticulares e prancha abdominal';
-      exercises = [
-        { id: `ex_c1_${Date.now()}`, name: 'Stiff com Halteres', sets: 4, reps: '12', rest: '60s', currentLoad: 16 },
-        { id: `ex_c2_${Date.now()}`, name: 'Prancha Abdominal Isométrica', sets: 3, reps: '45s', rest: '30s', currentLoad: 0 },
-        { id: `ex_c3_${Date.now()}`, name: 'Elevação de Quadril', sets: 3, reps: '15', rest: '45s', currentLoad: 20 }
-      ];
-    }
-    
-    const newWorkout: Workout = {
-      id: crypto.randomUUID(),
-      name,
-      description,
-      studentId: selectedStudent.uid,
-      createdAt: new Date().toISOString(),
-      exercises: exercises.map(exercise => ({ ...exercise, id: crypto.randomUUID() })),
-    };
-    
-    try {
-      await storage.saveWorkout(newWorkout);
-      setWorkouts(storage.getWorkouts());
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Não foi possível salvar o treino. Tente novamente.');
-    }
-  };
 
   const handleDeleteWorkout = async (id: string) => {
     const w = workouts.find(w => w.id === id);
@@ -924,102 +771,42 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName || !formEmail) return;
-    if (formPassword.length < 12) {
-      alert('Informe uma senha com pelo menos 12 caracteres.');
-      return;
-    }
-
+  const handleCreateUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (createUserLock.current || !formName.trim() || !formEmail.trim()) return;
+    if (formPassword.length < 12) { alert('Informe uma senha com pelo menos 12 caracteres.'); return; }
+    createUserLock.current = true; setIsCreatingUser(true);
     try {
-      const newUser = await storage.adminCreateUser(
-        formEmail,
-        formName,
-        {
-          role: formRole as 'student' | 'admin',
-          password: formPassword,
-          status: 'active',
-          modality: formModality as 'Presencial' | 'Online',
-          trainerPhone: formPhone || TRAINER_CONFIG.phone,
-          metadata: {
-            group: formGroup,
-            birthDate: formBirthDate,
-            gender: formGender,
-            sendAccessInfo: formSendAccessInfo === 'Sim',
-            sendAnamnesis: formSendAnamnesis,
-            blockDefaulters: formBlockDefaulters
-          }
-        }
-      );
-
-      setUsers([newUser, ...users]);
-      setIsAddingUser(false);
-      
-      // Reset form
-      setFormName('');
-      setFormEmail('');
-      setFormPhone('');
-      setFormPassword('');
-      alert('Aluno criado com sucesso no Supabase!');
-    } catch (err: any) {
-      console.error('Error creating user:', err);
-      alert('Erro ao criar aluno: ' + err.message);
-    }
-  };
-
-  const handleUpdateStudentStatus = (uid: string, newStatus: 'active' | 'inactive' | 'excluded') => {
-    const updated = users.map(u => {
-      if (u.uid === uid) {
-        return { ...u, status: newStatus };
-      }
-      return u;
-    });
-    storage.saveUsersList(updated);
-    setUsers(updated);
-    if (selectedStudent?.uid === uid) {
-      setSelectedStudent(null);
-    }
-  };
-
-  const handleUpdateStudentModality = (uid: string, newModality: 'Presencial' | 'Online') => {
-    const updated = users.map(u => {
-      if (u.uid === uid) {
-        return { ...u, modality: newModality };
-      }
-      return u;
-    });
-    storage.saveUsersList(updated);
-    setUsers(updated);
-    if (selectedStudent?.uid === uid) {
-      setSelectedStudent(prev => prev ? { ...prev, modality: newModality } : null);
-    }
-  };
-
-  const handleDeleteUser = (uid: string) => {
-    // Soft-delete to excluded or full delete? To fit "Seus Alunos" deleted filter pill, we soft delete to status: 'excluded'!
-    // But if already 'excluded', we can permanently remove it.
-    const isAlreadyExcluded = users.some(u => u.uid === uid && u.status === 'excluded');
-    let updated;
-    if (isAlreadyExcluded) {
-      updated = users.filter(u => u.uid !== uid);
-    } else {
-      updated = users.map(u => {
-        if (u.uid === uid) {
-          return { ...u, status: 'excluded' as const };
-        }
-        return u;
+      const phone = normalizeStudentPhone(formPhone);
+      const newUser = await storage.adminCreateUser(formEmail.trim(), formName.trim(), {
+        role: formRole as 'student' | 'admin', password: formPassword, status: 'active',
+        modality: formModality as 'Presencial' | 'Online', trainerPhone: TRAINER_CONFIG.phone,
+        metadata: { group: formGroup, birthDate: formBirthDate, gender: formGender, phone },
       });
-    }
-    storage.saveUsersList(updated);
-    setUsers(updated);
-    setSelectedStudent(null);
+      let warning = '';
+      if (formSendAnamnesis === 'Anamnese Padrão') {
+        try { await storage.saveAnamnesis(newAnamnesis(newUser.uid)); }
+        catch { warning = 'A conta foi criada, mas a anamnese não pôde ser criada. Abra a ficha do aluno e tente adicionar a anamnese novamente.'; }
+      }
+      setUsers(previous => [newUser, ...previous.filter(user => user.uid !== newUser.uid)]);
+      setCreatedAccess({ name: newUser.name, email: newUser.email, password: formPassword, warning });
+      setIsAddingUser(false); setFormName(''); setFormEmail(''); setFormPhone(''); setFormPassword('');
+    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível criar o aluno.'); }
+    finally { createUserLock.current = false; setIsCreatingUser(false); }
   };
+  const handleUpdateStudentStatus = async (uid: string, status: 'active' | 'inactive' | 'excluded') => {
+    const student = users.find(user => user.uid === uid);
+    if (student) await persistStudent({ ...student, status });
+  };
+  const handleUpdateStudentModality = async (uid: string, modality: 'Presencial' | 'Online') => {
+    const student = users.find(user => user.uid === uid);
+    if (student) await persistStudent({ ...student, modality });
+  };
+  const handleDeleteUser = handleDeleteStudent;
 
-  const handleCopyLink = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedLink(id);
-    setTimeout(() => setCopiedLink(null), 2000);
+  const handleCopyLink = async (text: string, id: string) => {
+    try { await navigator.clipboard.writeText(text); setCopiedLink(id); setTimeout(() => setCopiedLink(null), 2000); }
+    catch { alert('Não foi possível copiar. Tente novamente ou copie o endereço manualmente.'); }
   };
 
   // Filter and catalog lists matching requested mockup
@@ -1031,10 +818,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     if (u.role !== 'student') return false;
 
     const lowerSearch = searchTerm.toLowerCase();
-    const matchesSearch = 
-      u.name.toLowerCase().includes(lowerSearch) || 
+    const matchesSearch =
+      u.name.toLowerCase().includes(lowerSearch) ||
       u.email.toLowerCase().includes(lowerSearch) ||
-      (u.trainerPhone && u.trainerPhone.includes(searchTerm));
+      (u.metadata?.phone && u.metadata.phone.includes(searchTerm));
 
     if (!matchesSearch) return false;
 
@@ -1055,7 +842,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   };
 
   // Quick feedback templates
-  const mockFeedbacks: any[] = [];
+
 
   // Quick sales link templates
   const salesLinks = [{ id: 'consultoria', title: 'Contato do personal', url: getTrainerWhatsAppUrl() }];
@@ -1065,10 +852,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
   return (
     <div className="fixed inset-0 z-[60] bg-[#0c131c] text-white overflow-y-auto font-sans flex items-center justify-center p-0 md:p-6 lg:p-10 select-none">
-      
+
+      {dataLoadError && <div role="alert" className="fixed top-14 left-4 right-4 z-[250] bg-red-50 text-red-900 p-4 rounded-lg shadow">{dataLoadError} <button onClick={() => setDataReload(value => value + 1)} className="underline font-bold ml-3">Recarregar dados</button></div>}
       {/* Main Content Area - Full Bleed */}
       <div className="w-full h-full bg-[#0c1622] relative overflow-hidden flex flex-col">
-        
+
         {/* Top App Header (Mobile style but visible everywhere) */}
         <div className="h-14 bg-[#141C2C] px-6 flex items-center justify-between shrink-0 border-b border-[#141C2C]">
           <div className="flex items-center gap-3">
@@ -1092,7 +880,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               )}
             </button>
 
-            <button 
+            <button
               onClick={onClose}
               className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
               title="Encerrar sessão e sair da conta"
@@ -1162,10 +950,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         {/* APP BODY WORK AREA - INTERACTIVE NAVIGATION MAP */}
         <div className="flex-1 overflow-hidden flex flex-col relative">
           <AnimatePresence mode="wait">
-              
+
               {/* CURRENT VIEW 1: HOME (Início) */}
               {activeTab === 'home' && (
-                <motion.div 
+                <motion.div
                   key="home-tab"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1174,7 +962,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 >
                   {/* Top Tab Bar */}
                   <div className="flex bg-[#141C2C] shrink-0 pt-2 px-1">
-                    <button 
+                    <button
                       onClick={() => {
                         setActiveTab('home');
                         setHomeSubView('dashboard');
@@ -1188,7 +976,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                   {/* SCROLLABLE SCENE CONTAINER */}
                   <div className="flex-1 overflow-y-auto pb-4 scrollbar-none">
-                    
+
                     {/* CONDITIONAL RENDERING: LOADING VS WELCOME VS DASHBOARD VS STUDENT LIST */}
                     {isLoadingUsers && users.filter(u => u.role === 'student').length === 0 ? (
                        /* LOADING VIEW */
@@ -1216,15 +1004,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <p className="text-slate-500 text-sm font-semibold mb-10 max-w-[280px]">
                             Bora dar o primeiro passo e cadastrar seu primeiro aluno no app?
                           </p>
-                          
+
                           <div className="w-full space-y-3 max-w-xs">
-                            <button 
+                            <button
                               onClick={() => setIsAddingUser(true)}
                               className="w-full bg-[#dc2626] hover:bg-[#ef4444] text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-xs uppercase tracking-wider"
                             >
                               Cadastrar aluno
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
                               className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-600 font-black py-4 rounded-xl transition-all active:scale-95 text-xs uppercase tracking-wider"
                             >
@@ -1237,7 +1025,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        <div className="px-4 pt-4 space-y-4">
                           {/* Top Icons Row (Image Row 1) */}
                           <div className="grid grid-cols-3 gap-2">
-                              <button 
+                              <button
                                  onClick={() => setActivePanel('feedbacks')}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
@@ -1246,7 +1034,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Feedbacks</span>
                               </button>
-                              <button 
+                              <button
                                  onClick={() => setActivePanel('updates')}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
                               >
@@ -1255,7 +1043,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  </div>
                                  <span className="text-[10px] text-slate-700 font-bold font-sans">Atualizações</span>
                               </button>
-                              <button 
+                              <button
                                  onClick={() => setIsNotificationsOpen(true)}
                                  className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer relative"
                               >
@@ -1274,9 +1062,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           {/* Section Seus Alunos */}
                           <div className="space-y-2 text-left">
                             <h4 className="text-xs font-black uppercase text-slate-900 tracking-tight">Seus alunos</h4>
-                            
+
                             <div className="grid grid-cols-2 gap-3">
-                               <button 
+                               <button
                                  onClick={() => setIsAddingUser(true)}
                                  className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
                                >
@@ -1287,19 +1075,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   </div>
                                </button>
 
-                               <button 
+                               <button
                                  onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
                                  className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
                                >
                                   <LinkIcon className="w-6 h-6 rotate-45" />
                                   <div className="space-y-0.5">
-                                     <p className="text-[10px] font-black italic uppercase">Link de cadastro</p>
+                                     <p className="text-[10px] font-black italic uppercase">Contato do personal</p>
                                      <Plus className="w-4 h-4 opacity-70" />
                                   </div>
                                </button>
                             </div>
 
-                            <button 
+                            <button
                               onClick={() => setHomeSubView('student_list')}
                               className="w-full bg-[#dc2626] p-4 rounded-xl text-white flex items-center justify-between shadow-lg shadow-red-200"
                             >
@@ -1316,7 +1104,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                <ChevronLeft className="w-5 h-5 rotate-180" />
                             </button>
 
-                            <button 
+                            <button
                               onClick={() => setHomeSubView('retention')}
                               className="w-full bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm hover:bg-slate-50 transition"
                             >
@@ -1335,7 +1123,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <div className="space-y-2 text-left">
                              <h4 className="text-xs font-black uppercase text-slate-900 tracking-tight">Treinos</h4>
                           <div className="grid grid-cols-2 gap-3 pb-8">
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('workout_library')}
                                className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
@@ -1344,7 +1132,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 </div>
                                 <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Treinos</span>
                              </button>
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('agenda')}
                                className="flex flex-col items-center justify-center p-4 bg-white rounded-xl shadow-sm border border-slate-100 gap-3 hover:border-[#dc2626]/30 transition group cursor-pointer"
                              >
@@ -1353,7 +1141,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 </div>
                                 <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Agenda</span>
                              </button>
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('frequency_report')}
                                className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
@@ -1362,7 +1150,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 </div>
                                 <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Relatório de frequência</span>
                              </button>
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('exercise_library')}
                                className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
                              >
@@ -1381,7 +1169,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
                           {/* Header */}
                           <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-3">
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('dashboard')}
                                className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
                              >
@@ -1395,9 +1183,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4 border border-slate-100">
                                 <div className="flex justify-between items-center px-1">
                                    <h5 className="text-[11px] font-black italic uppercase text-slate-900 leading-none">Resumo do mês</h5>
-                                   <button className="text-[10px] font-bold text-[#dc2626]">Ver gráficos</button>
+                                   <button onClick={() => setHomeSubView('frequency_report')} className="text-[10px] font-bold text-[#dc2626]">Ver gráficos</button>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 gap-3">
                                    <div className="border border-slate-100 rounded-lg p-3 space-y-2 text-left">
                                       <div className="flex items-center gap-1.5 grayscale opacity-50">
@@ -1441,7 +1229,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                    </div>
                                 </div>
 
-                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider">
+                                <button onClick={() => alert('Ativos e inativos vêm do cadastro. Engajamento considera alunos ativos com ao menos um treino concluído no mês atual. Treinos de hoje usam a data local.')} className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider">
                                    O que significam essas métricas?
                                 </button>
                              </div>
@@ -1461,7 +1249,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                             <span>{item.count} ({item.percent}%)</span>
                                          </div>
                                          <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
-                                            <motion.div 
+                                            <motion.div
                                               initial={{ width: 0 }}
                                               animate={{ width: `${item.percent}%` }}
                                               className={`h-full ${item.color}`}
@@ -1471,7 +1259,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                    ))}
                                 </div>
 
-                                <button className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider border-t border-slate-50 mt-2">
+                                <button onClick={() => alert('Com treino no mês: ao menos uma conclusão sincronizada no mês atual. Sem treino no mês: nenhuma conclusão sincronizada no período. Não é uma avaliação de saúde ou de qualidade do treino.')} className="w-full text-center py-2 text-[9px] font-bold text-[#dc2626] uppercase tracking-wider border-t border-slate-50 mt-2">
                                    Entenda a classificação de engajamento
                                 </button>
                              </div>
@@ -1479,10 +1267,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              {/* Alunos Section */}
                              <div className="space-y-3 pt-2">
                                 <h5 className="text-[11px] font-black italic uppercase text-slate-900 px-1 text-left">Alunos</h5>
-                                
+
                                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
-                                   <input 
-                                     type="text" 
+                                   <input
+                                     type="text"
                                      placeholder="Pesquise por nome, email ou telefone"
                                      className="flex-1 px-4 py-3 text-xs font-bold text-slate-900 outline-none"
                                    />
@@ -1496,7 +1284,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       <span className="text-xs font-bold text-slate-900">Em risco</span>
                                       <ChevronDown className="w-4 h-4 text-slate-400" />
                                    </div>
-                                   <button 
+                                   <button
                                      onClick={() => {
                                         setIsNotifyingByCategory(true);
                                         setNotifyStep('category');
@@ -1622,7 +1410,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               <div className="flex flex-col h-full bg-[#f4f7fa] relative">
                                  {/* Header */}
                                  <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-4 shrink-0">
-                                    <button 
+                                    <button
                                       onClick={() => setHomeSubView('dashboard')}
                                       className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer text-left py-2"
                                     >
@@ -1634,7 +1422,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  <div className="flex-1 overflow-y-auto bg-white m-4 rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 space-y-4 relative">
                                     {!isDataLoaded && <p role="status" className="text-sm text-slate-500">Carregando a biblioteca...</p>}
                                     {/* Create button */}
-                                    <button 
+                                    <button
                                       disabled={!isDataLoaded}
                                       onClick={() => {
                                         setEditingExerciseId(null); setExerciseSaveError('');
@@ -1651,13 +1439,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                     {/* Main Tabs */}
                                     <div className="flex gap-2">
-                                       <button 
+                                       <button
                                          onClick={() => setExerciseTab('grupos')}
                                          className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'grupos' ? 'bg-[#dc2626]/10 text-[#dc2626]' : 'bg-slate-50 text-slate-400'}`}
                                        >
                                           Grupos
                                        </button>
-                                       <button 
+                                       <button
                                          onClick={() => setExerciseTab('categorias')}
                                          className={`flex-1 py-3 rounded-lg text-xs font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseTab === 'categorias' ? 'bg-[#dc2626]/10 text-[#dc2626]' : 'bg-slate-50 text-slate-400'}`}
                                        >
@@ -1668,7 +1456,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     {/* Search */}
                                     <div className="relative">
                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                                       <input 
+                                       <input
                                          type="text"
                                          value={exerciseSearch}
                                          onChange={(e) => setExerciseSearch(e.target.value)}
@@ -1676,7 +1464,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                          className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-11 pr-4 text-xs font-bold text-slate-600 outline-none focus:border-[#dc2626] transition"
                                        />
                                        {exerciseSearch && (
-                                          <button 
+                                          <button
                                             onClick={() => setExerciseSearch('')}
                                             className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                                           >
@@ -1687,19 +1475,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                     {/* Filter Pills */}
                                     <div className="flex flex-wrap justify-center gap-2">
-                                       <button 
+                                       <button
                                          onClick={() => setExerciseFilter('favoritos')}
                                          className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'favoritos' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
                                           Favoritos
                                        </button>
-                                       <button 
+                                       <button
                                          onClick={() => setExerciseFilter('app')}
                                          className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'app' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
                                           Exercícios do app
                                        </button>
-                                       <button 
+                                       <button
                                          onClick={() => setExerciseFilter('mine')}
                                          className={`px-4 py-2 rounded-lg text-[10px] font-black italic uppercase tracking-tight transition cursor-pointer ${exerciseFilter === 'mine' ? 'bg-[#dc2626] text-white' : 'bg-[#fef2f2] text-[#dc2626]'}`}
                                        >
@@ -1709,7 +1497,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                     {/* Secondary Select Filters */}
                                     <div className="flex justify-center items-center gap-4 relative">
-                                       <button 
+                                       <button
                                          onClick={() => {
                                             setIsGroupDropdownOpen(!isGroupDropdownOpen);
                                             setIsCategoryDropdownOpen(false);
@@ -1718,7 +1506,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        >
                                           {selectedGroupFilter ? `Grupo: ${selectedGroupFilter}` : 'Grupos musculares'} <ChevronDown className="w-3 h-3" />
                                        </button>
-                                       <button 
+                                       <button
                                          onClick={() => {
                                             setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
                                             setIsGroupDropdownOpen(false);
@@ -1728,7 +1516,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           {selectedCategoryFilter ? `Categorias: ${selectedCategoryFilter}` : 'Categorias'} <ChevronDown className="w-3 h-3" />
                                        </button>
                                        {(selectedGroupFilter || selectedCategoryFilter || exerciseSearch || exerciseFilter !== 'app') && (
-                                          <button 
+                                          <button
                                             onClick={() => {
                                                setSelectedGroupFilter(null);
                                                setSelectedCategoryFilter(null);
@@ -1744,7 +1532,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        {/* Groups Dropdown */}
                                        {isGroupDropdownOpen && (
                                           <div className="absolute top-full left-0 mt-1 bg-white border border-slate-150 rounded-lg shadow-lg py-1.5 z-20 min-w-[140px] text-left max-h-[200px] overflow-y-auto">
-                                             <button 
+                                             <button
                                                onClick={() => {
                                                   setSelectedGroupFilter(null);
                                                   setIsGroupDropdownOpen(false);
@@ -1755,7 +1543,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 {!selectedGroupFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
                                              {appMuscleGroups.map(grp => (
-                                                <button 
+                                                <button
                                                   key={grp}
                                                   onClick={() => {
                                                      setSelectedGroupFilter(grp);
@@ -1785,7 +1573,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        {/* Categories Dropdown */}
                                        {isCategoryDropdownOpen && (
                                           <div className="absolute top-full left-1/3 mt-1 bg-white border border-slate-150 rounded-lg shadow-lg py-1.5 z-20 min-w-[140px] text-left">
-                                             <button 
+                                             <button
                                                onClick={() => {
                                                   setSelectedCategoryFilter(null);
                                                   setIsCategoryDropdownOpen(false);
@@ -1796,7 +1584,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 {!selectedCategoryFilter && <Check className="w-3 h-3 text-[#dc2626]" />}
                                              </button>
                                              {appCategories.map(cat => (
-                                                <button 
+                                                <button
                                                   key={cat}
                                                   onClick={() => {
                                                      setSelectedCategoryFilter(cat);
@@ -1835,7 +1623,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 <p className="text-xs font-black italic uppercase text-slate-700 tracking-wider">Nenhum exercício encontrado</p>
                                                 <p className="text-[10px] text-slate-400 px-4">Tente buscar por um termo diferente ou mude seus filtros no painel.</p>
                                              </div>
-                                             <button 
+                                             <button
                                                onClick={() => {
                                                   setExerciseSearch('');
                                                   setSelectedGroupFilter(null);
@@ -1855,8 +1643,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 </h5>
                                                 <div className="grid grid-cols-1 gap-3">
                                                    {grouped[sectionTitle].map((ex, idx) => (
-                                                      <div 
-                                                        key={idx} 
+                                                      <div
+                                                        key={idx}
                                                         onClick={() => setPreviewingExercise(ex)}
                                                         className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex items-center p-2 gap-4 text-left hover:border-[#dc2626]/40 transition duration-250 cursor-pointer hover:shadow-md group"
                                                       >
@@ -1881,7 +1669,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                             </div>
                                                          </div>
                                                          <div className="flex items-center">
-                                                              <button 
+                                                              <button
                                                                 disabled={!isDataLoaded}
                                                                 aria-label={`Editar exercício ${ex.title}`}
                                                                 onClick={(evt) => {
@@ -1905,7 +1693,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                                     <Edit3 className="w-3.5 h-3.5" />
                                                                  </div>
                                                               </button>
-                                                           <button 
+                                                           <button
                                                              onClick={(evt) => handleToggleFavorite(ex.id, evt)}
                                                              className="pr-2 cursor-pointer focus:outline-none shrink-0"
                                                            >
@@ -1913,7 +1701,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                                  <Star className={`w-3.5 h-3.5 ${ex.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
                                                               </div>
                                                            </button>
-                                                           <button 
+                                                           <button
                                                              onClick={(evt) => handleDeleteExercise(ex, evt)}
                                                              className="pr-2 cursor-pointer focus:outline-none shrink-0"
                                                              disabled={!isDataLoaded}
@@ -1936,7 +1724,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  {/* MODAL: PREVIEW DETAILS & VIDEO LOOPS */}
                                  {previewingExercise && (
                                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex flex-col justify-end p-4">
-                                       <motion.div 
+                                       <motion.div
                                          initial={{ y: 150, opacity: 0 }}
                                          animate={{ y: 0, opacity: 1 }}
                                          className="bg-white rounded-2xl p-5 space-y-4 max-h-[95%] overflow-y-auto flex flex-col text-left text-slate-900"
@@ -1951,7 +1739,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    {previewingExercise.title}
                                                 </h3>
                                              </div>
-                                             <button 
+                                             <button
                                                onClick={() => setPreviewingExercise(null)}
                                                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer shrink-0"
                                              >
@@ -1961,10 +1749,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                           {/* Video demonstration container */}
                                           <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
-                                             <ExerciseVideoPlayer 
+                                             <ExerciseVideoPlayer
                                                key={previewingExercise.title}
                                                url={previewingExercise.videoFileUrl || previewingExercise.videoUrl || ''}
-                                               className="w-full h-full object-cover" 
+                                               className="w-full h-full object-cover"
                                              />
                                              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1.5 pointer-events-none">
                                                 <span className="relative flex h-1.5 w-1.5">
@@ -1985,7 +1773,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                           <div className="h-px bg-slate-100" />
 
                                           <div className="flex gap-2">
-                                             <button 
+                                             <button
                                                onClick={(evt) => {
                                                   handleToggleFavorite(previewingExercise.id, evt);
                                                   setPreviewingExercise(prev => prev ? { ...prev, isFavorite: !prev.isFavorite } : null);
@@ -1995,7 +1783,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 <Star className={`w-3.5 h-3.5 ${previewingExercise.isFavorite ? 'fill-amber-400 text-amber-500' : 'text-slate-400'}`} />
                                                 {previewingExercise.isFavorite ? 'Favoritado' : 'Favoritar'}
                                              </button>
-                                             <button 
+                                             <button
                                                onClick={() => setPreviewingExercise(null)}
                                                className="flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider hover:bg-[#ef4444] transition cursor-pointer"
                                              >
@@ -2009,7 +1797,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  {/* MODAL: CREATE CUSTOM EXERCISE FORM */}
                                  {isCreatingExercise && (
                                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex flex-col justify-end p-4">
-                                       <motion.div 
+                                       <motion.div
                                          initial={{ y: 250, opacity: 0 }}
                                          animate={{ y: 0, opacity: 1 }}
                                          className="bg-white rounded-2xl p-5 space-y-4 max-h-[95%] overflow-y-auto flex flex-col text-left text-slate-900"
@@ -2018,7 +1806,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                               <h3 className="text-xl font-black italic uppercase text-slate-900 tracking-tight leading-none">
                                                 {editingExerciseId ? 'Editar Exercício' : 'Novo Exercício'}
                                               </h3>
-                                              <button 
+                                              <button
                                                 disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
                                                 onClick={() => {
                                                   setIsCreatingExercise(false);
@@ -2040,12 +1828,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                              {editingExerciseId && <p className="text-xs text-slate-500">Treinos já prescritos mantêm suas configurações. Edite a rotina para alterá-los.</p>}
                                              <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Nome do exercício *</label>
-                                                <input 
-                                                  type="text" 
-                                                  value={newExName} 
-                                                  onChange={(e) => setNewExName(e.target.value)} 
-                                                  placeholder="Ex: Tríceps Testa Pronado" 
-                                                  required 
+                                                <input
+                                                  type="text"
+                                                  value={newExName}
+                                                  onChange={(e) => setNewExName(e.target.value)}
+                                                  placeholder="Ex: Tríceps Testa Pronado"
+                                                  required
                                                   className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626]"
                                                 />
                                              </div>
@@ -2053,7 +1841,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                              <div className="grid grid-cols-2 gap-3">
                                                 <div>
                                                    <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Grupo muscular</label>
-                                                   <select 
+                                                   <select
                                                      value={newExGroup}
                                                      onChange={(e) => setNewExGroup(e.target.value)}
                                                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
@@ -2065,7 +1853,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 </div>
                                                 <div>
                                                    <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Categoria</label>
-                                                   <select 
+                                                   <select
                                                      value={newExCategory}
                                                      onChange={(e) => setNewExCategory(e.target.value)}
                                                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-700 outline-none focus:border-[#dc2626]"
@@ -2223,17 +2011,17 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                              <div>
                                                 <label className="text-[10px] font-black uppercase text-slate-900 block mb-1">Descrição / Instrução de Execução</label>
-                                                <textarea 
-                                                  value={newExDesc} 
-                                                  onChange={(e) => setNewExDesc(e.target.value)} 
-                                                  placeholder="Descreva a postura recomendada, respiração e repetições sugeridas." 
+                                                <textarea
+                                                  value={newExDesc}
+                                                  onChange={(e) => setNewExDesc(e.target.value)}
+                                                  placeholder="Descreva a postura recomendada, respiração e repetições sugeridas."
                                                   rows={3}
                                                   className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs font-bold text-[#1a202c] outline-none focus:border-[#dc2626] resize-none"
                                                 />
                                              </div>
 
                                              <div className="flex gap-2 pt-2">
-                                                <button 
+                                                <button
                                                   type="button"
                                                   disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
                                                   onClick={() => { setIsCreatingExercise(false); setEditingExerciseId(null); }}
@@ -2241,7 +2029,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                 >
                                                    Cancelar
                                                 </button>
-                                                <button 
+                                                <button
                                                   type="submit"
                                                   disabled={isSavingExercise || isUploadingExerciseImage || isUploadingExerciseVideo}
                                                   className="disabled:opacity-50 disabled:cursor-not-allowed flex-1 py-3 bg-[#dc2626] text-white rounded-xl text-xs font-black italic uppercase tracking-wider text-center hover:bg-[#ef4444] cursor-pointer"
@@ -2256,148 +2044,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               </div>
                            );
                         })()
-                        ) : homeSubView === 'routine_details' ? (
-                       /* ROUTINE DETAILS VIEW (New Image Request) */
-                       <div className="flex flex-col h-full bg-[#f4f7fa]">
-                          {/* Top Brand Block */}
-                          <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
-                             <div className="flex items-center gap-1.5 grayscale opacity-80 brightness-200">
-                                <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center">
-                                   <div className="w-1 h-3 bg-white" />
-                                </div>
-                                <span className="text-sm font-black tracking-tighter text-white">CADU PONCE</span>
-                             </div>
-                          </div>
-
-                          {/* Header with Back */}
-                          <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-4 shrink-0">
-                             <button 
-                               onClick={() => setHomeSubView('workout_library')}
-                               className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
-                             >
-                               <ChevronLeft className="w-3.5 h-3.5" /> Voltar
-                             </button>
-                             <h4 className="text-white text-xl font-black italic uppercase tracking-tighter text-left leading-none">Criar Rotina</h4>
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                             {/* Routine Profile Card */}
-                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-5">
-                                <div className="flex items-center justify-between">
-                                   <div className="flex items-center gap-3">
-                                      <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#dc2626]">
-                                         <Accessibility className="w-7 h-7" />
-                                      </div>
-                                      <div className="text-left">
-                                         <h3 className="text-sm font-black italic uppercase text-slate-900 leading-none">{routineName || 'NOME DA ROTINA'}</h3>
-                                         <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">{routineGoal} | {routineDifficulty}</p>
-                                      </div>
-                                   </div>
-                                   <button className="text-slate-400">
-                                      <MoreVertical className="w-5 h-5" />
-                                   </button>
-                                </div>
-
-                                <div className="h-px bg-slate-50 w-full" />
-
-                                <div className="grid grid-cols-1 gap-4 text-left">
-                                   <div className="space-y-0.5">
-                                      <p className="text-[10px] font-black text-slate-900 uppercase">Tipo de treino:</p>
-                                      <p className="text-[10px] font-bold text-slate-500">{routineType}</p>
-                                   </div>
-                                   <div className="space-y-0.5">
-                                      <p className="text-[10px] font-black text-slate-900 uppercase">Mostrar para o aluno:</p>
-                                      <p className="text-[10px] font-bold text-slate-500">Sempre</p>
-                                   </div>
-                                   <div className="space-y-0.5">
-                                      <p className="text-[10px] font-black text-slate-900 uppercase">Arquivar automaticamente:</p>
-                                      <p className="text-[10px] font-bold text-slate-500">Não</p>
-                                   </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <button 
-                                    onClick={() => setShowRoutineNotes(!showRoutineNotes)}
-                                    className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl flex items-center justify-between"
-                                  >
-                                     <span className="text-[11px] font-black italic uppercase text-slate-900">Orientações gerais</span>
-                                     <Eye className={`w-4 h-4 transition ${showRoutineNotes ? 'text-[#dc2626]' : 'text-slate-400'}`} />
-                                  </button>
-                                  <AnimatePresence>
-                                    {showRoutineNotes && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="overflow-hidden"
-                                      >
-                                        <div className="p-3 bg-slate-50/50 rounded-xl border border-slate-100/50 text-[10px] font-bold text-slate-500 text-left">
-                                          {routineNotes || 'Nenhuma orientação cadastrada.'}
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                             </div>
-
-                             {/* Empty Training State OR Workouts List */}
-                             {routineWorkouts.length === 0 ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center justify-center space-y-6">
-                                   <div className="w-16 h-16 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
-                                      <Dumbbell className="w-8 h-8" />
-                                   </div>
-                                   
-                                   <p className="text-[11px] font-black italic uppercase text-slate-900">Essa rotina ainda não tem nenhum treino</p>
-
-                                   <button 
-                                      onClick={() => setIsCreateWorkoutModalOpen(true)}
-                                      className="w-full bg-[#dc2626] py-4 rounded-xl text-white font-black italic uppercase text-xs tracking-widest shadow-lg shadow-red-200 hover:bg-red-600 transition"
-                                   >
-                                      Criar primeiro treino
-                                   </button>
-                                </div>
-                             ) : (
-                                <div className="space-y-4">
-                                   {/* Action Buttons */}
-                                   <div className="flex gap-3">
-                                      <button className="flex-1 bg-white border border-[#dc2626] py-3 rounded-lg flex items-center justify-center gap-2 text-[#dc2626] text-[10px] font-black uppercase italic tracking-tight">
-                                         <ArrowUpDown className="w-3.5 h-3.5" /> Reordenar treinos
-                                      </button>
-                                      <button 
-                                        onClick={() => setIsCreateWorkoutModalOpen(true)}
-                                        className="flex-1 bg-[#dc2626] py-3 rounded-lg flex items-center justify-center gap-2 text-white text-[10px] font-black uppercase italic tracking-tight"
-                                      >
-                                         <Plus className="w-3.5 h-3.5" /> Adicionar treino
-                                      </button>
-                                   </div>
-
-                                   {/* Workout Cards */}
-                                   {routineWorkouts.map((w, idx) => (
-                                      <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4 text-left">
-                                         <div className="flex items-start justify-between">
-                                            <div className="space-y-0.5">
-                                               <h4 className="text-[11px] font-black text-slate-900 uppercase italic tracking-tight leading-none">{w.day}</h4>
-                                               <p className="text-[10px] font-bold text-slate-500 uppercase">{w.name}</p>
-                                            </div>
-                                            <button className="text-slate-400">
-                                               <MoreVertical className="w-4 h-4" />
-                                            </button>
-                                         </div>
-
-                                         <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl flex items-center justify-between">
-                                            <div className="space-y-0.5">
-                                               <span className="text-[9px] font-black italic uppercase text-slate-900 block leading-none">Orientações gerais</span>
-                                               <span className="text-[9px] font-bold text-slate-400 block mt-1">{w.notes || 'Nenhuma orientação'}</span>
-                                            </div>
-                                            <Eye className="w-3.5 h-3.5 text-slate-400" />
-                                         </div>
-                                      </div>
-                                   ))}
-                                </div>
-                             )}
-                          </div>
-                        </div>
-                    ) : homeSubView === 'create_routine' ? (
+                        ) : homeSubView === 'create_routine' ? (
                        /* CREATE ROUTINE VIEW — FUNCTIONAL */
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
                           <div className="bg-[#0c1622] p-4 flex justify-center border-b border-white/10 shrink-0">
@@ -2637,7 +2284,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         />
                                       </div>
                                     </div>
-                                    
+
                                     {/* Prescribed Loads */}
                                     <div className="space-y-1 mt-2">
                                       <label className="text-[9px] font-bold text-slate-500 uppercase">Cargas por Série (kg) - Opcional</label>
@@ -2670,7 +2317,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                         )}
                                       </div>
                                       <button
-                                        onClick={() => setExpandedExerciseDetails(prev => 
+                                        onClick={() => setExpandedExerciseDetails(prev =>
                                           prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                                         )}
                                         className="text-[9px] font-black text-slate-400 hover:text-[#dc2626] uppercase transition flex items-center gap-1 cursor-pointer"
@@ -2768,6 +2415,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                 )}
                              </div>
 
+                             <div className="mx-4 mb-4 space-y-2 text-sm text-slate-800">
+                               <label className="flex gap-2"><input type="checkbox" checked={routinePdfPermission === 'Sim'} onChange={event => setRoutinePdfPermission(event.target.checked ? 'Sim' : 'Não')} />Permitir PDF para o aluno</label>
+                               <label className="flex gap-2"><input type="checkbox" checked={routineShowTime === 'Sim'} onChange={event => setRoutineShowTime(event.target.checked ? 'Sim' : 'Não')} />Mostrar cronômetro ao aluno</label>
+                               <label className="flex gap-2"><input type="checkbox" checked={routineHideBeforeStart} onChange={event => setRoutineHideBeforeStart(event.target.checked)} />Exibir somente após a data inicial</label>
+                               <label className="flex gap-2"><input type="checkbox" checked={routineHideAfterEnd} onChange={event => setRoutineHideAfterEnd(event.target.checked)} />Ocultar após a data final</label>
+                             </div>
                              {/* Save Button */}
                              <div className="mx-4 mb-4">
                                <button
@@ -2795,13 +2448,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                         {/* Tabs */}
                         <div className="flex bg-[#0c1622] px-0 shrink-0">
-                           <button 
+                           <button
                              onClick={() => setRoutineLibraryTab('strength')}
                              className={`flex-1 py-3 text-xs font-bold transition cursor-pointer ${routineLibraryTab === 'strength' ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg' : 'bg-transparent text-white/70 hover:text-white'}`}
                            >
                              Rotinas de Treino
                            </button>
-                           <button 
+                           <button
                              onClick={() => setRoutineLibraryTab('aerobic')}
                              className={`flex-1 py-3 text-xs font-bold transition cursor-pointer ${routineLibraryTab === 'aerobic' ? 'bg-[#f4f7fa] text-slate-900 rounded-t-lg' : 'bg-transparent text-white/70 hover:text-white'}`}
                            >
@@ -2820,7 +2473,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                setRoutineName('');
                                setRoutineGoal('Hipertrofia');
                                setRoutineDifficulty('Intermediário');
-                               setRoutineNotes('');
+                               setRoutineNotes(''); setRoutineDayOfWeek(''); setRoutineMuscleGroup(''); setRoutineGeneralNotes('');
+                               setRoutineStartDate(''); setRoutineEndDate(''); setRoutineGroupName('');
+                               setRoutinePdfPermission('Sim'); setRoutineShowTime('Sim'); setRoutineHideBeforeStart(false); setRoutineHideAfterEnd(false);
                                setHomeSubView('create_routine');
                              }}
                              className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-red-200 hover:bg-[#ef4444] transition active:scale-95 cursor-pointer"
@@ -2888,38 +2543,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                            </div>
                         </>
                            ) : (
-                             /* Aerobic Empty State */
-                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-8 items-center text-center mt-2">
-                               <div className="w-20 h-20 bg-[#dc2626]/10 rounded-full flex items-center justify-center mb-6">
-                                 <Activity className="w-10 h-10 text-[#dc2626]" />
-                               </div>
-                               <h5 className="text-xl font-black text-slate-900 mb-6">Treinos Aeróbicos</h5>
-                               
-                               <ul className="text-xs font-bold text-slate-600 space-y-3 mb-8 text-left w-full px-2">
-                                 <li className="flex items-center gap-3">
-                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
-                                   <span>Crie treinos para reutilizar no futuro</span>
-                                 </li>
-                                 <li className="flex items-center gap-3">
-                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
-                                   <span>Organize seus treinos em pastas</span>
-                                 </li>
-                                 <li className="flex items-center gap-3">
-                                   <div className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0" />
-                                   <span>Clone treinos para um ou mais alunos</span>
-                                 </li>
-                               </ul>
-                               
-                               <button 
-                                 onClick={() => {
-                                    // Optional: Add logic for aerobic routines later
-                                    alert('Criação de treinos aeróbicos em breve!');
-                                 }}
-                                 className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase text-xs tracking-widest hover:bg-red-600 transition cursor-pointer shadow-lg shadow-red-200 active:scale-95"
-                               >
-                                 Comece agora
-                               </button>
-                             </div>
+<div className="space-y-3 text-slate-900"><p className="text-sm">Planilhas aeróbicas por aluno</p>{activeStudents.map(student => <button className="block w-full p-4 bg-white border rounded-xl text-left" key={student.uid} onClick={() => { setSelectedStudent(student); setSelectedDetailTab('treinos'); setTreinosSubTab('aerobico'); }}>{student.name} · {adminRoutines.filter(routine => routine.kind === 'aerobic' && routine.studentIds.includes(student.uid)).length} planilhas</button>)}</div>
                            )}
                         </div>
                      </div>
@@ -2928,7 +2552,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        <div className="flex flex-col h-full bg-[#f4f7fa]">
                           {/* Inner Header for Student List */}
                           <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-3">
-                             <button 
+                             <button
                                onClick={() => setHomeSubView('dashboard')}
                                className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
                              >
@@ -2939,7 +2563,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                           {/* Inner Tabs for Alunos/Grupos */}
                           <div className="flex bg-[#0c1622] px-0">
-                             <button 
+                             <button
                                onClick={() => setStudentTab('alunos')}
                                className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
                                  studentTab === 'alunos'
@@ -2949,7 +2573,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              >
                                Alunos
                              </button>
-                             <button 
+                             <button
                                onClick={() => setStudentTab('grupos')}
                                className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
                                  studentTab === 'grupos'
@@ -2966,8 +2590,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                <>
                                  {/* Search and Filters */}
                                  <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1 flex">
-                                    <input 
-                                      type="text" 
+                                    <input
+                                      type="text"
                                       value={searchTerm}
                                       onChange={(e) => setSearchTerm(e.target.value)}
                                       placeholder="Pesquise por nome, email ou telefone"
@@ -2980,19 +2604,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                                  {/* Pill Filters */}
                                  <div className="flex items-center justify-center gap-2">
-                                    <button 
+                                    <button
                                       onClick={() => setStatusFilter('active')}
                                       className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'active' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                     >
                                        Ativos: {activeStudents.length}
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={() => setStatusFilter('inactive')}
                                       className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'inactive' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                     >
                                        Inativos: {inactiveStudents.length}
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={() => setStatusFilter('excluded')}
                                       className={`px-4 py-1.5 rounded-full text-[10px] font-bold border ${statusFilter === 'excluded' ? 'bg-[#dc2626]/10 border-[#dc2626] text-[#dc2626]' : 'bg-slate-200 border-transparent text-slate-400'}`}
                                     >
@@ -3034,7 +2658,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                  </div>
 
                                  {/* Add Student link */}
-                                 <button 
+                                 <button
                                    onClick={() => setIsAddingUser(true)}
                                    className="flex items-center justify-center gap-2 text-[#dc2626] text-xs font-bold w-full py-2 hover:opacity-80 transition"
                                  >
@@ -3048,11 +2672,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                        <div className="py-10 text-center text-slate-400 text-xs font-bold">Nenhum aluno encontrado</div>
                                     ) : (
                                        filteredStudents.map((student) => (
-                                          <div 
+                                          <div
                                             key={student.uid}
                                             className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
                                           >
-                                             <button 
+                                             <button
                                                onClick={() => setSelectedStudent(student)}
                                                className="flex items-center gap-4 text-left flex-1"
                                              >
@@ -3068,8 +2692,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">{student.modality}</p>
                                                 </div>
                                              </button>
-                                             <a 
-                                               href={`https://wa.me/${student.trainerPhone}`}
+                                             <a
+                                               href={studentWhatsAppUrl(student)}
+                                                title={studentWhatsAppUrl(student) ? 'Conversar com o aluno' : 'Cadastrar WhatsApp do aluno'}
+                                                onClick={event => { if (!studentWhatsAppUrl(student)) { event.preventDefault(); setSelectedStudent(student); setSelectedDetailTab('editar_aluno'); } }}
                                                target="_blank"
                                                className="text-emerald-500 hover:text-emerald-600 transition"
                                              >
@@ -3089,152 +2715,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     )}
                                  </div>
                                </>
-                             ) : selectedGroupForView !== null ? (
-                                /* GROUP DETAIL VIEW */
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <button
-                                      onClick={() => setSelectedGroupForView(null)}
-                                      className="text-[#dc2626] text-xs font-bold flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <ChevronLeft className="w-3.5 h-3.5" /> Voltar
-                                    </button>
-                                    <h5 className="text-sm font-black text-slate-900 uppercase">{selectedGroupForView}</h5>
-                                    {selectedGroupForView !== 'Sem grupo' && (
-                                      <button
-                                        onClick={() => {
-                                          if (window.confirm(`Excluir o grupo "${selectedGroupForView}"?`)) {
-                                            const updated = studentGroups.filter(g => g !== selectedGroupForView);
-                                            setStudentGroups(updated);
-                                            storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
-                                            setSelectedGroupForView(null);
-                                          }
-                                        }}
-                                        className="text-red-400 hover:text-red-600 transition cursor-pointer"
-                                        title="Excluir grupo"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                    {selectedGroupForView === 'Sem grupo' && <div className="w-6" />}
-                                  </div>
-
-                                  {/* Students in group */}
-                                  {(() => {
-                                    const groupStudents = selectedGroupForView === 'Sem grupo'
-                                      ? users.filter(u => u.role === 'student' && !u.modality)
-                                      : users.filter(u => u.role === 'student' && u.modality === selectedGroupForView);
-                                    return groupStudents.length === 0 ? (
-                                      <div className="py-8 text-center text-slate-400 text-xs font-bold">Nenhum aluno neste grupo</div>
-                                    ) : (
-                                      <div className="space-y-2 pb-20">
-                                        {groupStudents.map(student => (
-                                          <div key={student.uid} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                                              {student.photoURL ? <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <p className="text-xs font-black italic uppercase text-slate-900 truncate">{student.name}</p>
-                                              <p className="text-[10px] text-slate-400 font-bold">{student.modality || 'Sem grupo'}</p>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col p-4 relative text-left">
-                                   {/* Button Criar novo grupo or input */}
-                                   {showNewGroupInput ? (
-                                     <div className="flex gap-2 mb-4">
-                                       <input
-                                         type="text"
-                                         autoFocus
-                                         placeholder="Nome do grupo"
-                                         value={newGroupName}
-                                         onChange={(e) => setNewGroupName(e.target.value)}
-                                         onKeyDown={(e) => {
-                                           if (e.key === 'Enter' && newGroupName.trim()) {
-                                             const updated = [...studentGroups, newGroupName.trim()];
-                                             setStudentGroups(updated);
-                                             storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
-                                             setNewGroupName('');
-                                             setShowNewGroupInput(false);
-                                           }
-                                           if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupName(''); }
-                                         }}
-                                         className="flex-1 border border-[#dc2626] rounded-lg px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none"
-                                       />
-                                       <button
-                                         onClick={() => {
-                                           if (newGroupName.trim()) {
-                                             const updated = [...studentGroups, newGroupName.trim()];
-                                             setStudentGroups(updated);
-                                             storage.setCacheItem('cadu_ponce_student_groups', JSON.stringify(updated));
-                                             setNewGroupName('');
-                                             setShowNewGroupInput(false);
-                                           }
-                                         }}
-                                         className="px-4 py-2 bg-[#dc2626] text-white rounded-lg text-sm font-bold cursor-pointer hover:bg-red-600 transition"
-                                       >
-                                         Criar
-                                       </button>
-                                       <button
-                                         onClick={() => { setShowNewGroupInput(false); setNewGroupName(''); }}
-                                         className="px-3 py-2 border border-slate-200 text-slate-500 rounded-lg text-sm cursor-pointer"
-                                       >
-                                         <X className="w-4 h-4" />
-                                       </button>
-                                     </div>
-                                   ) : (
-                                     <button 
-                                       onClick={() => setShowNewGroupInput(true)}
-                                       className="w-full py-4 bg-white border border-[#dc2626] hover:bg-[#dc2626]/5 rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer mb-4"
-                                     >
-                                       + Criar novo grupo
-                                     </button>
-                                   )}
-                                   
-                                   {/* Pesquisar grupos */}
-                                   <div className="relative mb-4">
-                                      <input 
-                                        type="text" 
-                                        placeholder="Pesquisar grupos"
-                                        value={studentGroupSearch}
-                                        onChange={(e) => setStudentGroupSearch(e.target.value)}
-                                        className="w-full bg-white border border-slate-200 rounded-lg py-3 pl-4 pr-11 text-sm font-medium text-slate-700 outline-none focus:border-slate-300 transition"
-                                      />
-                                      <Search className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                                   </div>
-
-                                   {/* Lista de grupos */}
-                                   <div className="space-y-3">
-                                      {['Sem grupo', ...studentGroups]
-                                        .filter(g => g.toLowerCase().includes(studentGroupSearch.toLowerCase()))
-                                        .map(group => {
-                                        const count = group === 'Sem grupo'
-                                          ? users.filter(u => u.role === 'student' && !u.modality).length
-                                          : users.filter(u => u.role === 'student' && u.modality === group).length;
-                                        return (
-                                          <button
-                                            key={group}
-                                            onClick={() => setSelectedGroupForView(group)}
-                                            className="w-full border border-slate-200 rounded-lg p-4 cursor-pointer hover:border-[#dc2626]/30 hover:bg-red-50/30 transition flex items-center justify-between text-left bg-white"
-                                          >
-                                            <div>
-                                              <span className="text-[#dc2626] font-bold text-[15px] leading-tight block mb-0.5">{group}</span>
-                                              <span className="text-slate-500 text-[11px] font-medium">
-                                                {count === 0 ? 'Esse grupo não tem alunos' : count === 1 ? '1 aluno está nesse grupo' : `${count} alunos nesse grupo`}
-                                              </span>
-                                            </div>
-                                            <ChevronLeft className="w-4 h-4 text-slate-300 rotate-180 shrink-0" />
-                                          </button>
-                                        );
-                                      })}
-                                   </div>
-                                </div>
-                             )}
+                             ) : (<AdminStudentGroups users={users} onSaved={updated => setUsers(previous => previous.map(user => user.uid === updated.uid ? updated : user))} onOpen={student => { setSelectedStudent(student); setSelectedDetailTab('editar_aluno'); }} />)}
                           </div>
                        </div>
                     )}
@@ -3245,7 +2726,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
               {/* CURRENT VIEW 2: QUICK OPTION MENU & CONFIGURAÇÕES */}
               {activeTab === 'menu' && (
-                <motion.div 
+                <motion.div
                   key="menu-tab"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -3413,7 +2894,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           Desconectar deste dispositivo
                         </p>
                       </div>
-                      <button 
+                      <button
                         onClick={onClose}
                         className="px-4 py-2.5 bg-red-650 hover:bg-red-500 text-white font-black uppercase text-xs tracking-wider rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
                       >
@@ -3429,7 +2910,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
             {/* NEW NOTIFICATION FLOW OVERLAY */}
             <AnimatePresence>
               {isNotifyingByCategory && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 100 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 100 }}
@@ -3437,7 +2918,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 >
                   {/* ── HEADER ── */}
                   <div className="bg-[#0c1622] p-4 pt-6 flex flex-col items-start gap-2 shrink-0">
-                    <button 
+                    <button
                       onClick={() => {
                         if (notifyView === 'list') setIsNotifyingByCategory(false);
                         else if (notifyView === 'create_type') setNotifyView('list');
@@ -3465,42 +2946,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {notifyView === 'list' && (
                       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
                         {/* Criar notificação */}
-                        <button 
+                        <button
                           onClick={() => setNotifyView('create_type')}
                           className="w-full py-4 border border-[#3182ce] rounded-lg text-[#3182ce] font-bold text-sm hover:bg-blue-50 transition cursor-pointer"
                         >
                           + Criar notificação
                         </button>
 
-                        {/* Lista de notificações tabs */}
-                        <div>
-                          <p className="text-slate-700 text-xs font-bold mb-2">Lista de notificações</p>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => setNotifyListTab('agendadas')}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                                notifyListTab === 'agendadas' ? 'bg-[#3182ce] text-white border-[#3182ce]' : 'bg-white text-[#3182ce] border-[#3182ce]'
-                              }`}
-                            >
-                              <span>🗓</span> Agendadas
-                            </button>
-                            <button 
-                              onClick={() => setNotifyListTab('recorrentes')}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                                notifyListTab === 'recorrentes' ? 'bg-[#3182ce] text-white border-[#3182ce]' : 'bg-white text-[#3182ce] border-[#3182ce]'
-                              }`}
-                            >
-                              <span>🔄</span> Recorrentes
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Empty state */}
-                        <p className="text-[#3182ce] text-xs font-bold">
-                          {notifyListTab === 'agendadas' 
-                            ? 'Quando você tiver notificações agendadas, elas aparecerão aqui!'
-                            : 'Quando você tiver notificações recorrentes, elas aparecerão aqui!'}
-                        </p>
+                        <p className="text-slate-600 text-sm">Envio imediato aos dispositivos que ativaram notificações. Agendamentos e lembretes ficam na agenda do treinador.</p>
                       </div>
                     )}
 
@@ -3508,11 +2961,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {notifyView === 'create_type' && (
                       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         {[
-                          { key: 'now', icon: '🔔', title: 'Enviar na hora', desc: 'Seu aluno receberá a notificação imediatamente' },
-                          { key: 'scheduled', icon: '🗓️', title: 'Agendar', desc: 'Defina um dia e horário específico para o envio' },
-                          { key: 'recurring', icon: '🔄', title: 'Recorrentes', desc: 'Defina dias e horários recorrentes para o envio' },
+                          { key: 'now', icon: '🔔', title: 'Enviar na hora', desc: 'Enviar agora aos dispositivos com permissão ativa' },
+
+
                         ].map((item, idx) => (
-                          <button 
+                          <button
                             key={item.key}
                             onClick={() => {
                               setNotifyType(item.key as any);
@@ -3542,7 +2995,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <p className="text-slate-400 text-xs">Escolha se a ação será feita para alunos ou grupos.</p>
                         </div>
                         <div className="space-y-2">
-                          <button 
+                          <button
                             onClick={() => { setNotifyTarget('student'); setSelectedUidsForNotify([]); setNotifyStudentSearch(''); setNotifyView('select_students'); }}
                             className="w-full flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-slate-300 transition cursor-pointer"
                           >
@@ -3554,7 +3007,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             </div>
                             <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
                           </button>
-                          <button 
+                          <button
                             onClick={() => { setNotifyTarget('group'); setNotifyView('select_groups'); }}
                             className="w-full flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:border-slate-300 transition cursor-pointer"
                           >
@@ -3577,7 +3030,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <p className="text-slate-400 text-xs -mt-1">Escolha quais alunos devem receber esta ação.</p>
 
                         {/* Search */}
-                        <input 
+                        <input
                           type="text"
                           placeholder="Buscar aluno"
                           value={notifyStudentSearch}
@@ -3590,7 +3043,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <span className="text-slate-600">{users.filter(u => u.role === 'student').length} alunos</span>
                           <label className="flex items-center gap-2 cursor-pointer text-slate-500">
                             Selecionar todos
-                            <input 
+                            <input
                               type="checkbox"
                               checked={selectedUidsForNotify.length === users.filter(u => u.role === 'student').length}
                               onChange={(e) => {
@@ -3617,7 +3070,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <p className="text-[10px] text-slate-400">{student.email}</p>
                                   </div>
                                 </div>
-                                <input 
+                                <input
                                   type="checkbox"
                                   checked={selectedUidsForNotify.includes(student.uid)}
                                   onChange={() => {
@@ -3638,14 +3091,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           <p className="text-center text-[#3182ce] text-xs font-bold">
                             {selectedUidsForNotify.length} {selectedUidsForNotify.length === 1 ? 'aluno selecionado' : 'alunos selecionados'}
                           </p>
-                          <button 
+                          <button
                             disabled={selectedUidsForNotify.length === 0}
                             onClick={() => setNotifyView('compose')}
                             className="w-full py-3 bg-[#3182ce] disabled:opacity-40 text-white font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-600 transition"
                           >
                             Próximo
                           </button>
-                          <button 
+                          <button
                             onClick={() => setNotifyView('create_target')}
                             className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
                           >
@@ -3662,12 +3115,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <p className="text-slate-400 text-xs -mt-1">Escolha quais grupos devem receber esta ação.</p>
                         <div className="space-y-0 divide-y divide-slate-100">
                           {studentGroups.map(group => {
-                            const count = users.filter(u => u.modality === group).length;
+                            const count = users.filter(u => u.role === 'student' && u.status === 'active' && u.metadata?.group === group).length;
                             return (
-                              <button 
+                              <button
                                 key={group}
                                 onClick={() => {
-                                  const groupStudents = users.filter(u => u.modality === group);
+                                  const groupStudents = users.filter(u => u.role === 'student' && u.status === 'active' && u.metadata?.group === group);
                                   setSelectedUidsForNotify(groupStudents.map(s => s.uid));
                                   setNotifyView('compose');
                                 }}
@@ -3687,7 +3140,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             );
                           })}
                         </div>
-                        <button 
+                        <button
                           onClick={() => setNotifyView('create_target')}
                           className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
                         >
@@ -3704,7 +3157,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         {/* Título */}
                         <div>
                           <label className="text-xs font-bold text-slate-700 block mb-1">Título</label>
-                          <input 
+                          <input
                             type="text"
                             value={notifyTitle}
                             onChange={(e) => setNotifyTitle(e.target.value)}
@@ -3715,7 +3168,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         {/* Mensagem */}
                         <div>
                           <label className="text-xs font-bold text-slate-700 block mb-1">Mensagem</label>
-                          <textarea 
+                          <textarea
                             value={notifyMessage}
                             onChange={(e) => setNotifyMessage(e.target.value)}
                             rows={4}
@@ -3737,7 +3190,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         {/* Actions */}
                         {notifyError && <p role="alert" className="text-sm text-red-600">{notifyError}</p>}
                         {notifyResult && <p role="status" className="text-sm text-emerald-700">{notifyResult}</p>}
-                        <button 
+                        <button
                           disabled={!notifyTitle.trim() || !notifyMessage.trim() || isSending || selectedUidsForNotify.length === 0}
                           onClick={async () => {
                             setIsSending(true);
@@ -3780,7 +3233,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             <><Check className="w-4 h-4" /> Enviado!</>
                           ) : 'Enviar'}
                         </button>
-                        <button 
+                        <button
                           onClick={() => setNotifyView(notifyTarget === 'student' ? 'select_students' : 'select_groups')}
                           className="w-full py-3 border border-[#3182ce] text-[#3182ce] font-bold rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition"
                         >
@@ -3810,7 +3263,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        </button>
                     </div>
                     <div className="px-4 pb-6 space-y-2.5">
-                       <button 
+                       <button
                          className="w-full py-2.5 px-4 border border-[#dc2626] rounded-lg text-[#dc2626] text-[10px] font-black uppercase tracking-tight hover:bg-red-50 transition text-center"
                          onClick={() => {
                             setIsWorkoutActionModalOpen(false);
@@ -3819,7 +3272,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                        >
                           Adicionar novo treino
                        </button>
-                       <button 
+                       <button
                          className="w-full py-2.5 px-4 border border-[#dc2626] rounded-lg text-[#dc2626] text-[10px] font-black uppercase tracking-tight hover:bg-red-50 transition text-center"
                          onClick={() => setIsWorkoutActionModalOpen(false)}
                        >
@@ -3844,11 +3297,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <div className="p-4 border-b border-slate-50">
                        <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-tight text-left">Criar Treino</h4>
                     </div>
-                    
+
                     <div className="p-5 space-y-4">
                        <div className="space-y-1.5 text-left">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Treino</label>
-                          <select 
+                          <select
                             value={newWorkoutDay}
                             onChange={(e) => setNewWorkoutDay(e.target.value)}
                             className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-red-200 text-xs font-bold text-slate-800 outline-none appearance-none"
@@ -3863,18 +3316,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <option value="Domingo">Domingo</option>
                           </select>
                        </div>
- 
+
                        <div className="space-y-1.5 text-left">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Nome</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={newWorkoutName}
                             onChange={(e) => setNewWorkoutName(e.target.value)}
                             className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none"
                             placeholder="Ex: athayde"
                           />
                        </div>
- 
+
                        <div className="space-y-1.5 text-left">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Copiar de</label>
                           <div className="w-full px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-400 flex items-center justify-between">
@@ -3882,24 +3335,24 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <ChevronDown className="w-4 h-4" />
                           </div>
                        </div>
- 
+
                        <div className="space-y-1.5 text-left">
                           <label className="text-[10px] font-bold text-slate-400 uppercase text-left">Orientações gerais <span className="text-[8px] opacity-60">(Opcional)</span></label>
-                          <textarea 
+                          <textarea
                             value={newWorkoutNotes}
                             onChange={(e) => setNewWorkoutNotes(e.target.value)}
                             className="w-full h-24 px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 outline-none resize-none"
                           />
                        </div>
- 
+
                        <div className="space-y-2 pt-2">
-                          <button 
+                          <button
                             onClick={handleSaveWorkout}
                             className="w-full bg-[#dc2626] py-3.5 rounded-lg text-white font-black italic uppercase text-[11px] tracking-widest shadow-lg shadow-red-100"
                           >
                              Salvar
                           </button>
-                          <button 
+                          <button
                             onClick={() => setIsCreateWorkoutModalOpen(false)}
                             className="w-full py-3.5 rounded-lg border border-[#dc2626] text-[#dc2626] font-black italic uppercase text-[11px] tracking-widest font-bold"
                           >
@@ -3916,7 +3369,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           {/* QUICK FLOATING DETAILED PANEL COMPONENT (Handles clicked circular buttons custom overlays!) */}
           <AnimatePresence>
             {activePanel && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: activePanel === 'updates' ? 100 : 0 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: activePanel === 'updates' ? 100 : 0 }}
@@ -3959,7 +3412,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       {activePanel === 'feedbacks' && '💬 Feedbacks Recebidos'}
 
                     </span>
-                    <button 
+                    <button
                       onClick={() => setActivePanel(null)}
                       className="p-1 px-3 bg-slate-900 border border-slate-800 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white rounded-lg"
                     >
@@ -3972,7 +3425,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className={`overflow-y-auto space-y-4 text-left ${
                   activePanel === 'updates' ? 'flex-1 p-4' : 'p-6 max-h-[85%]'
                 }`}>
-                  
+
                   {/* PANEL 1: Sales links copy panel */}
                   {activePanel === 'sales_links' && (
                     <div className="space-y-4">
@@ -3987,7 +3440,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               <div>
                                 <h4 className="text-xs font-black text-white">{link.title}</h4>
                               </div>
-                              <button 
+                              <button
                                 onClick={() => handleCopyLink(link.url, link.id)}
                                 className={`p-2 rounded-xl transition duration-300 active:scale-90 ${
                                   copiedLink === link.id ? 'bg-emerald-600 text-white' : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
@@ -4004,41 +3457,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   )}
 
                   {/* PANEL 2: Feedbacks checklist */}
-                  {activePanel === 'feedbacks' && (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-400 font-semibold leading-normal">
-                        Confira as últimas dúvidas e updates de treinos submetidos pelos seus alunos. Toque no telefone para retornar no WhatsApp.
-                      </p>
-
-                      <div className="space-y-3 pt-2">
-                        {mockFeedbacks.map((item, id) => (
-                          <div key={id} className={`p-4 rounded-2xl border flex justify-between gap-3 ${
-                            item.unread ? 'bg-slate-900/90 border-red-900/30 shadow-md shadow-red-950/5' : 'bg-slate-900/40 border-slate-900'
-                          }`}>
-                            <div className="space-y-1.5 flex-1 text-xs">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-black text-white">{item.name}</span>
-                                <span className="text-[9px] font-bold text-slate-500">• {item.time}</span>
-                                {item.unread && (
-                                  <span className="text-[7.5px] bg-red-600 text-white font-extrabold uppercase px-1.5 py-0.5 rounded-full">Novo</span>
-                                )}
-                              </div>
-                              <p className="text-slate-400 font-medium leading-relaxed italic">"{item.text}"</p>
-                            </div>
-
-                            <a
-                              href={`https://wa.me/${TRAINER_CONFIG.phone}?text=Olá%20${item.name},%20vi%20seu%20feedback%20no%20sistema%20da%2520consultoria.%20Vamos%20ajustar%20isso%20agora.`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 hover:bg-emerald-600 hover:text-white flex items-center justify-center transition shrink-0"
-                            >
-                              <Phone className="w-3.5 h-3.5 fill-current" />
-                            </a>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {activePanel === 'feedbacks' && <AdminStudentModules module="feedbacks" users={users} />}
 
                   {/* PANEL 3: Updates category grid or sub-view */}
                   {activePanel === 'updates' && (
@@ -4051,19 +3470,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             { label: 'Treinos', emoji: '🏋️', badge: 0, key: 'treinos' },
                             { label: 'Avaliação física', emoji: '📋', badge: 0, key: 'avaliacao_fisica' },
                             { label: 'Aeróbico', emoji: '🏃', badge: 0, key: 'aerobico' },
-                            { label: 'Faturas', emoji: '📄', badge: 0, key: 'faturas' },
-                            { label: 'Planos Recorrentes', emoji: '💲', badge: 0, key: 'planos_recorrentes' },
-                            { label: 'Página de vendas', emoji: '🌐', badge: 0, key: 'pagina_vendas' },
-                            { label: 'Link de cadastro', emoji: '🔗', badge: 1, key: 'link_cadastro' },
-                            { label: 'Avaliação Online', emoji: '📝', badge: 0, key: '' },
+
+
+
+                            { label: 'Link de acesso', emoji: '🔗', badge: 0, key: 'link_cadastro' },
+                            { label: 'Avaliação Online', emoji: '📝', badge: 0, key: 'avaliacao_fisica' },
                             { label: 'Anamneses', emoji: '📋', badge: 0, key: 'anamneses' },
-                            { label: 'Progresso do aluno', emoji: '✅', badge: 0, key: '' },
+                            { label: 'Progresso do aluno', emoji: '✅', badge: 0, key: 'progresso' },
                             { label: 'Aniversários', emoji: '🎂', badge: 0, key: 'aniversarios' },
                           ].map((item, idx) => (
                             <button
                               key={item.label}
                               onClick={() => {
-                                if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); }
+                                if (item.key === 'progresso') { setActivePanel(null); setHomeSubView('student_list'); }
+                                else if (item.key === 'link_cadastro') { setUpdatesSubView('link_cadastro'); setLinkCadastroTab('link'); }
                                 else if (item.key === 'aniversarios') { setUpdatesSubView('aniversarios'); setAniversariosTab('pendentes'); setAniversariosSearch(''); }
                                 else if (item.key === 'treinos') { setUpdatesSubView('treinos'); setTreinosTab('pendentes'); setTreinosSearch(''); }
                                 else if (item.key === 'avaliacao_fisica') { setUpdatesSubView('avaliacao_fisica'); setAvaliacaoFisicaTab('pendentes'); setAvaliacaoFisicaSearch(''); }
@@ -4095,285 +3515,29 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                       </div>
 
+                      {notifications.error && <p role="alert" className="text-red-700 text-sm">{notifications.error}</p>}
                       {/* Marcar todas como lidas */}
-                      <button className="w-full py-4 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                        Marcar todas como lidas
+                      <button disabled={notifications.busy || !unreadNotifCount} onClick={async () => { try { await notifications.markRead(adminNotifs.filter(item => !item.isRead).map(item => item.id)); } catch {} }} className="w-full py-4 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer disabled:opacity-50">
+                        Marcar conclusões de treino como lidas
                       </button>
                     </div>
                     )}
 
                     {/* ── LINK DE CADASTRO SUB-VIEW ── */}
-                    {updatesSubView === 'link_cadastro' && (() => {
-                      const registrationLink = window.location.origin;
-                      const contactsFromLink = users.filter(u => u.role === 'student');
-                      const filteredContacts = contactsFromLink.filter(u =>
-                        linkCadastroSearch === '' ||
-                        u.name.toLowerCase().includes(linkCadastroSearch.toLowerCase()) ||
-                        (u.email || '').toLowerCase().includes(linkCadastroSearch.toLowerCase())
-                      );
-                      return (
-                        <div className="space-y-4">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-t-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setLinkCadastroTab('link')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
-                                linkCadastroTab === 'link' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'
-                              }`}
-                            >
-                              Link
-                            </button>
-                            <button
-                              onClick={() => setLinkCadastroTab('contatos')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${
-                                linkCadastroTab === 'contatos' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'
-                              }`}
-                            >
-                              Contatos
-                            </button>
-                          </div>
-
-                          {linkCadastroTab === 'link' && (
-                            <div className="bg-white rounded-b-xl border border-t-0 border-slate-200 p-6 flex flex-col items-center gap-5">
-                              {/* Icon */}
-                              <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                🔗
-                              </div>
-
-                              <div className="text-center space-y-3">
-                                <h3 className="text-slate-900 font-black text-lg">Link de cadastro</h3>
-                                <div className="space-y-1">
-                                  <p className="text-slate-700 text-sm font-bold">Utilize esse link para:</p>
-                                  <p className="text-[#3182ce] text-sm">Facilitar o cadastro de novos alunos no app</p>
-                                  <p className="text-[#3182ce] text-sm">Deixar o link na sua bio para captar pessoas interessadas no seu trabalho e entrar em contato depois</p>
-                                </div>
-                              </div>
-
-                              {/* Link box */}
-                              <div className="w-full bg-slate-100 rounded-lg p-4">
-                                <p className="text-slate-600 text-xs text-center break-all">{registrationLink}</p>
-                              </div>
-
-                              {/* Buttons */}
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(registrationLink);
-                                  setLinkCopied(true);
-                                  setTimeout(() => setLinkCopied(false), 2000);
-                                }}
-                                className="w-full py-3.5 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer flex items-center justify-center gap-2"
-                              >
-                                {linkCopied ? <>✓ Link copiado!</> : 'Copiar link'}
-                              </button>
-
-                              <a
-                                href={`https://wa.me/?text=${encodeURIComponent('Cadastre-se no meu app de treinos! ' + registrationLink)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full py-3.5 bg-[#25d366] hover:bg-green-500 text-white font-bold rounded-lg text-sm transition cursor-pointer flex items-center justify-center gap-2"
-                              >
-                                📱 Enviar pelo WhatsApp
-                              </a>
-                            </div>
-                          )}
-
-                          {linkCadastroTab === 'contatos' && (
-                            <div className="bg-white rounded-b-xl border border-t-0 border-slate-200 p-5 flex flex-col gap-4">
-                              {/* Icon + title */}
-                              <div className="flex flex-col items-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  👥
-                                </div>
-                                <h3 className="text-slate-900 font-black text-lg">Contatos</h3>
-                                <p className="text-slate-500 text-xs text-center leading-relaxed">
-                                  Todos os contatos que se cadastrarem a partir do <span className="text-[#3182ce]">seu link</span> ficarão nesta lista, você pode <span className="text-[#3182ce]">transformá-los em alunos</span> ou <span className="text-[#3182ce]">excluí-los</span>.
-                                </p>
-                              </div>
-
-                              {/* Search */}
-                              <div className="flex gap-2">
-                                <div className="flex-1 flex items-center border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                                  <input
-                                    type="text"
-                                    placeholder="Pesquise por nome, email ou telefone"
-                                    value={linkCadastroSearch}
-                                    onChange={(e) => setLinkCadastroSearch(e.target.value)}
-                                    className="flex-1 text-xs outline-none text-slate-700"
-                                  />
-                                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                                </div>
-                                <button className="w-10 h-10 border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                                  <SlidersHorizontal className="w-4 h-4" />
-                                </button>
-                              </div>
-
-                              {/* Contact list */}
-                              <div className="space-y-2 pb-10">
-                                {filteredContacts.length === 0 ? (
-                                  <div className="py-8 text-center text-slate-400 text-xs font-bold">Nenhum contato encontrado</div>
-                                ) : filteredContacts.map(contact => (
-                                  <div key={contact.uid} className="flex items-center justify-between py-3 border-b border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden shrink-0">
-                                        {contact.photoURL ? <PrivateImage src={contact.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
-                                      </div>
-                                      <div>
-                                        <p className="text-xs font-bold text-slate-900">{contact.name}</p>
-                                        <p className="text-[10px] text-slate-400">{contact.email}</p>
-                                      </div>
-                                    </div>
-                                    <button className="text-[#3182ce] text-[10px] font-bold border border-[#3182ce] px-2 py-1 rounded cursor-pointer hover:bg-blue-50 transition">
-                                      Ver
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {updatesSubView === 'link_cadastro' && <div className="space-y-4 bg-white p-4 rounded-xl text-slate-900"><h3 className="font-bold">Link de acesso ao aplicativo</h3><p className="text-sm">As contas são criadas pelo treinador. Compartilhe este link e entregue o e-mail e a senha inicial manualmente após o cadastro.</p><p className="text-sm select-text break-all">{window.location.origin}</p><button className="text-blue-700 underline" onClick={async () => { try { await navigator.clipboard.writeText(window.location.origin); alert('Link copiado.'); } catch { alert('Copie o endereço exibido.'); } }}>Copiar link</button><h4 className="font-bold">Alunos cadastrados</h4>{users.filter(user => user.role === 'student').map(user => <button key={user.uid} onClick={() => { setSelectedStudent(user); setSelectedDetailTab('opcoes'); }} className="block w-full text-left border rounded p-3">{user.name} · {user.email}</button>)}</div>}
 
                     {/* ── ANIVERSÁRIOS SUB-VIEW ── */}
-                    {updatesSubView === 'aniversarios' && (() => {
-                      const today = new Date();
-                      const todayMonth = today.getMonth() + 1;
-                      const todayDay = today.getDate();
-
-                      const studentsWithBirth = users
-                        .filter(u => u.role === 'student' && u.metadata?.birthDate)
-                        .map(u => {
-                          const [year, month, day] = (u.metadata!.birthDate!).split('-').map(Number);
-                          const thisYearBirthday = new Date(today.getFullYear(), month - 1, day);
-                          const nextBirthday = thisYearBirthday < today
-                            ? new Date(today.getFullYear() + 1, month - 1, day)
-                            : thisYearBirthday;
-                          const diffMs = nextBirthday.getTime() - today.getTime();
-                          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                          const isToday = month === todayMonth && day === todayDay;
-                          const age = today.getFullYear() - year + (thisYearBirthday <= today ? 0 : -1);
-                          return { ...u, month, day, diffDays, isToday, age, birthStr: `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}` };
-                        })
-                        .filter(u =>
-                          aniversariosSearch === '' ||
-                          u.name.toLowerCase().includes(aniversariosSearch.toLowerCase())
-                        )
-                        .sort((a, b) => a.diffDays - b.diffDays);
-
-                      const upcoming = studentsWithBirth.filter(u => u.diffDays <= 30 || u.isToday);
-                      const resolved = studentsWithBirth.filter(u => !u.isToday && u.diffDays > 30);
-                      const listToShow = aniversariosTab === 'pendentes' ? upcoming : resolved;
-
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setAniversariosTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aniversariosTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setAniversariosTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aniversariosTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {aniversariosTab === 'pendentes' && upcoming.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={aniversariosSearch}
-                                onChange={(e) => setAniversariosSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Aniversários</p>
-
-                          {/* Birthday cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {aniversariosSearch ? '🔍' : '📅'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {aniversariosSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!aniversariosSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : listToShow.map((student, idx) => (
-                              <div
-                                key={student.uid}
-                                className={`flex items-center gap-3 p-4 ${idx < listToShow.length - 1 ? 'border-b border-slate-100' : ''} ${student.isToday ? 'bg-blue-50' : ''}`}
-                              >
-                                {/* Avatar */}
-                                <div className="w-11 h-11 bg-slate-100 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-                                  {student.photoURL ? <PrivateImage src={student.photoURL} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-slate-400" />}
-                                </div>
-
-                                {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-bold text-slate-900 truncate">{student.name}</p>
-                                  <p className="text-[11px] text-slate-500 font-medium">
-                                    🎂 {student.birthStr} — {student.age} anos
-                                  </p>
-                                  {student.isToday ? (
-                                    <span className="text-[10px] bg-[#3182ce] text-white font-bold px-2 py-0.5 rounded-full inline-block mt-0.5">🎉 Hoje!</span>
-                                  ) : (
-                                    <p className="text-[10px] text-[#3182ce] font-medium">Em {student.diffDays} {student.diffDays === 1 ? 'dia' : 'dias'}</p>
-                                  )}
-                                </div>
-
-                                {/* WhatsApp button */}
-                                <a
-                                  href={`https://wa.me/55${(student.trainerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Feliz aniversário, ${student.name.split(' ')[0]}! 🎂🎉`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="w-9 h-9 bg-[#25d366] rounded-full flex items-center justify-center shrink-0 hover:bg-green-500 transition"
-                                  title="Enviar parabéns via WhatsApp"
-                                >
-                                  <Phone className="w-4 h-4 text-white fill-white" />
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    {updatesSubView === 'aniversarios' && <div className="space-y-3 text-slate-900"><h3 className="font-bold">Aniversariantes deste mês</h3><input className="w-full bg-white rounded border p-3 text-sm" placeholder="Pesquisar aluno" value={aniversariosSearch} onChange={event => setAniversariosSearch(event.target.value)} />{(() => { const birthdayStudents = activeStudents.filter(student => { const date = student.metadata?.birthDate; return date && Number(date.split('-')[1]) === new Date().getMonth() + 1 && student.name.toLocaleLowerCase().includes(aniversariosSearch.toLocaleLowerCase()); }).sort((a, b) => Number(a.metadata!.birthDate!.slice(8)) - Number(b.metadata!.birthDate!.slice(8))); return birthdayStudents.length ? birthdayStudents.map(student => <article key={student.uid} className="bg-white rounded border p-4 space-y-2"><p className="font-semibold">{student.name}</p><p className="text-sm">{student.metadata!.birthDate!.slice(8)}/{student.metadata!.birthDate!.slice(5, 7)}</p>{studentWhatsAppUrl(student) ? <a className="text-green-700 underline text-sm" href={studentWhatsAppUrl(student, 'Feliz aniversário, ' + student.name + '!')} target="_blank" rel="noopener noreferrer">Parabenizar pelo WhatsApp</a> : <button className="text-blue-700 underline text-sm" onClick={() => { setSelectedStudent(student); setSelectedDetailTab('editar_aluno'); }}>Cadastrar WhatsApp</button>}</article>) : <p className="text-sm text-slate-500">Nenhum aniversário cadastrado neste mês para a busca.</p>; })()}</div>}
 
                     {/* ── TREINOS SUB-VIEW ── */}
                     {updatesSubView === 'treinos' && (() => {
                       const treinosNotifs = adminNotifs.filter(n => n.type === 'completion');
                       const pendentes = treinosNotifs.filter(n => !n.isRead);
                       const resolvidas = treinosNotifs.filter(n => n.isRead);
-                      
+
                       let listToShow = treinosTab === 'pendentes' ? pendentes : resolvidas;
                       if (treinosSearch) {
-                        listToShow = listToShow.filter(n => 
+                        listToShow = listToShow.filter(n =>
                           n.studentName.toLowerCase().includes(treinosSearch.toLowerCase()) ||
                           n.workoutTitle.toLowerCase().includes(treinosSearch.toLowerCase())
                         );
@@ -4419,9 +3583,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                               />
                               <Search className="w-4 h-4 text-slate-400 shrink-0" />
                             </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
                           </div>
 
                           {/* Section label */}
@@ -4476,454 +3637,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     })()}
 
                     {/* ── AVALIAÇÃO FÍSICA SUB-VIEW ── */}
-                    {updatesSubView === 'avaliacao_fisica' && (() => {
-                      const listToShow: any[] = []; 
+                    {updatesSubView === 'avaliacao_fisica' && <AdminStudentModules module="assessments" users={users} />}                 {/* ── PLANOS RECORRENTES SUB-VIEW ── */}
 
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setAvaliacaoFisicaTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${avaliacaoFisicaTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setAvaliacaoFisicaTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${avaliacaoFisicaTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {avaliacaoFisicaTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={avaliacaoFisicaSearch}
-                                onChange={(e) => setAvaliacaoFisicaSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Avaliação física</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {avaliacaoFisicaSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {avaliacaoFisicaSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!avaliacaoFisicaSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de avaliação física...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── PLANOS RECORRENTES SUB-VIEW ── */}
-                    {updatesSubView === 'planos_recorrentes' && (() => {
-                      const listToShow: any[] = []; 
-
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setPlanosRecorrentesTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${planosRecorrentesTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setPlanosRecorrentesTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${planosRecorrentesTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {planosRecorrentesTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={planosRecorrentesSearch}
-                                onChange={(e) => setPlanosRecorrentesSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Planos Recorrentes</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {planosRecorrentesSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {planosRecorrentesSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!planosRecorrentesSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de planos recorrentes...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
 
                     {/* ── AERÓBICO SUB-VIEW ── */}
-                    {updatesSubView === 'aerobico' && (() => {
-                      const listToShow: any[] = []; 
+                    {updatesSubView === 'aerobico' && <div className="space-y-3 text-slate-900"><p>Escolha um aluno para consultar ou criar sua planilha aeróbica.</p>{activeStudents.map(student => <button key={student.uid} className="block w-full bg-white border rounded p-3 text-left" onClick={() => { setSelectedStudent(student); setSelectedDetailTab('criar_planilha'); }}>{student.name}</button>)}</div>}                 {/* ── PÁGINA DE VENDAS SUB-VIEW ── */}
 
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setAerobicoTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aerobicoTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setAerobicoTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${aerobicoTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {aerobicoTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={aerobicoSearch}
-                                onChange={(e) => setAerobicoSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Aeróbico</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {aerobicoSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {aerobicoSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!aerobicoSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de aeróbico...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── PÁGINA DE VENDAS SUB-VIEW ── */}
-                    {updatesSubView === 'pagina_vendas' && (() => {
-                      const listToShow: any[] = []; 
-
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setPaginaVendasTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${paginaVendasTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setPaginaVendasTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${paginaVendasTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {paginaVendasTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={paginaVendasSearch}
-                                onChange={(e) => setPaginaVendasSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Página de vendas</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {paginaVendasSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {paginaVendasSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!paginaVendasSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de página de vendas...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
 
                     {/* ── ANAMNESES SUB-VIEW ── */}
-                    {updatesSubView === 'anamneses' && (() => {
-                      const listToShow: any[] = []; 
+                    {updatesSubView === 'anamneses' && <AdminStudentModules module="anamneses" users={users} />}                 {/* ── FATURAS SUB-VIEW ── */}
 
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setAnamnesesTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${anamnesesTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setAnamnesesTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${anamnesesTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {anamnesesTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={anamnesesSearch}
-                                onChange={(e) => setAnamnesesSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Anamneses</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {anamnesesSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {anamnesesSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!anamnesesSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de anamneses...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── FATURAS SUB-VIEW ── */}
-                    {updatesSubView === 'faturas' && (() => {
-                      const listToShow: any[] = []; 
-
-                      return (
-                        <div className="space-y-3">
-                          {/* Tabs */}
-                          <div className="flex bg-white rounded-xl overflow-hidden border border-slate-200">
-                            <button
-                              onClick={() => setFaturasTab('pendentes')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${faturasTab === 'pendentes' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Pendentes
-                            </button>
-                            <button
-                              onClick={() => setFaturasTab('resolvidas')}
-                              className={`flex-1 py-3 text-sm font-bold transition cursor-pointer ${faturasTab === 'resolvidas' ? 'bg-[#3182ce] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                            >
-                              Resolvidas
-                            </button>
-                          </div>
-
-                          {/* Marcar como lidas button (Pendentes only) */}
-                          {faturasTab === 'pendentes' && listToShow.length > 0 && (
-                            <button className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
-                              Marcar todas como lidas
-                            </button>
-                          )}
-
-                          {/* Search + Filter */}
-                          <div className="flex gap-2">
-                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-3 py-2.5 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Pesquisar aluno"
-                                value={faturasSearch}
-                                onChange={(e) => setFaturasSearch(e.target.value)}
-                                className="flex-1 text-xs outline-none text-slate-700"
-                              />
-                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                            </div>
-                            <button className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-50 transition cursor-pointer shrink-0">
-                              <SlidersHorizontal className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Faturas</p>
-
-                          {/* Cards or empty state */}
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            {listToShow.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-10 px-6 text-center gap-3">
-                                <div className="w-16 h-16 bg-[#dbeafe] rounded-full flex items-center justify-center text-3xl">
-                                  {faturasSearch ? '🔍' : '📝'}
-                                </div>
-                                <div>
-                                  <p className="text-slate-800 font-bold text-sm">
-                                    {faturasSearch ? 'Nenhum resultado foi encontrado, tente uma nova busca.' : 'Todas as atualizações foram lidas.'}
-                                  </p>
-                                  {!faturasSearch && (
-                                    <p className="text-slate-400 text-xs mt-1">Assim que houver novas atividades dos seus alunos, elas serão exibidas aqui.</p>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center text-slate-500 text-sm">
-                                Itens de faturas...
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
                     </>
                   )}
 
@@ -4936,7 +3659,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
           {/* SMARTPHONE BOTTOM BAR NAVIGATION TAB VIEWPORTS (Same as design requested!) */}
           <nav className="h-[64px] border-t border-[#132235] bg-[#0c1622] px-3 flex justify-between items-center shrink-0 z-30 select-none">
-            
+
             {/* Tab 1: Inicio */}
             <button
               onClick={() => {
@@ -4973,7 +3696,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       <AnimatePresence>
         {selectedStudent && (
           <div className="fixed inset-0 z-[100] bg-[#141C2C] flex flex-col md:p-6 overflow-hidden font-sans">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
@@ -4982,9 +3705,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               {/* HEADER */}
               <div className="bg-[#141C2C] flex flex-col shrink-0">
                 <div className="px-4 py-4">
-                  <button 
+                  <button
                     onClick={() => {
-                      if (['treinos', 'progresso', 'criar_rotina', 'criar_planilha', 'treinos_extras', 'criar_treino_extra', 'arquivos'].includes(selectedDetailTab)) setSelectedDetailTab('inicio');
+                      if (selectedDetailTab !== 'inicio' && selectedDetailTab !== 'opcoes') setSelectedDetailTab('inicio');
                       else setSelectedStudent(null);
                     }}
                     className="flex items-center gap-1 text-xs font-bold text-white mb-4 hover:opacity-80 transition cursor-pointer"
@@ -5007,7 +3730,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <div className="flex px-2 pt-2">
                     {selectedDetailTab === 'treinos' ? (
                       <>
-                        <button 
+                        <button
                           onClick={() => setTreinosSubTab('rotinas')}
                           className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
                             treinosSubTab === 'rotinas'
@@ -5017,7 +3740,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         >
                           Rotinas de treino
                         </button>
-                        <button 
+                        <button
                           onClick={() => setTreinosSubTab('aerobico')}
                           className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
                             treinosSubTab === 'aerobico'
@@ -5033,8 +3756,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <button
                           onClick={() => setSelectedDetailTab('inicio')}
                           className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                            selectedDetailTab === 'inicio' 
-                              ? 'bg-white text-slate-800' 
+                            selectedDetailTab === 'inicio'
+                              ? 'bg-white text-slate-800'
                               : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
                           }`}
                         >
@@ -5043,8 +3766,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <button
                           onClick={() => setSelectedDetailTab('opcoes')}
                           className={`flex-1 py-3 text-sm font-semibold rounded-t-lg transition cursor-pointer ${
-                            selectedDetailTab === 'opcoes' 
-                              ? 'bg-white text-slate-800' 
+                            selectedDetailTab === 'opcoes'
+                              ? 'bg-white text-slate-800'
                               : 'bg-[#2b88ff] hover:bg-[#1e78eb] text-white'
                           }`}
                         >
@@ -5058,13 +3781,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
               {/* Scrollable Container */}
               <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-none space-y-4">
-                
+
                 {/* TABCONTENT: INITIAL (INÍCIO) */}
                 {selectedDetailTab === 'inicio' && (
                   <div className="space-y-4">
                     {/* Top Icons */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 grid grid-cols-3 gap-2 text-center">
-                      <button 
+                      <button
                         onClick={() => setSelectedDetailTab('treinos')}
                         className="flex flex-col items-center gap-2 group cursor-pointer"
                       >
@@ -5073,25 +3796,25 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                         <span className="text-[11px] font-medium text-slate-700">Treinos</span>
                       </button>
-                      <button className="flex flex-col items-center gap-2 group cursor-pointer">
+                      <button onClick={() => setSelectedDetailTab('anamneses')} className="flex flex-col items-center gap-2 group cursor-pointer">
                         <div className="w-10 h-10 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] transition group-hover:bg-[#dbeafe]">
-                          <span className="font-bold text-lg leading-none">$</span>
+                          <Clipboard className="w-5 h-5" />
                         </div>
-                        <span className="text-[11px] font-medium text-slate-700">Posição financeira</span>
+                        <span className="text-[11px] font-medium text-slate-700">Anamneses</span>
                       </button>
-                      <button className="flex flex-col items-center gap-2 group cursor-pointer">
+                      <button onClick={() => setSelectedDetailTab('avaliacoes')} className="flex flex-col items-center gap-2 group cursor-pointer">
                         <div className="w-10 h-10 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] transition group-hover:bg-[#dbeafe]">
                           <Activity className="w-5 h-5" />
                         </div>
                         <span className="text-[11px] font-medium text-slate-700">Avaliações</span>
                       </button>
                     </div>
-                    
+
                     <StudentWorkoutAttendance logs={attendanceFeed.logs} loading={attendanceFeed.loading} error={attendanceFeed.error} onRefresh={attendanceFeed.refresh} studentId={selectedStudent.uid} />
 
                     {/* List Items */}
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-100">
-                      <button 
+                      <button
                         onClick={() => setSelectedDetailTab('progresso')}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
                       >
@@ -5100,7 +3823,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                         <span className="text-xs font-medium text-slate-700">Progresso do aluno</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => setSelectedDetailTab('treinos_extras')}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
                       >
@@ -5109,7 +3832,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </div>
                         <span className="text-xs font-medium text-slate-700">Treinos extras</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => setSelectedDetailTab('arquivos')}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition"
                       >
@@ -5123,7 +3846,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {/* Anotações */}
                     <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
                       <h4 className="text-xs font-bold text-slate-800 mb-2">Anotações</h4>
-                      <textarea 
+                      <textarea
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 focus:outline-none focus:border-[#2b88ff] min-h-[100px] resize-y"
                         placeholder="Digite suas anotações aqui..."
                       />
@@ -5131,569 +3854,23 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 )}
 
-                {/* TABCONTENT: TREINOS */}
-                {selectedDetailTab === 'treinos' && (
-                  <div className="space-y-4">
-                    {/* Pace button for Aerobico */}
-                    {treinosSubTab === 'aerobico' && (
-                      <div className="flex justify-end">
-                        <button className="bg-[#0070f3] hover:bg-[#005ccc] text-white text-xs font-bold px-3 py-1 rounded transition">
-                          Pace
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Sub tabs */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-2 flex gap-2">
-                      <button 
-                        onClick={() => setTreinosViewStatus(treinosViewStatus === 'arquivadas' ? 'ativas' : 'arquivadas')}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
-                          treinosViewStatus === 'arquivadas' 
-                            ? 'bg-[#2b88ff] text-white' 
-                            : 'bg-[#EBF4FF] text-[#2b88ff] hover:bg-[#dbeafe]'
-                        }`}
-                      >
-                        Arquivadas
-                      </button>
-                      <button 
-                        onClick={() => setTreinosViewStatus(treinosViewStatus === 'excluidas' ? 'ativas' : 'excluidas')}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
-                          treinosViewStatus === 'excluidas' 
-                            ? 'bg-[#2b88ff] text-white' 
-                            : 'bg-[#EBF4FF] text-[#2b88ff] hover:bg-[#dbeafe]'
-                        }`}
-                      >
-                        Excluídas
-                      </button>
-                    </div>
-
-                    {/* Content for Rotinas */}
-                    {treinosSubTab === 'rotinas' && treinosViewStatus === 'ativas' && (() => {
-                      const studentAdminRoutines = adminRoutines.filter(r => r.studentIds?.includes(selectedStudent.uid));
-                      const studentWorkouts = workouts.filter(w => w.studentId === selectedStudent.uid);
-                      const totalCount = studentAdminRoutines.length + studentWorkouts.length;
-
-                      if (totalCount === 0) {
-                        return (
-                          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
-                            <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
-                              <Dumbbell className="w-10 h-10" />
-                            </div>
-                            <h4 className="text-[15px] font-bold text-slate-900 mb-6">Crie uma rotina de treinos para o seu aluno.</h4>
-                            
-                            <div className="w-full space-y-3">
-                              <button 
-                                onClick={() => setSelectedDetailTab('criar_rotina')}
-                                className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition cursor-pointer"
-                              >
-                                Criar rotina
-                              </button>
-                              <button className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-semibold py-3 rounded-md transition cursor-pointer">
-                                Assistir tutorial
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs font-bold text-slate-600">Rotinas do Aluno ({totalCount})</span>
-                            <button
-                              onClick={() => setSelectedDetailTab('criar_rotina')}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0070f3] hover:bg-[#005ccc] text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-sm"
-                            >
-                              <Plus className="w-3.5 h-3.5" /> Nova Rotina
-                            </button>
-                          </div>
-
-                          {/* Admin Routines for this student */}
-                          {studentAdminRoutines.map((routine) => (
-                            <div key={routine.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h5 className="font-bold text-sm text-slate-800">{routine.name}</h5>
-                                  {routine.dayOfWeek && (
-                                    <span className="text-[10px] font-black bg-blue-50 text-[#0070f3] px-2 py-0.5 rounded-md uppercase">
-                                      {routine.dayOfWeek}
-                                    </span>
-                                  )}
-                                </div>
-                                {routine.muscleGroup && (
-                                  <p className="text-xs text-slate-500 mt-0.5 font-medium">{routine.muscleGroup}</p>
-                                )}
-                                {(routine.startDate || routine.endDate) && (
-                                  <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    {routine.startDate || '...'} até {routine.endDate || '...'}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-2">
-                                  <span className="inline-block text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                                    {routine.exercises?.length || 0} exercícios
-                                  </span>
-                                  {routine.goal && (
-                                    <span className="text-[10px] text-slate-500 font-medium">
-                                      {routine.goal}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex gap-1.5 shrink-0">
-                                <button
-                                  title="Editar e Adicionar Exercícios"
-                                  onClick={() => {
-                                    setSelectedStudent(null);
-                                    handleEditAdminRoutine(routine);
-                                  }}
-                                  className="p-2.5 bg-[#EBF4FF] hover:bg-[#2b88ff] text-[#2b88ff] hover:text-white rounded-xl transition duration-200 cursor-pointer"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  title="Excluir rotina"
-                                  onClick={async () => {
-                                    if (confirm(`Deseja realmente excluir a rotina "${routine.name}"?`)) {
-                                      await handleDeleteAdminRoutine(routine.id);
-                                      setAdminRoutines(storage.getAdminRoutines());
-                                    }
-                                  }}
-                                  className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200 cursor-pointer"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-
-                          {/* Legacy Workouts */}
-                          {studentWorkouts.map((w) => (
-                            <div key={w.id} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <h5 className="font-bold text-sm text-slate-800">{w.name}</h5>
-                                {w.description && <p className="text-[11px] text-slate-500 mt-1">{w.description}</p>}
-                                <span className="inline-block text-[10px] bg-blue-50 text-[#3182ce] px-2 py-0.5 rounded-full font-bold mt-2.5 uppercase tracking-wide">
-                                  {w.exercises?.length || 0} exercícios
-                                </span>
-                              </div>
-                              <div className="flex gap-1.5 shrink-0">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    generateWorkoutPDF(w, selectedStudent.name);
-                                  }}
-                                  className="p-2.5 bg-[#EBF4FF] hover:bg-[#2b88ff] text-[#2b88ff] hover:text-white rounded-xl transition duration-200 active:scale-90"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteWorkout(w.id)}
-                                  className="p-2.5 bg-red-50 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition duration-200"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-
-                    {treinosSubTab === 'rotinas' && (treinosViewStatus === 'arquivadas' || treinosViewStatus === 'excluidas') && (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
-                        <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
-                          <Archive className="w-8 h-8" />
-                        </div>
-                        <h4 className="text-[13px] font-bold text-slate-900">
-                          {treinosViewStatus === 'arquivadas' ? 'Não há rotinas arquivadas' : 'Não há rotinas excluídas'}
-                        </h4>
-                      </div>
-                    )}
-
-                    {/* Content for Aerobico */}
-                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'ativas' && (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center text-center">
-                        <div className="w-20 h-20 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6 mt-4">
-                          <Activity className="w-10 h-10" />
-                        </div>
-                        <h4 className="text-[13px] font-bold text-slate-900 mb-6">Crie a primeira planilha de treino aeróbico do seu aluno.</h4>
-                        
-                        <button 
-                          onClick={() => setSelectedDetailTab('criar_planilha')}
-                          className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition"
-                        >
-                          Criar planilha
-                        </button>
-                      </div>
-                    )}
-
-                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'excluidas' && (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100">
-                        <div className="p-4 border-b border-slate-100">
-                          <h3 className="text-[13px] font-bold text-slate-800">Planilhas excluídas</h3>
-                        </div>
-                        <div className="p-8 flex flex-col items-center text-center">
-                          <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-1.22-1.8A2 2 0 0 0 7.53 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-                          </div>
-                          <p className="text-xs font-bold text-slate-800">Esse aluno não tem planilhas excluídas</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {treinosSubTab === 'aerobico' && treinosViewStatus === 'arquivadas' && (
-                      <div className="bg-white rounded-xl shadow-sm border border-slate-100">
-                        <div className="p-4 border-b border-slate-100">
-                          <h3 className="text-[13px] font-bold text-slate-800">Planilhas arquivadas</h3>
-                        </div>
-                        <div className="p-8 flex flex-col items-center text-center">
-                          <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-1.22-1.8A2 2 0 0 0 7.53 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-                          </div>
-                          <p className="text-xs font-bold text-slate-800">Esse aluno não tem planilhas arquivadas</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* TABCONTENT: CRIAR PLANILHA AEROBICO */}
-                {selectedDetailTab === 'criar_planilha' && (
-                  <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
-                      {/* Nome */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Nome</label>
-                        <input
-                          type="text"
-                          value={criarPlanilhaForm.nome}
-                          onChange={e => setCriarPlanilhaForm(f => ({ ...f, nome: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Tipo */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Tipo</label>
-                        <div className="flex flex-col gap-1 mt-1">
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="planilhaTipo"
-                              value="numero_treinos"
-                              checked={criarPlanilhaForm.tipo === 'numero_treinos'}
-                              onChange={() => setCriarPlanilhaForm(f => ({ ...f, tipo: 'numero_treinos' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Número de treinos
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="planilhaTipo"
-                              value="intervalo_data"
-                              checked={criarPlanilhaForm.tipo === 'intervalo_data'}
-                              onChange={() => setCriarPlanilhaForm(f => ({ ...f, tipo: 'intervalo_data' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Intervalo de data
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Salvar button */}
-                      <button
-                        onClick={() => {
-                          if (criarPlanilhaForm.nome.trim()) {
-                            // handle adding plan
-                            setCriarPlanilhaForm({ nome: '', tipo: 'numero_treinos' });
-                            setSelectedDetailTab('treinos');
-                          }
-                        }}
-                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition text-sm mt-4"
-                      >
-                        Salvar
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* TABCONTENT: CRIAR ROTINA */}
-                {selectedDetailTab === 'criar_rotina' && (
-                  <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
-
-                      {/* Nome da rotina */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Nome da rotina</label>
-                        <input
-                          type="text"
-                          value={criarRotinaForm.nome}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, nome: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Tipo dos treinos */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Tipo dos treinos</label>
-                        <select
-                          value={criarRotinaForm.tipo}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, tipo: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
-                        >
-                          <option value="dia_semana">Dia da Semana</option>
-                          <option value="numerico">Numérico</option>
-                        </select>
-                      </div>
-
-                      {/* Dia da Semana */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Dia da Semana</label>
-                        <select
-                          value={criarRotinaForm.diaSemana}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, diaSemana: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
-                        >
-                          <option>Segunda</option>
-                          <option>Terça</option>
-                          <option>Quarta</option>
-                          <option>Quinta</option>
-                          <option>Sexta</option>
-                          <option>Sábado</option>
-                          <option>Domingo</option>
-                        </select>
-                      </div>
-
-                      {/* Grupo Muscular */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Grupo Muscular</label>
-                        <input
-                          type="text"
-                          value={criarRotinaForm.grupoMuscular}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, grupoMuscular: e.target.value }))}
-                          placeholder="Ex: Peito, Tríceps e Ombro"
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Objetivo */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Objetivo</label>
-                        <select
-                          value={criarRotinaForm.objetivo}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, objetivo: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
-                        >
-                          <option value="">Selecione</option>
-                          <option value="hipertrofia">Hipertrofia</option>
-                          <option value="reducao_gordura">Redução de gordura</option>
-                          <option value="reducao_gordura_hipertrofia">Redução de gordura/hipertrofia</option>
-                          <option value="definicao_muscular">Definição muscular</option>
-                          <option value="condicionamento_fisico">Condicionamento físico</option>
-                          <option value="qualidade_vida">Qualidade de vida</option>
-                        </select>
-                      </div>
-
-                      {/* Dificuldade */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Dificuldade</label>
-                        <select
-                          value={criarRotinaForm.dificuldade}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, dificuldade: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] bg-white"
-                        >
-                          <option value="">Selecione</option>
-                          <option value="adaptacao">Adaptação</option>
-                          <option value="iniciante">Iniciante</option>
-                          <option value="intermediario">Intermediário</option>
-                          <option value="avancado">Avançado</option>
-                        </select>
-                      </div>
-
-                      {/* Orientações gerais */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Orientações gerais</label>
-                        <textarea
-                          value={criarRotinaForm.orientacoes}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, orientacoes: e.target.value }))}
-                          rows={4}
-                          placeholder="Orientações gerais"
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] resize-none placeholder:text-slate-400"
-                        />
-                      </div>
-
-                      {/* Permitir PDF */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Permitir que o aluno baixe o treino em pdf?</label>
-                        <div className="flex flex-col gap-1 mt-1">
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="permitirPdf"
-                              value="sim"
-                              checked={criarRotinaForm.permitirPdf === 'sim'}
-                              onChange={() => setCriarRotinaForm(f => ({ ...f, permitirPdf: 'sim' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Sim
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="permitirPdf"
-                              value="nao"
-                              checked={criarRotinaForm.permitirPdf === 'nao'}
-                              onChange={() => setCriarRotinaForm(f => ({ ...f, permitirPdf: 'nao' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Não
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Mostrar tempo */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Mostrar o tempo do treino para o aluno?</label>
-                        <div className="flex flex-col gap-1 mt-1">
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="mostrarTempo"
-                              value="sim"
-                              checked={criarRotinaForm.mostrarTempo === 'sim'}
-                              onChange={() => setCriarRotinaForm(f => ({ ...f, mostrarTempo: 'sim' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Sim
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="mostrarTempo"
-                              value="nao"
-                              checked={criarRotinaForm.mostrarTempo === 'nao'}
-                              onChange={() => setCriarRotinaForm(f => ({ ...f, mostrarTempo: 'nao' }))}
-                              className="accent-[#0070f3]"
-                            />
-                            Não
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Começa em */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Começa em:</label>
-                        <input
-                          type="date"
-                          value={criarRotinaForm.comecaEm}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, comecaEm: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Termina em */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Termina em:</label>
-                        <input
-                          type="date"
-                          value={criarRotinaForm.terminaEm}
-                          onChange={e => setCriarRotinaForm(f => ({ ...f, terminaEm: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Checkboxes */}
-                      <div className="space-y-2">
-                        <label className="flex items-start gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={criarRotinaForm.retirarAoVencer}
-                            onChange={e => setCriarRotinaForm(f => ({ ...f, retirarAoVencer: e.target.checked }))}
-                            className="mt-0.5 accent-[#0070f3]"
-                          />
-                          <span className="text-xs text-slate-700">Retirar a rotina da tela do aluno quando ela vencer.</span>
-                        </label>
-                        <label className="flex items-start gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={criarRotinaForm.naoExibirAntes}
-                            onChange={e => setCriarRotinaForm(f => ({ ...f, naoExibirAntes: e.target.checked }))}
-                            className="mt-0.5 accent-[#0070f3]"
-                          />
-                          <span className="text-xs text-slate-700">Não exibir essa rotina para o aluno antes da data de início</span>
-                        </label>
-                      </div>
-
-                      {/* Salvar button */}
-                      <button
-                        onClick={async () => {
-                          if (!criarRotinaForm.nome.trim()) {
-                            alert('Por favor, informe o nome da rotina.');
-                            return;
-                          }
-
-                          const newRoutineId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `routine_${Date.now()}`;
-                          const newRoutine: import('../types').AdminRoutine = {
-                            id: newRoutineId,
-                            name: criarRotinaForm.nome.trim(),
-                            goal: criarRotinaForm.objetivo || 'Definição muscular',
-                            difficulty: criarRotinaForm.dificuldade || 'Iniciante',
-                            dayOfWeek: criarRotinaForm.diaSemana || undefined,
-                            muscleGroup: criarRotinaForm.grupoMuscular || undefined,
-                            generalNotes: criarRotinaForm.orientacoes || '',
-                            notes: criarRotinaForm.orientacoes || '',
-                            startDate: criarRotinaForm.comecaEm || undefined,
-                            endDate: criarRotinaForm.terminaEm || undefined,
-                            routineGroupName: criarRotinaForm.nome.trim(),
-                            studentIds: [selectedStudent.uid],
-                            studentNames: [selectedStudent.name],
-                            exercises: [],
-                            createdAt: new Date().toISOString(),
-                          };
-
-                          try {
-                            await storage.saveAdminRoutine(newRoutine);
-                            setAdminRoutines(prev => [newRoutine, ...prev.filter(item => item.id !== newRoutine.id)]);
-                          } catch (error) {
-                            alert(error instanceof Error ? error.message : 'Não foi possível salvar a rotina. Tente novamente.');
-                            return;
-                          }
-
-                          setCriarRotinaForm({
-                            nome: '',
-                            tipo: 'dia_semana',
-                            diaSemana: 'Segunda',
-                            grupoMuscular: '',
-                            objetivo: 'Definição muscular',
-                            dificuldade: 'Iniciante',
-                            orientacoes: '',
-                            permitirPdf: 'sim',
-                            mostrarTempo: 'sim',
-                            comecaEm: '',
-                            terminaEm: '',
-                            retirarAoVencer: false,
-                            naoExibirAntes: false,
-                          });
-                          setSelectedDetailTab('treinos');
-                        }}
-                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3 rounded-md transition text-sm cursor-pointer"
-                      >
-                        Salvar
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {!isDataLoaded && ['treinos', 'criar_rotina', 'criar_planilha', 'treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab) && <p role="status" className="text-slate-700">Aguarde o carregamento da biblioteca antes de editar.</p>}
+                {isDataLoaded && selectedDetailTab === 'treinos' && <AdminRoutineModule key={treinosSubTab} student={selectedStudent} routines={adminRoutines} kind={treinosSubTab === 'aerobico' ? 'aerobic' : 'strength'} onChanged={setAdminRoutines} />}
+                {isDataLoaded && selectedDetailTab === 'criar_rotina' && <AdminRoutineModule student={selectedStudent} routines={adminRoutines} kind="strength" onChanged={setAdminRoutines} createInitially />}
+                {isDataLoaded && selectedDetailTab === 'criar_planilha' && <AdminRoutineModule student={selectedStudent} routines={adminRoutines} kind="aerobic" onChanged={setAdminRoutines} createInitially />}
+                {selectedDetailTab === 'avaliacoes' && <AdminStudentModules student={selectedStudent} module="assessments" />}
+                {selectedDetailTab === 'anamneses' && <AdminStudentModules student={selectedStudent} module="anamneses" />}
+                {selectedDetailTab === 'editar_aluno' && <StudentProfileEditor key={selectedStudent.uid} student={selectedStudent} onCancel={() => setSelectedDetailTab('opcoes')} onSaved={updated => { setSelectedStudent(updated); setUsers(previous => previous.map(user => user.uid === updated.uid ? updated : user)); setSelectedDetailTab('opcoes'); }} />}
 
                 {/* TABCONTENT: OPTIONS (OPÇÕES) */}
                 {selectedDetailTab === 'opcoes' && (
                   <div className="space-y-4 pt-1">
-                    
+
                     {/* Option List Card */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                       <a
-                        href={`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=Olá%20${encodeURIComponent(selectedStudent.name)}%2C%20acabei%20de%20atualizar%20suas%20fichas%20e%20frequência%20no%20meu%20painel%20Cadu%20Ponce%20Personal!`}
+                        href={studentWhatsAppUrl(selectedStudent, `Olá ${selectedStudent.name}!`)}
+                        onClick={event => { if (!studentWhatsAppUrl(selectedStudent)) { event.preventDefault(); setSelectedDetailTab('editar_aluno'); } }}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer"
@@ -5701,15 +3878,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
                           <MessageSquare className="w-5 h-5 text-emerald-500" />
                         </div>
-                        <span className="text-sm font-medium text-slate-700">Conversar</span>
+                        <span className="text-sm font-medium text-slate-700">{studentWhatsAppUrl(selectedStudent) ? 'Conversar com o aluno' : 'WhatsApp não cadastrado — edite o aluno'}</span>
                       </a>
-                      
+
                       <button
                         onClick={() => {
-                          const link = `https://cadu-ponce-personal.vercel.app/login?email=${selectedStudent.email}`;
-                          navigator.clipboard.writeText(link);
-                          setCopiedLink(selectedStudent.uid);
-                          setTimeout(() => setCopiedLink(null), 2000);
+                          const link = `https://cadu-ponce-personal.vercel.app/login?email=${encodeURIComponent(selectedStudent.email)}`;
+                          void handleCopyLink(link, selectedStudent.uid);
                         }}
                         className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer text-left"
                       >
@@ -5721,17 +3896,17 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         </span>
                       </button>
 
-                      <button
-                        className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer text-left opacity-70"
+                      <button onClick={() => { setSelectedStudent(null); setIsNotificationsOpen(true); }}
+                        className="w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer text-left"
                       >
                         <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                           <Bell className="w-5 h-5 text-[#3182ce]" />
                         </div>
-                        <span className="text-sm font-medium text-slate-700">Preferências de notificações</span>
+                        <span className="text-sm font-medium text-slate-700">Notificações neste dispositivo</span>
                       </button>
 
-                      <button
-                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition cursor-pointer text-left opacity-70"
+                      <button onClick={() => setSelectedDetailTab('editar_aluno')}
+                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition cursor-pointer text-left"
                       >
                         <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                           <Edit3 className="w-5 h-5 text-[#3182ce]" />
@@ -5743,14 +3918,15 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     {/* Action Buttons */}
                     <div className="space-y-3 pt-2">
                       <button
-                        onClick={handleToggleModality}
+                        disabled={studentMutationBusy}
+                        onClick={() => handleUpdateStudentStatus(selectedStudent.uid, selectedStudent.status === 'active' || !selectedStudent.status ? 'inactive' : 'active')}
                         className="w-full py-3.5 bg-white border border-[#3182ce] text-[#3182ce] font-medium rounded-lg text-sm transition hover:bg-blue-50 cursor-pointer"
                       >
-                        Inativar aluno
+                        {selectedStudent.status === 'active' || !selectedStudent.status ? 'Inativar aluno' : 'Reativar aluno'}
                       </button>
-                      
+
                       <button
-                        onClick={() => handleDeleteUser(selectedStudent.uid)}
+                        disabled={studentMutationBusy || selectedStudent.status === 'excluded'} onClick={() => handleDeleteUser(selectedStudent.uid)}
                         className="w-full py-3.5 bg-white border border-red-500 text-red-500 font-medium rounded-lg text-sm transition hover:bg-red-50 cursor-pointer"
                       >
                         Excluir aluno
@@ -5805,7 +3981,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                         <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
                           <ClipboardCheck className="w-8 h-8" />
                         </div>
-                        
+
                         <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
                           Incentive seu <span className="text-[#0070f3]">aluno</span> a registrar o progresso!
                         </h3>
@@ -5817,7 +3993,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             </div>
                             <span className="text-sm font-medium text-slate-700">Acompanhe a evolução com fotos</span>
                           </div>
-                          
+
                           <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                             <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
                               <TrendingUp className="w-4 h-4" />
@@ -5840,11 +4016,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
                         </div>
 
-                        <button 
+                        <button
                           className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
                           onClick={() => {
                             const msg = `Olá ${selectedStudent.name}, não esqueça de registrar seu progresso no app!`;
-                            window.open(`https://wa.me/${selectedStudent.trainerPhone || TRAINER_CONFIG.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+                            const url = studentWhatsAppUrl(selectedStudent, msg);
+                            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                            else { alert('Cadastre o WhatsApp do aluno para enviar o lembrete.'); setSelectedDetailTab('editar_aluno'); }
                           }}
                         >
                           Enviar lembrete
@@ -5854,199 +4032,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 )}
 
-                {/* TABCONTENT: TREINOS EXTRAS (EMPTY STATE) */}
-                {selectedDetailTab === 'treinos_extras' && (
-                  <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
-                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
-                        <FilePlus className="w-8 h-8" />
-                      </div>
-                      
-                      <h3 className="text-[15px] font-bold text-slate-800 mb-8 text-center">
-                        Adicione um <span className="text-[#0070f3]">treino extra</span> na rotina do seu aluno!
-                      </h3>
-
-                      <div className="w-full space-y-4 mb-8">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <Dumbbell className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Complemente a rotina de treinos</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <Clipboard className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Envie instruções para a execução</span>
-                        </div>
-
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <Calendar className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Defina o dia da atividade</span>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#EBF4FF] flex items-center justify-center text-[#2b88ff] shrink-0">
-                            <TrendingUp className="w-4 h-4" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-700">Incentive a consistência do aluno</span>
-                        </div>
-                      </div>
-
-                      <button 
-                        className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-semibold py-3.5 rounded-md transition"
-                        onClick={() => setSelectedDetailTab('criar_treino_extra')}
-                      >
-                        Adicionar treino extra
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* TABCONTENT: CRIAR TREINO EXTRA (FORM) */}
-                {selectedDetailTab === 'criar_treino_extra' && (
-                  <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-4">
-                      
-                      <h3 className="text-[15px] font-bold text-slate-800 border-b border-slate-100 pb-3">
-                        Configurar treino extra
-                      </h3>
-
-                      {/* Data de execução */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Data de execução</label>
-                        <input
-                          type="date"
-                          value={treinoExtraForm.dataExecucao}
-                          onChange={e => setTreinoExtraForm(f => ({ ...f, dataExecucao: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Nome da atividade */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Nome da atividade</label>
-                        <input
-                          type="text"
-                          value={treinoExtraForm.nome}
-                          onChange={e => setTreinoExtraForm(f => ({ ...f, nome: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Instruções */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Instruções para o aluno</label>
-                        <textarea
-                          value={treinoExtraForm.instrucoes}
-                          onChange={e => setTreinoExtraForm(f => ({ ...f, instrucoes: e.target.value }))}
-                          rows={4}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3] resize-none"
-                        />
-                        <div className="text-right text-[10px] text-slate-400">0/400</div>
-                      </div>
-
-                      {/* Link YouTube */}
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-700">Link do vídeo do YouTube <span className="text-[10px] italic font-normal text-slate-500">(opcional)</span></label>
-                        <input
-                          type="text"
-                          value={treinoExtraForm.linkYoutube}
-                          onChange={e => setTreinoExtraForm(f => ({ ...f, linkYoutube: e.target.value }))}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#0070f3]"
-                        />
-                      </div>
-
-                      {/* Enviar para */}
-                      <div className="space-y-3 pt-2 border-t border-slate-100">
-                        <label className="block text-xs font-semibold text-slate-700 pt-2">Enviar também para... <span className="text-[10px] italic font-normal text-slate-500">(opcional)</span></label>
-                        
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-700">Alunos</label>
-                          <select
-                            value={treinoExtraForm.alunos}
-                            onChange={e => setTreinoExtraForm(f => ({ ...f, alunos: e.target.value }))}
-                            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#0070f3] bg-white text-slate-500"
-                          >
-                            <option value="">Selecione</option>
-                          </select>
-                        </div>
-                        
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-700">Grupo de alunos</label>
-                          <select
-                            value={treinoExtraForm.grupoAlunos}
-                            onChange={e => setTreinoExtraForm(f => ({ ...f, grupoAlunos: e.target.value }))}
-                            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#0070f3] bg-white text-slate-500"
-                          >
-                            <option value="">Selecione</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Toggle Lembrete */}
-                      <div className="pt-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <div className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${treinoExtraForm.enviarLembrete ? 'bg-[#0070f3]' : 'bg-slate-300'}`}>
-                            <input
-                              type="checkbox"
-                              className="sr-only"
-                              checked={treinoExtraForm.enviarLembrete}
-                              onChange={e => setTreinoExtraForm(f => ({ ...f, enviarLembrete: e.target.checked }))}
-                            />
-                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${treinoExtraForm.enviarLembrete ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                          </div>
-                          <span className="text-xs font-bold text-slate-800">Enviar lembrete no dia do treino</span>
-                        </label>
-                      </div>
-
-                      {/* Salvar button */}
-                      <button
-                        onClick={() => {
-                          setTreinoExtraForm({ dataExecucao: '', nome: '', instrucoes: '', linkYoutube: '', alunos: '', grupoAlunos: '', enviarLembrete: false });
-                          setSelectedDetailTab('inicio');
-                        }}
-                        className="w-full bg-[#55a6ea] hover:bg-[#4396db] text-white font-semibold py-2.5 rounded-md transition text-sm mt-4"
-                      >
-                        Salvar treino extra
-                      </button>
-
-                    </div>
-                  </div>
-                )}
-
-
-                {/* TABCONTENT: ARQUIVOS */}
-                {selectedDetailTab === 'arquivos' && (
-                  <div className="space-y-4 pb-6">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
-                      <button 
-                        onClick={() => setShowUploadModal(true)}
-                        className="w-full flex items-center justify-center gap-2 py-3 border border-[#2b88ff] text-[#2b88ff] font-semibold rounded-md mb-8 hover:bg-blue-50 transition text-sm"
-                      >
-                        <Plus className="w-4 h-4" /> Adicionar arquivos
-                      </button>
-
-                      <div className="w-16 h-16 bg-[#EBF4FF] rounded-full flex items-center justify-center text-[#2b88ff] mb-6">
-                        <FilePlus className="w-8 h-8" />
-                      </div>
-                      
-                      <h3 className="text-[15px] font-bold text-slate-800 mb-6 text-center">
-                        Adicione arquivos para o seu aluno, use para:
-                      </h3>
-
-                      <ul className="text-sm font-medium text-slate-700 space-y-2 list-disc pl-4">
-                        <li>Planos alimentares</li>
-                        <li>Exames</li>
-                        <li>Planners</li>
-                        <li>Arquivos diversos</li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
+                {isDataLoaded && ['treinos_extras', 'criar_treino_extra'].includes(selectedDetailTab) && <AdminRoutineModule student={selectedStudent} routines={adminRoutines} kind="extra" onChanged={setAdminRoutines} createInitially={selectedDetailTab === 'criar_treino_extra'} />}
+                {selectedDetailTab === 'arquivos' && <AdminStudentModules student={selectedStudent} module="files" />}
 
               </div>
             </motion.div>
@@ -6054,144 +4041,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         )}
       </AnimatePresence>
 
-      {/* ARQUIVOS UPLOAD MODAL */}
-      <AnimatePresence>
-        {showUploadModal && (
-          <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 font-sans">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden"
-            >
-              <div className="flex justify-between items-center p-5 border-b border-slate-100">
-                <h3 className="font-bold text-[#141C2C] text-[15px]">Selecionar arquivo</h3>
-                <button 
-                  onClick={() => setShowUploadModal(false)}
-                  className="text-slate-400 hover:text-slate-600 transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 flex flex-col items-center">
-                <p className="text-[13px] font-medium text-slate-700 mb-6">Tamanho máximo: 20mb</p>
-                
-                <div className="w-full space-y-3">
-                  <label className="w-full bg-[#0070f3] hover:bg-[#005ccc] text-white font-bold py-3 rounded-md flex justify-center items-center gap-2 cursor-pointer transition text-sm shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                    Escolher arquivo
-                    <input type="file" className="hidden" />
-                  </label>
-                  
-                  <button 
-                    onClick={() => setShowUploadModal(false)}
-                    className="w-full bg-white border border-[#0070f3] text-[#0070f3] hover:bg-blue-50 font-bold py-3 rounded-md transition text-sm"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* FINANCE MODAL */}
-      <AnimatePresence>
-        {showFinanceModal && (
-          <div className="fixed inset-0 z-[150] bg-[#f4f7f9] flex flex-col items-center justify-start overflow-y-auto">
-            <div className="w-full max-w-xl flex flex-col min-h-screen relative">
-              {/* Header */}
-              <div className="px-6 pt-6 pb-24 shrink-0 relative bg-[#22354a]">
-                 <div className="flex items-center gap-4 mb-4">
-                  <button onClick={() => setShowFinanceModal(false)} className="text-white flex items-center gap-1 font-bold text-[10px] uppercase tracking-wider opacity-80 hover:opacity-100">
-                    <ChevronLeft className="w-4 h-4" /> Voltar
-                  </button>
-                </div>
-                <h2 className="text-white text-lg font-black uppercase tracking-tight">
-                  {selectedStudent?.name}
-                </h2>
-              </div>
-
-              {/* Finance Cards */}
-              <motion.div 
-                initial={{ y: 50, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 50, opacity: 0 }}
-                className="flex-1 relative -mt-16 mx-4 mb-8"
-              >
-                {/* 3 Summary Cards */}
-                <div className="flex gap-3 overflow-x-auto pb-4 snap-x scrollbar-none">
-                  {/* Card 1 */}
-                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
-                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Recebido no período</p>
-                    <p className="text-xl font-black text-[#10b981]">R$ 0,00</p>
-                  </div>
-                  {/* Card 2 */}
-                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
-                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Em aberto no período</p>
-                    <p className="text-xl font-black text-[#f43f5e]">R$ 0,00</p>
-                  </div>
-                  {/* Card 3 */}
-                  <div className="bg-white rounded-md shadow-sm p-5 min-w-[220px] shrink-0 snap-center border border-slate-100">
-                    <p className="text-[11px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Recebido em 2026</p>
-                    <p className="text-xl font-black text-[#10b981]">R$ 0,00</p>
-                  </div>
-                </div>
-
-                {/* Date Filter */}
-                <div className="text-center mt-2 mb-6 relative group">
-                   <div className="inline-block relative">
-                     {/* Tooltip mockup */}
-                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white text-slate-600 text-[11px] px-3 py-2 rounded shadow-md border border-slate-100 whitespace-nowrap z-10 hidden group-hover:block">
-                        Clique aqui para alterar o período
-                        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
-                     </div>
-                     <button className="text-[#0070d2] text-sm font-medium cursor-pointer">
-                        01/06/2026 - 30/06/2026
-                     </button>
-                   </div>
-                </div>
-
-                {/* Main Content Area */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 min-h-[400px]">
-                  {/* Tabs */}
-                  <div className="flex flex-wrap gap-2 mb-8">
-                    <button className="flex-1 py-2.5 bg-[#0070d2] text-white text-xs font-medium rounded-md whitespace-nowrap">
-                      Faturas Abertas
-                    </button>
-                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
-                      Faturas Pagas
-                    </button>
-                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
-                      Faturas Vencidas
-                    </button>
-                    <button className="flex-1 py-2.5 bg-white border border-slate-200 text-[#0070d2] text-xs font-medium rounded-md whitespace-nowrap hover:bg-slate-50">
-                      Planos
-                    </button>
-                  </div>
-
-                  {/* Add Invoice Button */}
-                  <div className="flex justify-end">
-                    <button className="bg-[#22354a] text-white px-5 py-2.5 rounded-md text-xs font-bold flex items-center gap-1 hover:bg-[#152332] transition">
-                      + Fatura
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      {createdAccess && <div role="dialog" aria-modal="true" aria-label="Acesso criado" className="fixed inset-0 z-[220] bg-black/60 flex items-center justify-center p-4"><div className="bg-white text-slate-900 rounded-xl p-6 max-w-lg w-full space-y-4"><h3 className="font-bold text-lg">Acesso criado para {createdAccess.name}</h3><p className="text-sm">Compartilhe estes dados manualmente com o aluno. Nenhum e-mail ou WhatsApp foi enviado.</p><p className="text-sm select-text break-all">E-mail: {createdAccess.email}</p><p className="text-sm select-text break-all">Senha inicial: {createdAccess.password}</p>{createdAccess.warning && <p role="alert" className="text-amber-800">{createdAccess.warning}</p>}<button className="bg-blue-600 text-white rounded px-4 py-2" onClick={async () => { try { await navigator.clipboard.writeText('Seu acesso ao Cadu Ponce Personal: https://cadu-ponce-personal.vercel.app\nE-mail: ' + createdAccess.email + '\nSenha inicial: ' + createdAccess.password + '\nVocê pode trocar a senha na opção Esqueci minha senha.'); alert('Dados copiados. Envie diretamente ao aluno.'); } catch { alert('Não foi possível copiar. Selecione os dados exibidos.'); } }}>Copiar dados de acesso</button><button className="ml-3" onClick={() => setCreatedAccess(null)}>Concluir</button></div></div>}
 
       {/* OVERLAY 2: ADD NEW STUDENT MODAL (REWRITTEN TO MATCH IMAGE) */}
       <AnimatePresence>
         {isAddingUser && (
           <div className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-start md:p-6 overflow-y-auto">
-            
+
             {/* Header / Banner area */}
             <div className="w-full max-w-xl bg-[#0c1d2e] p-6 pb-20 md:rounded-t-3xl flex flex-col items-start relative shrink-0">
-               <button 
+               <button
                 onClick={() => setIsAddingUser(false)}
                 className="flex items-center text-white text-[10px] font-bold opacity-80 hover:opacity-100 transition mb-6 uppercase tracking-wider"
               >
@@ -6203,18 +4062,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
             </div>
 
             {/* Mobile-friendly Form Container */}
-            <motion.div 
+            <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: -60, opacity: 1 }}
               transition={{ duration: 0.4 }}
               className="w-full max-w-xl bg-white rounded-3xl p-6 shadow-2xl relative border border-slate-100 mx-4"
             >
               <form onSubmit={handleCreateUser} className="space-y-5">
-                
+                <fieldset disabled={isCreatingUser} className="space-y-5 disabled:opacity-60">
+
                 {/* Nome completo */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Nome completo</label>
-                  <input 
+                  <input
                     autoFocus
                     required
                     type="text"
@@ -6227,7 +4087,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {/* E-mail */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">E-mail</label>
-                  <input 
+                  <input
                     required
                     type="email"
                     value={formEmail}
@@ -6240,7 +4100,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Senha de Acesso</label>
-                    <input 
+                    <input
                       required
                       type="password"
                       minLength={12}
@@ -6254,7 +4114,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Tipo de Conta</label>
                     <div className="relative">
-                      <select 
+                      <select
                         value={formRole}
                         onChange={(e) => setFormRole(e.target.value as 'student' | 'admin')}
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
@@ -6271,7 +4131,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Selecione um grupo</label>
                   <div className="relative">
-                    <select 
+                    <select
                       value={formGroup}
                       onChange={(e) => setFormGroup(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
@@ -6288,8 +4148,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 {/* Data de nascimento */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Data de nascimento</label>
-                  <input 
-                    type="text"
+                  <input
+                    type="date"
                     placeholder="DD/MM/YYYY"
                     value={formBirthDate}
                     onChange={(e) => setFormBirthDate(e.target.value)}
@@ -6299,13 +4159,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                 {/* WhatsApp */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">WhatsApp</label>
+                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">WhatsApp do aluno (DDD e número)</label>
                   <div className="flex items-center">
                     <div className="flex items-center px-3 py-3 bg-slate-50 border border-r-0 border-slate-100 rounded-l-lg space-x-2">
                        <PrivateImage src="https://flagcdn.com/w20/br.png" width="20" alt="Brazil" className="rounded-sm" />
                        <span className="text-sm font-bold text-slate-600">+55</span>
                     </div>
-                    <input 
+                    <input
                       type="text"
                       value={formPhone}
                       onChange={(e) => setFormPhone(e.target.value)}
@@ -6318,7 +4178,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Gênero</label>
                   <div className="relative">
-                    <select 
+                    <select
                       value={formGender}
                       onChange={(e) => setFormGender(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
@@ -6332,27 +4192,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 </div>
 
-                {/* Enviar informações de acesso ao aluno */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Enviar informações de acesso ao aluno</label>
-                  <div className="relative">
-                    <select 
-                      value={formSendAccessInfo}
-                      onChange={(e) => setFormSendAccessInfo(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
-                    >
-                      <option value="Sim">Sim</option>
-                      <option value="Não">Não</option>
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
+                <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Entrega manual do acesso: após salvar, copie o e-mail e a senha e compartilhe diretamente com o aluno. Nenhuma mensagem é enviada automaticamente.</p>
 
                 {/* Enviar anamnese */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Enviar anamnese</label>
+                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Criar anamnese no aplicativo</label>
                   <div className="relative">
-                    <select 
+                    <select
                       value={formSendAnamnesis}
                       onChange={(e) => setFormSendAnamnesis(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
@@ -6365,30 +4211,14 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   </div>
                 </div>
 
-                {/* Bloquear acesso de inadimplentes */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Bloquear acesso de inadimplentes</label>
-                  <div className="relative">
-                    <select 
-                      value={formBlockDefaulters}
-                      onChange={(e) => setFormBlockDefaulters(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none appearance-none focus:bg-white focus:border-[#dc2626]"
-                    >
-                      <option value="">Selecione</option>
-                      <option value="Automático">Automático</option>
-                      <option value="Manual">Manual</option>
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-
                 {/* Salvar Button */}
-                <button 
+                <button
                   type="submit"
                   className="w-full bg-[#dc2626] hover:bg-[#ef4444] text-white font-black py-4 rounded-xl shadow-lg transition-all active:scale-95 text-xs uppercase tracking-widest italic"
                 >
                   Salvar
                 </button>
+              </fieldset>
               </form>
             </motion.div>
           </div>
@@ -6426,7 +4256,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
               <div className="p-5 overflow-y-auto flex-1 space-y-4">
                 <p className="text-xs font-bold text-slate-600">Selecione os alunos que devem receber este treino:</p>
-                
+
                 <div className="space-y-2">
                   {users.filter(u => u.role === 'student').length === 0 ? (
                     <p className="text-xs text-slate-400 font-medium text-center py-4 bg-slate-50 rounded-xl">Nenhum aluno cadastrado</p>
@@ -6452,6 +4282,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
               <div className="p-5 border-t border-slate-100 bg-slate-50 shrink-0">
                 <button
+                  disabled={isSavingRoutine}
                   onClick={handleSaveRoutineAssignment}
                   className="w-full bg-[#dc2626] text-white py-4 rounded-xl font-black italic uppercase tracking-widest text-xs shadow-lg shadow-red-200 hover:bg-[#ef4444] active:scale-95 transition"
                 >
@@ -6474,7 +4305,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
           >
             {/* Header */}
             <div className="bg-[#0c1622] px-4 pt-6 pb-6 flex flex-col items-start gap-4 shrink-0">
-               <button 
+               <button
                  onClick={() => setIsEditingOptions(false)}
                  className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80 cursor-pointer text-left"
                >
@@ -6490,7 +4321,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                <div className="p-4 space-y-4 shrink-0 bg-white">
                   {/* Create Button */}
                   {!showOptionInput ? (
-                    <button 
+                    <button
                       onClick={() => setShowOptionInput(true)}
                       className="w-full py-4 bg-white border border-[#dc2626] rounded-lg text-[#dc2626] text-sm font-bold transition cursor-pointer"
                     >
@@ -6533,7 +4364,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   )}
 
                   {/* Search Input */}
-                  <input 
+                  <input
                      type="text"
                      value={optionSearchQuery}
                      onChange={(e) => setOptionSearchQuery(e.target.value)}
@@ -6541,7 +4372,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-3 px-4 text-sm text-slate-600 outline-none focus:border-slate-300 transition"
                   />
                </div>
-               
+
                {/* List */}
                <div className="flex-1 overflow-y-auto px-4 pb-4 bg-white text-left">
                   <div className="space-y-0">
@@ -6593,7 +4424,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
+
               <div className="p-4 shrink-0 bg-white border-b border-slate-100">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

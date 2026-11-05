@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
-import { VitePWA } from 'vite-plugin-pwa';
+import { appPwa } from './scripts/pwa-build.mjs';
 
 function devUploadPlugin() {
   return {
@@ -23,29 +23,7 @@ export default defineConfig(() => {
       devUploadPlugin(),
       react(), 
       tailwindcss(),
-      VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: ['icon.png'],
-        manifest: {
-          name: 'Cadu Ponce Consultoria',
-          short_name: 'Cadu Ponce',
-          description: 'Consultoria Esportiva de Alta Performance',
-          theme_color: '#020617', // slate-950
-          background_color: '#020617',
-          display: 'standalone',
-          icons: [
-            {
-              src: 'icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any maskable'
-            }
-          ]
-        },
-        workbox: {
-          importScripts: ['/push-sw.js']
-        }
-      })
+      appPwa()
     ],
     resolve: {
       alias: {

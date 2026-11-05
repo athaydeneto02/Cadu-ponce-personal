@@ -24,6 +24,7 @@ interface MediaRecord {
 // Memory cache for object URLs so we don't recreate them constantly
 const blobUrlCache = new Map<string, string>();
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const removedLocalFiles = new Set<string>();
 const privateBuckets = new Set(['evolution-photos', 'exercise-videos', 'arquivos-alunos']);
 
 export function toStorageReference(bucket: string, path: string): string {
@@ -43,6 +44,49 @@ function storageLocation(value: string): { bucket: string; path: string } | null
     if (match && privateBuckets.has(match[1])) return { bucket: match[1], path: decodeURIComponent(match[2]) };
   } catch { /* local or external reference */ }
   return null;
+}
+
+function validStoragePath(path: string): boolean {
+  return !!path && !path.startsWith('/') && !/[\\\u0000-\u001f]/.test(path)
+    && !path.split('/').some(part => part === '..' || part === '.' || !part);
+}
+
+/** Delete only a managed object, after its owning record has been removed.
+ * External URLs and legacy embedded media have no independently owned object.
+ * The bucket's RLS remains the authority for this authenticated operation.
+ */
+export async function deleteStoredMedia(reference: string, expectedActor = getCacheUser()): Promise<void> {
+  const location = storageLocation(reference);
+  if (!location) {
+    if (reference.startsWith('storage://')) throw new Error('Referência de arquivo inválida.');
+    return;
+  }
+  if (!validStoragePath(location.path)) throw new Error('Caminho de arquivo inválido.');
+  if (!expectedActor || getCacheUser() !== expectedActor) throw new Error('A sessão mudou. Entre novamente.');
+  const { error } = await supabase.storage.from(location.bucket).remove([location.path]);
+  if (error) throw new Error('Não foi possível remover o arquivo armazenado. Tente novamente.');
+  signedUrlCache.delete(`${expectedActor}:${location.bucket}/${location.path}`);
+}
+
+/** Remove an exact local file. Never clear unrelated drafts or pending uploads. */
+export async function deleteLocalFile(idbKey: string, expectedActor = getCacheUser()): Promise<void> {
+  if (!idbKey.startsWith('idb:') || !idbKey.slice(4)) throw new Error('Arquivo local inválido.');
+  if (!expectedActor || getCacheUser() !== expectedActor) throw new Error('A sessão mudou. Entre novamente.');
+  const db = await openDb();
+  try {
+    if (getCacheUser() !== expectedActor) throw new Error('A sessão mudou. Entre novamente.');
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).delete(idbKey.slice(4));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error('Não foi possível remover o arquivo local.'));
+    });
+    removedLocalFiles.add(idbKey);
+    const cached = blobUrlCache.get(idbKey);
+    if (cached?.startsWith('blob:')) URL.revokeObjectURL(cached);
+    blobUrlCache.delete(idbKey);
+  } finally { db.close?.(); }
 }
 
 /** Only durable media references belong in shared exercise records. */
@@ -124,6 +168,7 @@ export async function storeLocalFile(file: File | Blob, prefix = 'media'): Promi
  * Recupera o Blob armazenado no IndexedDB.
  */
 export async function getLocalBlob(idbKey: string): Promise<Blob | null> {
+  if (removedLocalFiles.has(idbKey)) return null;
   const id = idbKey.replace(/^idb:/, '');
   const db = await openDb();
 
@@ -134,10 +179,10 @@ export async function getLocalBlob(idbKey: string): Promise<Blob | null> {
 
     req.onsuccess = () => {
       const record = req.result as MediaRecord | undefined;
-      resolve(record ? record.blob : null);
+      resolve(record && !removedLocalFiles.has(idbKey) ? record.blob : null);
     };
     req.onerror = () => reject(req.error);
-  });
+  }).finally(() => db.close?.());
 }
 
 /**
@@ -327,9 +372,13 @@ export async function getCachedVideoBlobUrl(url: string): Promise<string> {
   }
 
   // 2. Verifica no IndexedDB
-  const cacheKey = `vcache_${encodeURIComponent(url).slice(-48)}`;
+  // Full URL identity: suffixes collide across origins and different directories.
+  // v2 deliberately does not read the old, ambiguous suffix-based entries.
+  const cacheKey = `vcache_v2_${encodeURIComponent(url)}`;
+  const requestActor = getCacheUser();
   try {
     const cachedBlob = await getLocalBlob(`idb:${cacheKey}`);
+    if (requestActor !== getCacheUser()) return '';
     if (cachedBlob && cachedBlob.size > 0) {
       const objUrl = URL.createObjectURL(cachedBlob);
       blobUrlCache.set(url, objUrl);
@@ -344,6 +393,8 @@ export async function getCachedVideoBlobUrl(url: string): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const blob = await response.blob();
+    if (requestActor !== getCacheUser()) return '';
+    if (blob.size > 100 * 1024 * 1024) return url;
     const objectUrl = URL.createObjectURL(blob);
     blobUrlCache.set(url, objectUrl);
 
@@ -359,6 +410,9 @@ export async function getCachedVideoBlobUrl(url: string): Promise<string> {
         size: blob.size,
         createdAt: Date.now()
       });
+      tx.oncomplete = () => db.close();
+      tx.onabort = () => db.close();
+      tx.onerror = () => db.close();
     } catch {}
 
     return objectUrl;

@@ -13,7 +13,7 @@ const text = node => typeof node === 'string' ? node : !node ? '' : Array.isArra
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 function harness(component, props, storage = {}) {
-  storage = { getUser: () => ({ uid: 'student', name: 'Aluno' }), ...storage };
+  storage = { getUser: () => ({ uid: 'student', name: 'Aluno' }), getWorkoutLogs: () => [], ...storage };
   const source = readFileSync(new URL(`../src/components/${component}.tsx`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
@@ -36,6 +36,18 @@ function harness(component, props, storage = {}) {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === '../lib/storage') return { storage };
       if (name === '../lib/workoutSession') return require('../src/lib/workoutSession.ts');
+      if (name === '../lib/workoutDraft') return require('../src/lib/workoutDraft.ts');
+      if (name === '../lib/useWorkoutClock') {
+        const clockModule = { exports: {} };
+        const clockSource = readFileSync(new URL('../src/lib/useWorkoutClock.ts', import.meta.url), 'utf8');
+        const clockCompiled = ts.transpileModule(clockSource, { compilerOptions: {
+          target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS,
+        } }).outputText;
+        vm.runInNewContext(clockCompiled, { ...context, exports: clockModule.exports, require: dependency =>
+          dependency === './workoutDraft' ? require('../src/lib/workoutDraft.ts') : context.require(dependency) });
+        return clockModule.exports;
+      }
+      if (name === '../lib/mediaDb') return { useMediaUrl: reference => reference || '' };
       if (name === '../lib/trainerConfig') return { TRAINER_CONFIG: { phone: '1234' } };
       if (name === 'motion/react') return { motion: new Proxy({}, { get: (_, key) => `motion.${String(key)}` }), AnimatePresence: 'AnimatePresence' };
       if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => String(key) });

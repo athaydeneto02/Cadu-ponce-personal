@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy } from 'react';
 import { 
   Dumbbell, 
   Camera, 
@@ -23,14 +23,16 @@ import { storage } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { getTrainerWhatsAppUrl } from './lib/trainerConfig';
 import { UserProfile, Workout } from './types';
-import Dashboard from './components/Dashboard';
-import WorkoutList from './components/WorkoutList';
-import WorkoutSession from './components/WorkoutSession';
-import EvolutionGallery from './components/EvolutionGallery';
-import PersonalDataForm from './components/PersonalDataForm';
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const WorkoutList = lazy(() => import('./components/WorkoutList'));
+const WorkoutSession = lazy(() => import('./components/WorkoutSession'));
+const EvolutionGallery = lazy(() => import('./components/EvolutionGallery'));
+const PersonalDataForm = lazy(() => import('./components/PersonalDataForm'));
 import UpdatePasswordForm from './components/UpdatePasswordForm';
-import AccountManagement from './components/AccountManagement';
+const AccountManagement = lazy(() => import('./components/AccountManagement'));
 import NotificationsModal from './components/NotificationsModal';
+import StudentNotificationCenter from './components/StudentNotificationCenter';
+import AccountAvatar from './components/AccountAvatar';
 
 import SplashScreen from './components/SplashScreen';
 import Login from './components/Login';
@@ -51,6 +53,7 @@ export default function App() {
     catch { return 'light'; }
   });
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [dashboardReset, setDashboardReset] = useState(0);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
@@ -240,6 +243,15 @@ export default function App() {
     setLoginNotice(saved ? 'Sua senha foi atualizada. Entre com a nova senha.' : null);
   };
 
+  const navigate = (tab: Tab) => {
+    setIsEditingProfile(false);
+    setIsUpdatingPassword(false);
+    setIsManagingAccounts(false);
+    setIsNotificationsOpen(false);
+    setActiveTab(tab);
+    if (tab === 'dashboard') setDashboardReset(value => value + 1);
+  };
+
   if (isLoading) {
     // Minimal spinner — only shown on first-ever visit (no cache)
     return (
@@ -295,6 +307,7 @@ export default function App() {
           onClose={() => setIsEditingProfile(false)}
           onSave={async (updatedUser) => {
             await storage.updateProfile(updatedUser);
+            if (storage.getUser()?.uid !== updatedUser.uid) throw new Error('Sua sessão mudou. Entre novamente para conferir os dados salvos.');
             setUser(updatedUser);
             setIsEditingProfile(false);
             setNotification({ title: "Perfil Atualizado", body: "Seus dados pessoais foram salvos com sucesso." });
@@ -332,10 +345,12 @@ export default function App() {
         return (
           <Dashboard 
             user={user} 
+            resetKey={dashboardReset}
             onStartWorkout={(w) => setActiveWorkout(w)} 
             workouts={workouts} 
             onUpdateUser={async (updatedUser) => {
               await storage.updateProfile(updatedUser);
+              if (storage.getUser()?.uid !== updatedUser.uid) throw new Error('Sua sessão mudou. Entre novamente para conferir os dados salvos.');
               setUser(updatedUser);
             }}
           />
@@ -349,7 +364,7 @@ export default function App() {
           return (
             <div className="flex flex-col min-h-full bg-[#1c2b3e]">
               <div className="px-4 pt-4 pb-2">
-                <button onClick={() => setActiveTab('dashboard')} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
+                <button onClick={() => navigate('dashboard')} className="flex items-center gap-1 text-white/80 text-sm font-medium hover:text-white transition">
                   <ChevronRight className="w-4 h-4 rotate-180" /> Voltar
                 </button>
               </div>
@@ -358,12 +373,12 @@ export default function App() {
               <div className="bg-white flex-1 rounded-t-xl px-4 pt-16 pb-8 relative">
                 {/* Profile Picture overlapping */}
                 <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
-                  <div className="w-24 h-24 rounded-full bg-slate-500 border-4 border-[#1c2b3e] flex items-center justify-center relative overflow-hidden">
-                    <User className="w-12 h-12 text-slate-300" />
+                  <button onClick={() => setIsEditingProfile(true)} aria-label="Editar foto do perfil" className="w-24 h-24 rounded-full bg-slate-500 border-4 border-[#1c2b3e] flex items-center justify-center relative overflow-hidden">
+                    <AccountAvatar reference={user?.photoURL} name={user?.name || 'aluno'} />
                     <div className="absolute inset-0 bg-black/20 flex items-center justify-center cursor-pointer">
                       <Plus className="w-8 h-8 text-white" />
                     </div>
-                  </div>
+                  </button>
                   <span className="text-slate-600 text-sm mt-2 font-medium">Editar foto</span>
                 </div>
 
@@ -387,13 +402,12 @@ export default function App() {
                   </button>
 
                   {/* Idioma */}
-                  <button className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm active:scale-[0.98] transition">
+                  <div className="w-full bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
                     <div className="text-left">
                       <h3 className="text-slate-800 font-bold text-base">Idioma</h3>
                       <p className="text-slate-500 text-sm mt-0.5">Português</p>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-800" />
-                  </button>
+                  </div>
 
                   {/* Logout Button (Extra, necessary for the app) */}
                   <button 
@@ -511,14 +525,7 @@ export default function App() {
           {/* MFIT Header */}
           <header className="bg-[#1c2b3e] h-14 flex items-center justify-center px-4 shrink-0 z-40 relative">
             <img src={logoImg} alt="logo" className="w-auto h-8 object-contain" />
-            <button
-              onClick={() => setIsNotificationsOpen(true)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white transition cursor-pointer"
-            >
-              <div className="relative flex items-center justify-center">
-                <Bell className="w-6 h-6" />
-              </div>
-            </button>
+            {user && <StudentNotificationCenter key={user.uid} userId={user.uid} />}
           </header>
 
           {/* Content area */}
@@ -538,7 +545,7 @@ export default function App() {
                     <h4 className="font-bold text-sm tracking-tight">{notification.title}</h4>
                     <p className="text-slate-400 text-xs mt-0.5 leading-tight">{notification.body}</p>
                   </div>
-                  <button onClick={() => setNotification(null)} className="p-1 hover:bg-slate-800 rounded-lg shrink-0">
+                  <button onClick={() => setNotification(null)} aria-label="Fechar aviso" className="p-1 hover:bg-slate-800 rounded-lg shrink-0">
                     <X className="w-4 h-4" />
                   </button>
                 </motion.div>
@@ -561,7 +568,7 @@ export default function App() {
           {/* MFIT Student Bottom Nav */}
           <nav className="absolute bottom-0 left-0 right-0 h-16 bg-[#1c2b3e] border-t border-white/10 flex items-stretch z-40">
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => navigate('dashboard')}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'dashboard' ? 'text-white' : 'text-white/60 hover:text-white'}`}
             >
               <Home className="w-5 h-5" />
@@ -569,7 +576,7 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                window.open('https://www.instagram.com/caduponce.personal', '_blank');
+                window.open('https://www.instagram.com/caduponce.personal', '_blank', 'noopener,noreferrer');
               }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 text-white/60 hover:text-white transition"
             >
@@ -592,7 +599,7 @@ export default function App() {
               <span className="text-[10px] font-medium">WhatsApp</span>
             </button>
             <button
-              onClick={() => setActiveTab('profile')}
+              onClick={() => navigate('profile')}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'profile' ? 'text-white' : 'text-white/60 hover:text-white'}`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">

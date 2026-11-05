@@ -14,6 +14,7 @@
 !/scripts
 /scripts/*
 !/scripts/test-environment.mjs
+!/scripts/pwa-build.mjs
 !/supabase
 !/supabase/**
 !/supabase_setup.sql

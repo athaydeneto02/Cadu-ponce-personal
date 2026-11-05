@@ -22,9 +22,12 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
   let authCallback;
   let resolveProfile;
   let delayedProfile = false;
+  let cachedUid = 'student-a';
+  let finishUpdate;
   const user = { id: 'student-a', email: 'cadu-client@example.invalid', user_metadata: { role: 'admin' } };
   const profile = { uid: user.id, name: 'Aluno', email: user.email, role: profileRole, status, createdAt: '2026-01-01' };
   const react = {
+    lazy(loader) { return loader.toString().match(/components\/([^'"\)]+)/)?.[1]; },
     useState(initial) {
       const index = cursor++;
       if (firstRender) state[index] = typeof initial === 'function' ? initial() : initial;
@@ -33,8 +36,9 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     useEffect(effect) { if (firstRender) effects.push(effect); },
   };
   const storage = {
-    getUser: () => ({ ...profile, role: 'admin' }),
-    setSessionUser: id => calls.scopes.push(id),
+    getUser: () => cachedUid ? ({ ...profile, uid: cachedUid, role: 'admin' }) : null,
+    setSessionUser: id => { cachedUid = id; calls.scopes.push(id); },
+    updateProfile: () => new Promise(resolve => { finishUpdate = resolve; }),
     saveUser() {},
     fetchProfile: async () => {
       calls.profileReads++;
@@ -85,6 +89,8 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     noSession: () => authCallback('INITIAL_SESSION', null),
     delayProfile: () => { delayedProfile = true; },
     finishProfile: () => resolveProfile(profile),
+    switchCachedActor: uid => { cachedUid = uid; },
+    finishUpdate: () => finishUpdate(),
   };
 }
 
@@ -167,6 +173,61 @@ test('an expired recovery link displays login with a recovery error', () => {
   app.noSession();
   assert.equal(app.render().type, 'Login');
   assert.match(app.render().props.errorMessage, /link.*inválido|expirou/i);
+});
+
+function nodes(tree) {
+  if (!tree || typeof tree !== 'object') return [];
+  if (Array.isArray(tree)) return tree.flatMap(nodes);
+  return [tree, ...nodes(tree.props?.children)];
+}
+function label(tree) {
+  if (typeof tree === 'string') return tree;
+  if (!tree || typeof tree !== 'object') return '';
+  if (Array.isArray(tree)) return tree.map(label).join(' ');
+  return label(tree.props?.children);
+}
+function button(tree, name) {
+  const result = nodes(tree).find(node => node.type === 'button' && label(node).trim() === name);
+  assert.ok(result, `Button ${name} should exist`);
+  return result;
+}
+
+test('Home resets dashboard subpanels and closes profile and password editing', async () => {
+  const app = harness();
+  app.emit('SIGNED_IN'); await settle();
+  const initialKey = nodes(app.render()).find(node => node.type === 'Dashboard').props.resetKey;
+  button(app.render(), 'Início').props.onClick();
+  assert.equal(nodes(app.render()).find(node => node.type === 'Dashboard').props.resetKey, initialKey + 1);
+  button(app.render(), 'Menu').props.onClick();
+  const profileButton = nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Seus dados'));
+  profileButton.props.onClick();
+  assert.ok(nodes(app.render()).some(node => node.type === 'PersonalDataForm'));
+  button(app.render(), 'Início').props.onClick();
+  assert.ok(nodes(app.render()).some(node => node.type === 'Dashboard'));
+  assert.equal(nodes(app.render()).some(node => node.type === 'PersonalDataForm'), false);
+  button(app.render(), 'Menu').props.onClick();
+  nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Atualizar senha')).props.onClick();
+  assert.ok(nodes(app.render()).some(node => node.type === 'UpdatePasswordForm'));
+  button(app.render(), 'Início').props.onClick();
+  assert.equal(nodes(app.render()).some(node => node.type === 'UpdatePasswordForm'), false);
+});
+
+test('profile update finishing after account switch cannot replace the current screen identity', async () => {
+  for (const form of [false, true]) {
+    const app = harness();
+    app.emit('SIGNED_IN'); await settle();
+    let component = nodes(app.render()).find(node => node.type === 'Dashboard');
+    if (form) {
+      button(app.render(), 'Menu').props.onClick();
+      nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Seus dados')).props.onClick();
+      component = nodes(app.render()).find(node => node.type === 'PersonalDataForm');
+    }
+    const save = (form ? component.props.onSave : component.props.onUpdateUser)({ ...component.props.user, name: 'Stale result' });
+    app.switchCachedActor('student-b');
+    app.finishUpdate();
+    await assert.rejects(save, /sessão mudou/);
+    assert.equal(nodes(app.render()).some(node => node.props?.user?.name === 'Stale result'), false);
+  }
 });
 
 test('consulting screen only offers centralized WhatsApp and Instagram contact without plans or checkout', () => {

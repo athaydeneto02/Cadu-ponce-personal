@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
 import { initialExerciseLoads, completedWorkoutVolume } from '../lib/workoutSession';
+import { elapsedWorkoutSeconds, pauseWorkoutClock, readWorkoutDraft, removeWorkoutDraft, saveWorkoutDraft, workoutDraftFingerprint, type WorkoutClock } from '../lib/workoutDraft';
+import { useWorkoutClock } from '../lib/useWorkoutClock';
 import logoImg from '../assets/images/cadu_ponce_logo_new.png';
 
 interface WorkoutSessionProps {
@@ -20,14 +22,19 @@ interface WorkoutSessionProps {
 }
 
 export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps) {
+  const prescriptionFingerprint = useRef(workoutDraftFingerprint(workout.exercises, workout.description));
+  const [initialDraft] = useState(() => readWorkoutDraft(storage.getUser()?.uid, workout.id, workout.exercises.map(ex => ex.id), storage.getWorkoutLogs(), prescriptionFingerprint.current));
+  const startedAt = useRef(initialDraft?.startedAt || new Date().toISOString());
+  const [draftError, setDraftError] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [completedExercises, setCompletedExercises] = useState<Set<string>>(new Set());
-  const [timer, setTimer] = useState(0);
-  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [completedExercises, setCompletedExercises] = useState<Set<string>>(() => new Set(initialDraft?.completed || []));
+  const [clock, setClock] = useState<WorkoutClock>(() => initialDraft?.clock || { elapsedSeconds: 0, runStartedAt: null });
+  const timer = useWorkoutClock(clock);
+  const setIsTimerActive = (active: boolean) => setClock(current => active ? { ...current, runStartedAt: current.runStartedAt ?? Date.now() } : pauseWorkoutClock(current, Date.now(), timer));
   const [isFinished, setIsFinished] = useState(false);
-  const sessionLogId = useRef(crypto.randomUUID());
+  const sessionLogId = useRef(initialDraft?.id || crypto.randomUUID());
   const sessionStudentId = useRef(storage.getUser()?.uid);
-  const completedLog = useRef<WorkoutLog | null>(null);
+  const completedLog = useRef<WorkoutLog | null>(initialDraft?.completion || null);
   const logSaving = useRef(false);
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [logSaveMessage, setLogSaveMessage] = useState('');
@@ -47,6 +54,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       if (storage.getUser()?.uid !== sessionStudentId.current) throw new Error('A sessão mudou. Entre na mesma conta em que iniciou o treino.');
       const saved = await storage.saveWorkoutLog(log);
       completedLog.current = saved;
+      try { removeWorkoutDraft(log.studentId, workout.id); } catch { /* A saved completion cannot be resumed as a second session. */ }
       setLogSaveMessage(saved.syncStatus === 'pending'
         ? 'Salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
         : 'Treino salvo e sincronizado.');
@@ -60,8 +68,8 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       setIsSavingLog(false);
     }
   };
-  const [userNotes, setUserNotes] = useState<Record<string, string>>({});
-  const [rpe, setRpe] = useState<number>(0);
+  const [userNotes, setUserNotes] = useState<Record<string, string>>(initialDraft?.notes || {});
+  const [rpe, setRpe] = useState<number>(Number(initialDraft?.rating) || 0);
   const [hoverRpe, setHoverRpe] = useState<number>(0);
   useEffect(() => {
     const refresh = () => {
@@ -77,7 +85,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const [loads, setLoads] = useState<Record<string, number[]>>(() => {
     const initial: Record<string, number[]> = {};
     workout.exercises.forEach(e => {
-      initial[e.id] = initialExerciseLoads(e);
+      initial[e.id] = initialDraft?.loads[e.id] || initialExerciseLoads(e);
     });
     return initial;
   });
@@ -85,11 +93,30 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   // Rest and Set tracker states
   const [isResting, setIsResting] = useState(false);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
+  const restDeadline = useRef<number | null>(null);
   const [restTotalTime, setRestTotalTime] = useState(0);
   const [isRestPaused, setIsRestPaused] = useState(false);
   const [showRestAlert, setShowRestAlert] = useState(false);
   const [isRestMinimized, setIsRestMinimized] = useState(false);
-  const [checkedSets, setCheckedSets] = useState<Record<string, boolean[]>>({});
+  const [checkedSets, setCheckedSets] = useState<Record<string, boolean[]>>(initialDraft?.checkedSets || {});
+  const persistDraft = (paused = false) => {
+    if (!sessionStudentId.current || isFinished || storage.getUser()?.uid !== sessionStudentId.current) return;
+    saveWorkoutDraft({ id: sessionLogId.current, studentId: sessionStudentId.current, routineId: workout.id,
+      exerciseIds: workout.exercises.map(ex => ex.id), prescriptionFingerprint: prescriptionFingerprint.current, startedAt: startedAt.current,
+      clock: paused ? pauseWorkoutClock(clock, Date.now(), timer) : clock, completed: [...completedExercises], loads,
+      checkedSets, notes: userNotes, rating: String(rpe), completion: completedLog.current || undefined });
+  };
+  const leaveSession = () => {
+    if (logSaving.current) return;
+    try { persistDraft(true); onClose(); }
+    catch { setDraftError('Não foi possível salvar a retomada. Conclua o treino ou tente sair novamente.'); }
+  };
+  useEffect(() => {
+    if (isFinished) return;
+    const persist = () => { try { persistDraft(); setDraftError(''); } catch { setDraftError('A retomada não foi salva neste aparelho. Mantenha a tela aberta até concluir.'); } };
+    persist(); window.addEventListener('pagehide', persist);
+    return () => window.removeEventListener('pagehide', persist);
+  }, [clock, completedExercises, loads, checkedSets, userNotes, rpe, isFinished]);
 
   // Helper to parse rest string (e.g., "45s", "1 min", "60 segundos") into seconds
   const parseRestToSeconds = (restStr: string): number => {
@@ -104,6 +131,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   };
 
   const startRest = (durationSeconds: number) => {
+    restDeadline.current = Date.now() + durationSeconds * 1000;
     setRestTotalTime(durationSeconds);
     setRestTimeLeft(durationSeconds);
     setIsResting(true);
@@ -116,35 +144,24 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
     setIsTimerActive(true);
   }, []);
 
+  // A backgrounded tab catches up to the deadline rather than losing seconds.
   useEffect(() => {
-    let interval: any = null;
-    if (isTimerActive && !isFinished) {
-      interval = setInterval(() => {
-        setTimer(prev => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerActive, isFinished]);
-
-  // Rest countdown effect
-  useEffect(() => {
-    let interval: any = null;
-    if (isResting && !isRestPaused && restTimeLeft > 0) {
-      interval = setInterval(() => {
-        setRestTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            setShowRestAlert(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (restTimeLeft === 0 && isResting && !showRestAlert) {
-      setShowRestAlert(true);
-    }
-    return () => clearInterval(interval);
-  }, [isResting, isRestPaused, restTimeLeft, showRestAlert]);
+    if (!isResting || isRestPaused) { restDeadline.current = null; return; }
+    restDeadline.current ??= Date.now() + restTimeLeft * 1000;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil(((restDeadline.current || Date.now()) - Date.now()) / 1000));
+      setRestTimeLeft(remaining);
+      if (!remaining) setShowRestAlert(true);
+    };
+    tick(); const interval = setInterval(tick, 250);
+    window.addEventListener('focus', tick); document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(interval); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick); };
+  }, [isResting, isRestPaused, restTotalTime]);
+  const adjustRest = (amount: number) => {
+    const next = Math.max(5, restTimeLeft + amount);
+    if (!isRestPaused) restDeadline.current = Date.now() + next * 1000;
+    setRestTimeLeft(next);
+  };
 
   const getCheckedSetsForExercise = (exerciseId: string, totalSets: number): boolean[] => {
     if (!checkedSets[exerciseId]) {
@@ -210,7 +227,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       routineId: workout.routineId || workout.id,
       routineName: workout.name || 'Treino do Dia',
       completedAt: new Date().toISOString(),
-      durationSeconds: timer,
+      durationSeconds: elapsedWorkoutSeconds(clock, Date.now(), timer),
       rpe: rpe * 2,
       exercisesSummary: workout.exercises.map(ex => ({
         name: ex.name,
@@ -387,11 +404,11 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       {/* Session Header */}
       <div className="bg-slate-900 pt-12 pb-6 px-6 text-white shrink-0 shadow-md">
         <div className="flex items-center justify-between mb-6">
-          <button disabled={isSavingLog} onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
+          <button disabled={isSavingLog} onClick={leaveSession} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
             <X className="w-6 h-6" />
           </button>
           <h2 className="font-bold text-lg">Modo Treino</h2>
-          <button 
+          {workout.allowPdf !== false && <button
             onClick={() => {
               generateWorkoutPDF(workout, storage.getUser()?.name || 'Aluno');
             }} 
@@ -399,7 +416,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
             title="Baixar ficha em PDF"
           >
             <Download className="w-5 h-5" />
-          </button>
+          </button>}
         </div>
         
         <div className="flex items-end justify-between">
@@ -407,14 +424,14 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
             <h1 className="text-xl font-bold line-clamp-1">{workout.name}</h1>
             <p className="text-slate-400 text-sm mt-1">Exercício {currentIndex + 1} de {workout.exercises.length}</p>
           </div>
-          <div className="text-right">
-            <div className={`p-2 rounded-xl flex items-center space-x-2 ${isTimerActive ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+          {workout.showTimer !== false && <div className="text-right">
+            <div className={`p-2 rounded-xl flex items-center space-x-2 ${clock.runStartedAt !== null ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
               <Timer className="w-4 h-4 text-white animate-pulse" />
               <span className="font-mono text-sm tracking-wide">
                 {Math.floor(timer / 60).toString().padStart(2, '0')}:{(timer % 60).toString().padStart(2, '0')}
               </span>
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -558,6 +575,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       </div>
 
       {/* Footer Controls */}
+      {draftError && <p role="alert" className="fixed top-20 left-4 right-4 z-50 rounded-xl bg-amber-100 p-3 text-sm text-amber-900">{draftError}</p>}
       {logSaveFailed && <p role="alert" className="fixed bottom-40 left-4 right-4 z-50 rounded-xl bg-red-950 p-3 text-sm text-white">{logSaveMessage}</p>}
       {progressError && <p role="alert" className="fixed bottom-28 left-4 right-4 z-50 rounded-xl bg-red-950 p-3 text-sm text-white">{progressError}</p>}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950 border-t border-slate-800 z-50 flex items-center space-x-2">
@@ -705,7 +723,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
                     {/* Quick fine-tune adjustment buttons */}
                     <div className="flex items-center justify-center space-x-3">
                       <button
-                        onClick={() => setRestTimeLeft(prev => Math.max(5, prev - 10))}
+                        onClick={() => adjustRest(-10)}
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-white rounded-lg text-[10px] font-black tracking-wider transition"
                       >
                         -10s
@@ -721,7 +739,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
                         {isRestPaused ? 'Retomar' : 'Paulinha'}
                       </button>
                       <button
-                        onClick={() => setRestTimeLeft(prev => prev + 10)}
+                        onClick={() => adjustRest(10)}
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-white rounded-lg text-[10px] font-black tracking-wider transition"
                       >
                         +10s

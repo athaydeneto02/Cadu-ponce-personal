@@ -24,7 +24,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function setup({ sign, agenda, localRead } = {}) {
+function setup({ sign, agenda, localRead, download, remove, localDeleteError } = {}) {
   const state = { actor: 'student-a', time: 1_000_000 };
   const signedCalls = [];
   const agendaCalls = [];
@@ -32,6 +32,9 @@ function setup({ sign, agenda, localRead } = {}) {
   const created = [];
   const revoked = [];
   const fetchCalls = [];
+  const removeCalls = [];
+  const localDeletes = [];
+  const localRecords = new Map();
   class Clock extends Date { static now() { return state.time; } }
   class MediaURL extends URL {
     static createObjectURL(blob) {
@@ -43,13 +46,14 @@ function setup({ sign, agenda, localRead } = {}) {
   }
   const db = {
     objectStoreNames: { contains: () => true },
+    close() {},
     transaction() {
-      return { objectStore() { return { get(id) {
+      const transaction = { objectStore() { return { get(id) {
         localCalls.push(id);
         const request = {};
         queueMicrotask(async () => {
           try {
-            request.result = await (localRead ? localRead(id) : undefined);
+            request.result = await (localRead ? localRead(id) : localRecords.get(id));
             request.onsuccess?.();
           } catch (error) {
             request.error = error;
@@ -57,7 +61,15 @@ function setup({ sign, agenda, localRead } = {}) {
           }
         });
         return request;
+      }, put(record) { localRecords.set(record.id, record); queueMicrotask(() => transaction.oncomplete?.()); },
+      delete(id) {
+        localDeletes.push(id);
+        queueMicrotask(() => {
+          if (localDeleteError) { transaction.error = new Error('Local delete denied'); transaction.onerror?.(); }
+          else { localRecords.delete(id); transaction.oncomplete?.(); }
+        });
       } }; } };
+      return transaction;
     },
   };
   const supabase = {
@@ -65,6 +77,9 @@ function setup({ sign, agenda, localRead } = {}) {
       const call = { bucket, path, seconds, actor: state.actor };
       signedCalls.push(call);
       return sign ? sign(call) : { data: { signedUrl: `${projectOrigin}/signed/${state.actor}/${signedCalls.length}` }, error: null };
+    }, async remove(paths) {
+      const call = { bucket, paths, actor: state.actor }; removeCalls.push(call);
+      return remove ? remove(call) : { data: paths.map(name => ({ name })), error: null };
     } }; } },
     from(table) {
       const call = { table, id: undefined, actor: state.actor };
@@ -85,12 +100,12 @@ function setup({ sign, agenda, localRead } = {}) {
       queueMicrotask(() => request.onsuccess?.());
       return request;
     } } },
-    fetch: async url => { fetchCalls.push(url); throw new Error('Network access is forbidden in this test'); },
+    fetch: async url => { fetchCalls.push(url); if (download) return download(url); throw new Error('Network access is forbidden in this test'); },
     setTimeout, clearTimeout, setInterval, clearInterval,
   });
   const media = module.exports;
   return {
-    media, state, signedCalls, agendaCalls, localCalls, created, revoked, fetchCalls,
+    media, state, signedCalls, agendaCalls, localCalls, created, revoked, fetchCalls, removeCalls, localDeletes, localRecords,
     switchActor(actor) { state.actor = actor; media.clearMediaCache(); },
   };
 }
@@ -200,4 +215,60 @@ test('an unrelated host with a Supabase-looking path is never signed by this pro
   const external = 'https://external.example.test/storage/v1/object/public/evolution-photos/file.jpg';
   assert.equal(await env.media.resolveMediaUrl(external), external);
   assert.equal(env.signedCalls.length, 0);
+});
+
+test('video cache distinguishes full URLs even when origins and paths share the same suffix', async () => {
+  const env = setup({ download: async url => ({ ok: true, blob: async () => new Blob([url], { type: 'video/mp4' }) }) });
+  const suffix = '/long-common-directory-name/example-video-demonstration.mp4';
+  const first = 'https://first.example.test/a' + suffix;
+  const second = 'https://second.example.test/b' + suffix;
+  const firstUrl = await env.media.getCachedVideoBlobUrl(first);
+  const secondUrl = await env.media.getCachedVideoBlobUrl(second);
+  assert.notEqual(firstUrl, secondUrl);
+  assert.deepEqual(env.fetchCalls, [first, second]);
+  env.media.clearMediaCache();
+  await env.media.getCachedVideoBlobUrl(first);
+  assert.equal(env.fetchCalls.length, 2, 'reload reads its own cached video');
+  assert.equal(await env.created.at(-1).blob.text(), first);
+});
+
+test('confirmed local deletion removes only the exact file and revokes its object URL', async () => {
+  const env = setup();
+  const key = await env.media.storeLocalFile(new Blob(['remove']), 'photo');
+  const keep = await env.media.storeLocalFile(new Blob(['keep']), 'photo');
+  const oldUrl = await env.media.resolveMediaUrl(key);
+  await env.media.deleteLocalFile(key, 'student-a');
+  assert.equal(await env.media.getLocalBlob(key), null);
+  assert.equal(await (await env.media.getLocalBlob(keep)).text(), 'keep');
+  assert.deepEqual(env.revoked, [oldUrl]);
+  assert.equal(env.removeCalls.length, 0);
+});
+
+test('failed local deletion preserves its blob and a session switch prevents deletion', async () => {
+  const env = setup({ localDeleteError: true });
+  const key = await env.media.storeLocalFile(new Blob(['keep']), 'photo');
+  await assert.rejects(env.media.deleteLocalFile(key), /delete denied/);
+  assert.equal(await (await env.media.getLocalBlob(key)).text(), 'keep');
+  env.switchActor('student-b');
+  await assert.rejects(env.media.deleteLocalFile(key, 'student-a'), /sessão mudou/);
+  assert.equal(env.localDeletes.length, 1);
+});
+
+test('stored media cleanup is scoped to the private project bucket, invalidates signing and surfaces errors', async () => {
+  let fail = true;
+  const env = setup({ remove: async () => fail ? { error: new Error('Denied') } : { error: null } });
+  const ref = 'storage://evolution-photos/student-a/photo.jpg';
+  await env.media.resolveMediaUrl(ref);
+  await assert.rejects(env.media.deleteStoredMedia(ref), /remover o arquivo/);
+  fail = false;
+  await env.media.deleteStoredMedia(ref);
+  await env.media.resolveMediaUrl(ref);
+  assert.equal(env.signedCalls.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(env.removeCalls[1])), { bucket: 'evolution-photos', paths: ['student-a/photo.jpg'], actor: 'student-a' });
+  await env.media.deleteStoredMedia('https://another.example.test/file.jpg');
+  await assert.rejects(env.media.deleteStoredMedia('storage://evolution-photos/student-a/../other.jpg'), /Caminho/);
+  await assert.rejects(env.media.deleteStoredMedia('storage://unknown/path'), /Referência/);
+  env.switchActor('student-b');
+  await assert.rejects(env.media.deleteStoredMedia(ref, 'student-a'), /sessão mudou/);
+  assert.equal(env.removeCalls.length, 2);
 });

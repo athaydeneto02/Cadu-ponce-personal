@@ -9,8 +9,8 @@
  */
 
 import { supabase } from './supabase';
-import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog, FinancialInvoice, TrainerPaymentSettings } from '../types';
-import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache, normalizeStoredMediaReference } from './mediaDb';
+import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, AdminExercise, WorkoutLog, FinancialInvoice, TrainerPaymentSettings, Assessment, Anamnesis, StudentFile, WorkoutFeedback, StudentNotification, AgendaEvent } from '../types';
+import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache, normalizeStoredMediaReference, deleteLocalFile, deleteStoredMedia } from './mediaDb';
 import { LibraryExercise, readLibraryCache, storeLibrarySnapshot, markLibraryExerciseDeleted, hasExerciseChanges } from './exerciseLibrary';
 import { sessionCache as cacheStorage, cacheForUser, getCacheUser, setCacheUser, readCached } from './sessionCache';
 import type { TrainerNotification } from './trainerNotifications';
@@ -34,6 +34,58 @@ function persistOutbox<T extends { syncStatus?: string; notificationStatus?: str
 }
 
 type LogRange = { from?: string; to?: string; allowCached?: boolean };
+type PhotoDeletion = { id: string; studentId: string; reference?: string; localFileKey?: string; pending: boolean };
+const PHOTO_DELETIONS = 'cadu_deleted_photos';
+const photoWrites = new Map<string, Promise<unknown>>();
+function photoDeletions(actor = getCacheUser()): PhotoDeletion[] { return cacheForUser(actor).readJson(PHOTO_DELETIONS, []); }
+function photoDeleted(id: string, actor: string | null): boolean { return photoDeletions(actor).some(item => item.id === id); }
+function requireActor(): string {
+  const actor = getCacheUser();
+  if (!actor) throw new Error('Entre na sua conta para continuar.');
+  return actor;
+}
+function assertActor(actor: string): void { if (getCacheUser() !== actor) throw new Error('A sessão mudou. Entre novamente para continuar.'); }
+function mutationError(error: { code?: string; message?: string }): Error {
+  return new Error(error.code === '40001' ? 'Este registro mudou ou foi excluído. Recarregue antes de salvar.' : error.message || 'Não foi possível salvar.');
+}
+async function removeUnusedMedia(reference: string, actor: string): Promise<void> {
+  if (!reference.startsWith('storage://')) return;
+  assertActor(actor);
+  const { data: used, error } = await supabase.rpc('media_reference_in_use', { p_reference: reference });
+  if (error || typeof used !== 'boolean') throw error ?? new Error('Não foi possível verificar as referências do arquivo.');
+  if (!used) await deleteStoredMedia(reference, actor);
+}
+async function readAllRows(makeQuery: () => any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { data, error } = await makeQuery().range(offset, offset + 99);
+    if (error || !Array.isArray(data)) throw error ?? new Error('Não foi possível carregar todos os registros.');
+    rows.push(...data);
+    if (data.length < 100) return rows;
+  }
+}
+async function prescriptionRows(kind: 'routine' | 'workout', studentId?: string): Promise<any[]> {
+  const rows: any[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { data, error } = await supabase.rpc('read_prescriptions', { p_kind: kind, p_offset: offset, p_limit: 100, p_student_id: studentId ?? null });
+    if (error || !Array.isArray(data)) throw error ?? new Error('Não foi possível carregar a prescrição completa.');
+    rows.push(...data);
+    if (data.length < 100) return rows;
+  }
+}
+function prescriptionSettings(value: AdminRoutine | Workout): Record<string, unknown> {
+  return { kind: value.kind ?? 'strength', hideBeforeStart: value.hideBeforeStart ?? false,
+    hideAfterEnd: value.hideAfterEnd ?? false, allowPdf: value.allowPdf ?? true, showTimer: value.showTimer ?? true,
+    startDate: value.startDate ?? null, endDate: value.endDate ?? null };
+}
+function exercisePayload(exercise: AdminExercise | Workout['exercises'][number]) {
+  return { id: exercise.id || crypto.randomUUID(), name: exercise.name, sets: exercise.sets, reps: exercise.reps,
+    rest: exercise.rest ?? '60s', notes: exercise.notes ?? null,
+    current_load: 'currentLoad' in exercise ? exercise.currentLoad ?? 0 : 0,
+    video_url: normalizeStoredMediaReference(exercise.videoUrl), video_file_url: normalizeStoredMediaReference(exercise.videoFileUrl),
+    combined_with_next: exercise.combinedWithNext ?? false, combined_group: exercise.combinedGroup ?? null,
+    prescribed_loads: exercise.prescribedLoads ?? null };
+}
 function inLogRange(log: WorkoutLog, range: LogRange): boolean {
   const date = Date.parse(log.completedAt);
   return Number.isFinite(date) && (!range.from || date >= Date.parse(range.from)) && (!range.to || date < Date.parse(range.to));
@@ -156,10 +208,14 @@ function rowToWorkout(row: Record<string, unknown>): Workout {
       notes: (e.notes as string) ?? undefined,
       currentLoad: (e.current_load as number) ?? 0,
       prescribedLoads: (e.prescribed_loads as number[]) ?? undefined,
+      videoUrl: (e.video_url as string) ?? undefined, videoFileUrl: (e.video_file_url as string) ?? undefined,
+      combinedWithNext: (e.combined_with_next as boolean) ?? false, combinedGroup: (e.combined_group as string) ?? undefined,
     }));
 
   return {
     id: row.id as string,
+    version: Number(row.version),
+    ...(row.settings as Record<string, unknown> ?? {}),
     name: row.name as string,
     description: (row.description as string) ?? undefined,
     studentId: row.student_id as string,
@@ -188,6 +244,8 @@ function rowToAdminExercise(row: Record<string, unknown>): AdminExercise {
 function rowToAdminRoutine(row: Record<string, unknown>, exercises: AdminExercise[] = []): AdminRoutine {
   return {
     id: row.id as string,
+    version: Number(row.version),
+    ...(row.settings as Record<string, unknown> ?? {}),
     name: row.name as string,
     goal: (row.goal as string) ?? '',
     difficulty: (row.difficulty as string) ?? '',
@@ -248,10 +306,9 @@ export const storage = {
   /** Fetches all profiles from Supabase (admin use). */
   fetchUsersList: async (options: { allowCached?: boolean } = {}): Promise<UserProfile[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let data: any[] | null = null, error: unknown;
+    try { data = await readAllRows(() => supabase.from('profiles').select('*').order('created_at', { ascending: false }).order('id')); }
+    catch (failure) { error = failure; }
 
     if (error || !data) {
       if (options.allowCached === false) {
@@ -291,6 +348,7 @@ export const storage = {
         metadata: user.metadata ?? {},
       })
       .eq('id', user.uid)
+      .eq('role', user.role)
       .select('id')
       .single();
 
@@ -350,55 +408,34 @@ export const storage = {
 
   getWorkouts: (): Workout[] => readCached<Workout[]>(CACHE_KEYS.WORKOUTS, []),
 
-  fetchWorkouts: async (studentId?: string): Promise<Workout[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const cache = cacheForUser(getCacheUser());
-    let query = supabase.from('workouts').select('*').order('created_at', { ascending: false });
-    if (studentId) query = query.eq('student_id', studentId);
-    const { data, error } = await query;
-    const cached = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
-    if (error || !data) return cached.filter(w => !studentId || w.studentId === studentId);
-    const ids = data.map(row => row.id);
-    const exercises = ids.length
-      ? await supabase.from('exercises').select('*').in('workout_id', ids).order('sort_order', { ascending: true })
-      : { data: [], error: null };
-    if (exercises.error) throw exercises.error;
-    const workouts = data.map(row => rowToWorkout({ ...row, exercises: (exercises.data ?? []).filter(exercise => exercise.workout_id === row.id) }));
-    const others = studentId ? cached.filter(w => w.studentId !== studentId) : [];
-    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([...others, ...workouts]));
-    return workouts;
+  fetchWorkouts: async (studentId?: string, options: { allowCached?: boolean } = {}): Promise<Workout[]> => {
+    const actor = requireActor(), cache = cacheForUser(actor);
+    try {
+      const workouts = (await prescriptionRows('workout', studentId)).map(rowToWorkout);
+      assertActor(actor);
+      const others = studentId ? cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []).filter(w => w.studentId !== studentId) : [];
+      cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([...others, ...workouts]));
+      return workouts;
+    } catch (error) {
+      if (!options.allowCached) throw error;
+      return cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []).filter(w => !studentId || w.studentId === studentId);
+    }
   },
 
   saveWorkout: async (workout: Workout): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const cache = cacheForUser(getCacheUser());
-    const { error: workoutError } = await supabase.from('workouts').upsert({
-      id: workout.id, name: workout.name, description: workout.description ?? null,
-      student_id: workout.studentId, routine_id: workout.routineId ?? null,
-    });
-    if (workoutError) throw workoutError;
-    const { data: existing, error: readError } = await supabase.from('exercises').select('id').eq('workout_id', workout.id);
-    if (readError) throw readError;
-    const existingIds = new Set((existing ?? []).map(e => e.id));
-    const rows = workout.exercises.map((exercise, index) => {
-      const id = existingIds.has(exercise.id) ? exercise.id : crypto.randomUUID();
-      exercise.id = id;
-      return { id, workout_id: workout.id, name: exercise.name, sets: exercise.sets,
-        reps: exercise.reps, rest: exercise.rest ?? '60s', notes: exercise.notes ?? null,
-        current_load: exercise.currentLoad ?? 0, prescribed_loads: exercise.prescribedLoads ?? null, sort_order: index };
-    });
-    if (rows.length) {
-      const { error } = await supabase.from('exercises').upsert(rows);
-      if (error) throw error;
-    }
-    const kept = new Set(rows.map(row => row.id));
-    const removed = [...existingIds].filter(id => !kept.has(id));
-    if (removed.length) {
-      const { error } = await supabase.from('exercises').delete().eq('workout_id', workout.id).in('id', removed);
-      if (error) throw error;
-    }
+    const actor = requireActor(), cache = cacheForUser(actor);
+    const payload = { id: workout.id, name: workout.name, description: workout.description ?? null,
+      student_id: workout.studentId, routine_id: workout.routineId ?? null, settings: prescriptionSettings(workout),
+      exercises: workout.exercises.map(ex => exercisePayload({ ...ex,
+        id: workout.version && /^[0-9a-f-]{36}$/i.test(ex.id) ? ex.id : crypto.randomUUID() })) };
+    const { data, error } = await supabase.rpc('save_workout', { p_payload: payload, p_expected_version: workout.version ?? null });
+    if (error) throw mutationError(error);
+    if (!data?.id || !data.version) throw new Error('Não foi possível confirmar a gravação completa do treino. Recarregue antes de tentar novamente.');
+    const saved = rowToWorkout(data);
+    Object.assign(workout, saved);
     const all = cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []);
-    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([workout, ...all.filter(w => w.id !== workout.id)]), { preserveLocal: true });
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify([saved, ...all.filter(w => w.id !== saved.id)]));
+    assertActor(actor);
   },
 
   saveWorkouts: async (workouts: Workout[]): Promise<void> => {
@@ -427,13 +464,7 @@ export const storage = {
 
   fetchProgress: async (studentId: string): Promise<ProgressEntry[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('progress_entries')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('date', { ascending: false });
-
-    if (error || !data) return cacheStorage.readJson<ProgressEntry[]>(CACHE_KEYS.PROGRESS, []).filter(entry => entry.studentId === studentId);
+    const data = await readAllRows(() => supabase.from('progress_entries').select('*').eq('student_id', studentId).order('date', { ascending: false }).order('id'));
 
     const entries: ProgressEntry[] = data.map((row) => ({
       id: row.id,
@@ -462,98 +493,120 @@ export const storage = {
     });
     if (error) throw error;
     const all = cacheStorage.readJson<ProgressEntry[]>(CACHE_KEYS.PROGRESS, []);
-    cacheStorage.setRemoteItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all]));
+    cacheStorage.setRemoteItem(CACHE_KEYS.PROGRESS, JSON.stringify([entry, ...all.filter(item => item.id !== entry.id)]));
   },
 
   // ── Evolution Photos ──────────────────────────────────────────────────────
 
-  getPhotos: (): EvolutionPhoto[] => readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []),
+  getPhotos: (): EvolutionPhoto[] => readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []).filter(photo => !photoDeleted(photo.id, getCacheUser())),
 
   fetchPhotos: async (studentId: string): Promise<EvolutionPhoto[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const actor = getCacheUser();
-    const cache = cacheForUser(actor);
-    const cached = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
-    const { data, error } = await supabase.from('evolution_photos').select('*').eq('student_id', studentId).order('date', { ascending: false });
-    if (error || !data) return cached.filter(photo => photo.studentId === studentId);
-    const remote: EvolutionPhoto[] = data.map(row => ({ id: row.id, studentId: row.student_id,
-      photoURL: row.photo_url, notes: row.notes ?? undefined, date: row.date, syncStatus: 'synced' }));
-    // Read old photos without treating the agenda as a second write destination.
-    const { data: legacy } = await supabase.from('agenda_events').select('*').eq('type', 'evolution_photo').eq('student_id', studentId);
-    for (const row of legacy ?? []) {
-      try {
-        const item = JSON.parse(row.notes ?? '{}');
-        if (!remote.some(p => p.id === row.id) && typeof item.photoURL === 'string' && !/^(blob:|idb:)/.test(item.photoURL)) {
+    const actor = requireActor(), cache = cacheForUser(actor);
+    const initial = new Map(cache.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []).map(photo => [photo.id, JSON.stringify(photo)]));
+    const data = await readAllRows(() => supabase.from('evolution_photos').select('*').eq('student_id', studentId).order('id'));
+    const remote: EvolutionPhoto[] = data.map(row => ({ id: row.id, studentId: row.student_id, photoURL: row.photo_url, notes: row.notes ?? undefined, date: row.date, syncStatus: 'synced' }));
+    const legacy = await readAllRows(() => supabase.from('agenda_events').select('*').eq('type', 'evolution_photo').eq('student_id', studentId).order('id'));
+    for (const row of legacy) {
+      try { const item = JSON.parse(row.notes ?? '{}');
+        if (!remote.some(p => p.id === row.id) && typeof item.photoURL === 'string' && !/^(blob:|idb:)/.test(item.photoURL))
           remote.push({ id: row.id, studentId, photoURL: item.photoURL, date: item.date || row.created_at, notes: item.notes, syncStatus: 'synced' });
-        }
-      } catch { /* malformed legacy record */ }
+      } catch { /* Keep malformed legacy rows on the server for review. */ }
     }
-    const latest = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
-    const pending = latest.filter(photo => photo.studentId === studentId && (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')));
-    const pendingIds = new Set(pending.map(photo => photo.id));
-    const merged = [...pending, ...remote.filter(photo => !pendingIds.has(photo.id))];
-    cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify([...latest.filter(photo => photo.studentId !== studentId), ...merged]));
+    assertActor(actor);
+    const latest = cache.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []);
+    const changed = latest.filter(photo => photo.studentId === studentId &&
+      (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:') || initial.get(photo.id) !== JSON.stringify(photo)));
+    const changedIds = new Set(changed.map(photo => photo.id));
+    const merged = [...changed, ...remote.filter(photo => !changedIds.has(photo.id))].filter(photo => !photoDeleted(photo.id, actor));
+    cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify([...latest.filter(photo => photo.studentId !== studentId), ...merged]), { preserveLocal: true });
     return merged;
   },
 
-  /** Preserve the file durably before uploading. Temporary blob URLs never reach the database. */
   savePhoto: async (photo: EvolutionPhoto, file?: File): Promise<string> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const actor = getCacheUser();
-    if (!actor) throw new Error('Entre na sua conta para salvar a foto.');
-    const cache = cacheForUser(actor);
-    let localKey = photo.localFileKey || (photo.photoURL.startsWith('idb:') ? photo.photoURL : undefined);
-    let uploadBlob: Blob | null = file ?? null;
-    if (file) {
-      if (!file.type.startsWith('image/')) throw new Error('Selecione um arquivo de imagem.');
-      if (file.size > 20 * 1024 * 1024) throw new Error('A foto deve ter no máximo 20 MB.');
-      uploadBlob = await compressImage(file, 1600, 0.85);
-      localKey = await storeLocalFile(uploadBlob, `photo_${photo.id}`);
-    } else if (localKey) {
-      uploadBlob = await getLocalBlob(localKey);
-      if (!uploadBlob) throw new Error('O arquivo local não foi encontrado. Selecione a foto novamente.');
-    }
-    let reference = uploadBlob ? (localKey || '') : photo.photoURL;
-    if (!reference || reference.startsWith('blob:')) throw new Error('Selecione a foto novamente para salvá-la.');
-    let current: EvolutionPhoto = { ...photo, photoURL: reference, localFileKey: localKey, syncStatus: 'pending', syncError: undefined };
-    const saveCache = () => {
-      const all = readCached<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, [], actor);
-      if (current.syncStatus === 'pending') persistOutbox(cache, CACHE_KEYS.PHOTOS, [current, ...all.filter(p => p.id !== photo.id)]);
-      else cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify([current, ...all.filter(p => p.id !== photo.id)]));
-    };
-    saveCache();
-    try {
-      if (actor !== getCacheUser()) throw new Error('A sessão mudou. A foto permanece salva neste dispositivo.');
-      if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Sem conexão. A foto será enviada quando a conexão voltar.');
-      if (uploadBlob) {
-        const extension = uploadBlob.type === 'image/png' ? 'png' : uploadBlob.type === 'image/webp' ? 'webp' : 'jpg';
-        const path = `${photo.studentId}/${photo.id}.${extension}`;
-        const { error } = await supabase.storage.from('evolution-photos').upload(path, uploadBlob, { upsert: true, contentType: uploadBlob.type });
-        if (error) throw error;
-        reference = toStorageReference('evolution-photos', path);
+    const actor = requireActor(), key = actor + ':' + photo.id, cache = cacheForUser(actor);
+    const previous = photoWrites.get(key);
+    const operation = (async () => {
+      if (previous) await previous.catch(() => {});
+      if (photoDeleted(photo.id, actor)) throw new Error('Esta foto foi excluída. Selecione um novo arquivo.');
+      let localKey = photo.localFileKey || (photo.photoURL.startsWith('idb:') ? photo.photoURL : undefined);
+      let uploadBlob: Blob | null = file ?? null;
+      if (file) {
+        if (!file.type.startsWith('image/')) throw new Error('Selecione um arquivo de imagem.');
+        if (file.size > 20 * 1024 * 1024) throw new Error('A foto deve ter no máximo 20 MB.');
+        uploadBlob = await compressImage(file, 1600, 0.85);
+        localKey = await storeLocalFile(uploadBlob, 'photo_' + photo.id);
+      } else if (localKey) {
+        uploadBlob = await getLocalBlob(localKey);
+        if (!uploadBlob && photo.syncStatus === 'synced' && photo.photoURL.startsWith('storage://')) localKey = undefined;
+        else if (!uploadBlob) throw new Error('O arquivo local não foi encontrado. Selecione a foto novamente.');
       }
-      if (actor !== getCacheUser()) throw new Error('A sessão mudou. A sincronização continuará ao entrar novamente.');
-      if (/^(idb:|blob:|data:)/.test(reference)) throw new Error('A foto ainda não foi enviada ao armazenamento.');
-      const { error } = await supabase.from('evolution_photos').upsert({
-        id: photo.id, student_id: photo.studentId, photo_url: reference, notes: photo.notes ?? null, date: photo.date,
-      });
-      if (error) throw error;
-      current = { ...current, photoURL: reference, syncStatus: 'synced', syncError: undefined, localFileKey: undefined };
-    } catch (error) {
-      current = { ...current, syncStatus: 'pending', syncError: error instanceof Error ? error.message : 'Envio pendente. Tentaremos novamente ao conectar.' };
-    }
-    saveCache();
-    return current.photoURL;
+      let reference = uploadBlob ? (localKey || '') : photo.photoURL;
+      if (!reference || reference.startsWith('blob:')) throw new Error('Selecione a foto novamente para salvá-la.');
+      let current: EvolutionPhoto = { ...photo, photoURL: reference, localFileKey: localKey, syncStatus: 'pending', syncError: undefined };
+      const assertNotDeleted = () => { if (photoDeleted(photo.id, actor)) throw new Error('Esta foto foi excluída.'); };
+      const saveCache = () => {
+        assertNotDeleted();
+        const entries = [current, ...cache.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []).filter(p => p.id !== photo.id)];
+        if (current.syncStatus === 'pending') { persistOutbox(cache, CACHE_KEYS.PHOTOS, entries); return true; }
+        return cache.setRemoteItem(CACHE_KEYS.PHOTOS, JSON.stringify(entries), { preserveLocal: true });
+      };
+      saveCache();
+      try {
+        assertActor(actor); assertNotDeleted();
+        if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Sem conexão. A foto será enviada quando a conexão voltar.');
+        if (uploadBlob) {
+          const extension = uploadBlob.type === 'image/png' ? 'png' : uploadBlob.type === 'image/webp' ? 'webp' : 'jpg';
+          const path = photo.studentId + '/' + photo.id + '.' + extension;
+          const { error } = await supabase.storage.from('evolution-photos').upload(path, uploadBlob, { upsert: true, contentType: uploadBlob.type });
+          if (error) throw error;
+          reference = toStorageReference('evolution-photos', path);
+        }
+        assertActor(actor); assertNotDeleted();
+        if (/^(idb:|blob:|data:)/.test(reference)) throw new Error('A foto ainda não foi enviada ao armazenamento.');
+        const { error } = await supabase.from('evolution_photos').upsert({ id: photo.id, student_id: photo.studentId, photo_url: reference, notes: photo.notes ?? null, date: photo.date });
+        if (error) throw error;
+        current = { ...current, photoURL: reference, syncStatus: 'synced', syncError: undefined, localFileKey: localKey };
+      } catch (error) {
+        if (photoDeleted(photo.id, actor)) {
+          if (reference.startsWith('storage://')) await removeUnusedMedia(reference, actor).catch(() => {});
+          if (localKey) await deleteLocalFile(localKey, actor).catch(() => {});
+          throw new Error('A foto foi excluída; o envio foi cancelado.');
+        }
+        current = { ...current, syncStatus: 'pending', syncError: error instanceof Error ? error.message : 'Envio pendente.' };
+      }
+      const durable = saveCache();
+      if (durable && current.syncStatus === 'synced' && localKey) {
+        try { await deleteLocalFile(localKey, actor); current = { ...current, localFileKey: undefined }; saveCache(); }
+        catch { /* The durable localFileKey keeps cleanup eligible for retry. */ }
+      }
+      return current.photoURL;
+    })();
+    photoWrites.set(key, operation);
+    try { return await operation; } finally { if (photoWrites.get(key) === operation) photoWrites.delete(key); }
   },
 
   deletePhoto: async (photoId: string): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const { error: legacyError } = await supabase.from('agenda_events').delete().eq('type', 'evolution_photo').eq('id', photoId);
-    if (legacyError) throw legacyError;
-    const { error } = await supabase.from('evolution_photos').delete().eq('id', photoId);
-    if (error) throw error;
-    const all = cacheStorage.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []);
-    persistOutbox(cacheStorage, CACHE_KEYS.PHOTOS, all.filter(p => p.id !== photoId));
+    const actor = requireActor(), cache = cacheForUser(actor);
+    const photo = cache.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []).find(item => item.id === photoId);
+    const existing = photoDeletions(actor).find(item => item.id === photoId);
+    if (!photo && !existing) throw new Error('Atualize a lista antes de excluir esta foto.');
+    const deletion: PhotoDeletion = existing ?? { id: photoId, studentId: photo!.studentId, reference: photo!.photoURL, localFileKey: photo!.localFileKey, pending: true };
+    deletion.pending = true;
+    cache.setItem(PHOTO_DELETIONS, JSON.stringify([deletion, ...photoDeletions(actor).filter(item => item.id !== photoId)]));
+    const { data, error } = await supabase.rpc('delete_evolution_photo', { p_photo_id: photoId, p_student_id: deletion.studentId });
+    if (error) throw mutationError(error);
+    const running = photoWrites.get(actor + ':' + photoId);
+    if (running) await running.catch(() => {});
+    assertActor(actor);
+    const references = new Set<string>([deletion.reference ?? '', ...(Array.isArray(data) ? data : []),
+      ...['jpg','png','webp'].map(extension => toStorageReference('evolution-photos', deletion.studentId + '/' + photoId + '.' + extension))]);
+    for (const ref of references) if (ref.startsWith('storage://')) {
+      await removeUnusedMedia(ref, actor);
+    }
+    if (deletion.localFileKey) await deleteLocalFile(deletion.localFileKey, actor);
+    if (deletion.reference?.startsWith('idb:')) await deleteLocalFile(deletion.reference, actor);
+    persistOutbox(cache, CACHE_KEYS.PHOTOS, cache.readJson<EvolutionPhoto[]>(CACHE_KEYS.PHOTOS, []).filter(p => p.id !== photoId));
+    cache.setItem(PHOTO_DELETIONS, JSON.stringify(photoDeletions(actor).map(item => item.id === photoId ? { ...item, pending: false } : item)));
   },
 
   updatePhotoNotes: async (photoId: string, notes: string): Promise<void> => {
@@ -570,166 +623,50 @@ export const storage = {
   /** Fetches all admin routines with their exercises from Supabase.
    *  Runs admin_routines, admin_exercises, and agenda_events in PARALLEL for speed. */
   fetchAdminRoutines: async (): Promise<AdminRoutine[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    // Fire all 3 Supabase queries at the same time instead of waiting for each
-    const [routinesResult, agendaResult] = await Promise.all([
-      supabase.from('admin_routines').select('*').order('created_at', { ascending: false }),
-      supabase.from('agenda_events').select('*').in('type', ['assigned_routine', 'deleted_routine']).order('created_at', { ascending: true }),
-    ]);
-
-    const { data: routineRows, error: rErr } = routinesResult;
-    let safeRoutineRows = routineRows;
-    let completeSnapshot = !rErr && !!routineRows && !agendaResult.error;
-
-    if (rErr || !safeRoutineRows) {
-      console.warn('fetchAdminRoutines fallback for admin_routines table:', rErr?.message);
-      safeRoutineRows = []; // Proceed with empty array so agenda_events can still be parsed!
-    }
-
-    // Fetch exercises for all routines in parallel with the agenda query (already done above)
-    const routineIds = safeRoutineRows.map(r => r.id as string);
-    const exercisesByRoutine: Record<string, AdminExercise[]> = {};
-
-    if (routineIds.length > 0) {
-      const { data: exRows, error: exercisesError } = await supabase
-        .from('admin_exercises')
-        .select('*')
-        .in('routine_id', routineIds)
-        .order('sort_order', { ascending: true });
-
-      if (exercisesError) {
-        completeSnapshot = false;
-        const previous = cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
-        if (!previous.length) throw exercisesError;
-        for (const routine of previous) exercisesByRoutine[routine.id] = routine.exercises;
-      }
-
-      if (exRows) {
-        exRows.forEach(row => {
-          const rid = row.routine_id as string;
-          if (!exercisesByRoutine[rid]) exercisesByRoutine[rid] = [];
-          exercisesByRoutine[rid].push(rowToAdminExercise(row));
-        });
-      }
-    }
-
-    // Merge Supabase data with local cache:
-    const localCached = cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
-    const deletedList = cacheStorage.readJson<string[]>('cadu_ponce_deleted_routines', []);
-    const deletedSet = new Set(deletedList.map(s => s.toLowerCase().trim()));
-
-    // ONLY check unique ID — NEVER block by routine name!
-    const isDeleted = (id?: string) => {
-      if (id && deletedSet.has(id.toLowerCase().trim())) return true;
-      return false;
-    };
-
-    const validLocals = localCached.filter(l => !isDeleted(l.id));
-    const validSupabaseRows = safeRoutineRows.filter(r => !isDeleted(r.id as string));
-    const supabaseIds = new Set(validSupabaseRows.map(r => r.id as string));
-    const unsyncedLocals = rErr ? validLocals.filter(l => !supabaseIds.has(l.id)) : [];
-
-    const routines = validSupabaseRows.map(row => {
-      const fromSupabase = rowToAdminRoutine(row, exercisesByRoutine[row.id as string] ?? []);
-      // Enrich with any locally-cached new fields that Supabase may not have yet
-      const localVersion = validLocals.find(l => l.id === fromSupabase.id);
-      if (localVersion) {
-        return {
-          ...fromSupabase,
-          dayOfWeek: fromSupabase.dayOfWeek ?? localVersion.dayOfWeek,
-          muscleGroup: fromSupabase.muscleGroup ?? localVersion.muscleGroup,
-          generalNotes: fromSupabase.generalNotes ?? localVersion.generalNotes,
-          startDate: fromSupabase.startDate ?? localVersion.startDate,
-          endDate: fromSupabase.endDate ?? localVersion.endDate,
-          routineGroupName: fromSupabase.routineGroupName ?? localVersion.routineGroupName,
-        };
-      }
-      return fromSupabase;
-    });
-
-    const merged = [...routines, ...unsyncedLocals];
-
-    // Process agenda_events (already fetched in parallel above)
-    try {
-      const { data: cloudEvents } = agendaResult;
-
-      if (cloudEvents && cloudEvents.length > 0) {
-        for (const ev of cloudEvents) {
-          if (ev.type === 'deleted_routine') {
-            if (ev.notes) deletedSet.add(ev.notes.toLowerCase().trim());
-          }
-        }
-        cacheStorage.setRemoteItem('cadu_ponce_deleted_routines', JSON.stringify(Array.from(deletedSet)));
-
-        for (const ev of cloudEvents) {
-          if (ev.type === 'assigned_routine' && ev.notes) {
-            try {
-              const parsed: AdminRoutine = JSON.parse(ev.notes);
-              if (parsed && parsed.name && !isDeleted(parsed.id)) {
-                const existingIdx = merged.findIndex(r => r.id === parsed.id);
-                if (existingIdx === -1) {
-                  merged.push(parsed);
-                }
-              }
-            } catch {}
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('agenda_events routine cloud sync error:', e);
-    }
-
-    // Clean out deleted routines and workouts from local caches
-    const finalRoutines = merged.filter(r => !isDeleted(r.id));
-    if (completeSnapshot) cacheStorage.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify(finalRoutines));
-
-    const cleanWorkouts = cacheStorage.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []).filter(w => !isDeleted(w.id));
-    if (completeSnapshot) cacheStorage.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cleanWorkouts));
-
-    return finalRoutines;
+    const actor = requireActor();
+    const rows = await prescriptionRows('routine');
+    assertActor(actor);
+    const routines = rows.map(row => rowToAdminRoutine(row, (row.exercises ?? []).map(rowToAdminExercise)));
+    cacheForUser(actor).setRemoteItem('cadu_ponce_admin_routines', JSON.stringify(routines));
+    return routines;
   },
 
+  getAdminRoutines: (): AdminRoutine[] => cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []),
 
-  /** Returns cached routines (sync, used while async fetch is in-flight). */
-  getAdminRoutines: (): AdminRoutine[] => {
-    return cacheStorage.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
-  },
-
-  /** Save a prescription to its dedicated tables, with failures visible to callers. */
   saveAdminRoutine: async (routine: AdminRoutine): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const cache = cacheForUser(getCacheUser());
-    const { error } = await supabase.from('admin_routines').upsert({
-      id: routine.id, name: routine.name, goal: routine.goal ?? '', difficulty: routine.difficulty ?? '',
+    const actor = requireActor(), cache = cacheForUser(actor);
+    const payload = { id: routine.id, name: routine.name, goal: routine.goal ?? '', difficulty: routine.difficulty ?? '',
       day_of_week: routine.dayOfWeek ?? null, muscle_group: routine.muscleGroup ?? null,
       general_notes: routine.generalNotes ?? null, notes: routine.notes ?? null,
-      student_ids: routine.studentIds ?? [], student_names: routine.studentNames ?? [],
+      student_ids: [...new Set(routine.studentIds ?? [])], student_names: routine.studentNames ?? [],
       start_date: routine.startDate ?? null, end_date: routine.endDate ?? null, routine_group_name: routine.routineGroupName ?? null,
-    });
-    if (error) throw error;
-    const { data: existing, error: readError } = await supabase.from('admin_exercises').select('id').eq('routine_id', routine.id);
-    if (readError) throw readError;
-    const existingIds = new Set((existing ?? []).map(row => row.id));
-    const rows = routine.exercises.map((exercise, index) => {
-      const id = existingIds.has(exercise.id) ? exercise.id : crypto.randomUUID();
-      exercise.id = id;
-      return { id, routine_id: routine.id, name: exercise.name, sets: exercise.sets, reps: exercise.reps,
-        rest: exercise.rest ?? '60s', notes: exercise.notes ?? null, video_url: exercise.videoUrl ?? null,
-        video_file_url: exercise.videoFileUrl ?? null, combined_with_next: exercise.combinedWithNext ?? false,
-        combined_group: exercise.combinedGroup ?? null, prescribed_loads: exercise.prescribedLoads ?? null, sort_order: index };
-    });
-    if (rows.length) {
-      const { error } = await supabase.from('admin_exercises').upsert(rows);
-      if (error) throw error;
-    }
-    const kept = new Set(rows.map(row => row.id));
-    const removed = [...existingIds].filter(id => !kept.has(id));
-    if (removed.length) {
-      const { error } = await supabase.from('admin_exercises').delete().eq('routine_id', routine.id).in('id', removed);
-      if (error) throw error;
-    }
+      settings: prescriptionSettings(routine),
+      exercises: routine.exercises.map(ex => exercisePayload({ ...ex, id: routine.version ? ex.id : crypto.randomUUID() })) };
+    const { data, error } = await supabase.rpc('save_admin_routine', { p_payload: payload, p_expected_version: routine.version ?? null });
+    if (error) throw mutationError(error);
+    if (!data?.id || !data.version) throw new Error('Não foi possível confirmar a gravação completa da rotina. Recarregue antes de tentar novamente.');
+    const saved = rowToAdminRoutine(data, (data.exercises ?? []).map(rowToAdminExercise));
+    Object.assign(routine, saved);
     const all = cache.readJson<AdminRoutine[]>('cadu_ponce_admin_routines', []);
-    cache.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify([routine, ...all.filter(r => r.id !== routine.id)]), { preserveLocal: true });
+    cache.setRemoteItem('cadu_ponce_admin_routines', JSON.stringify([saved, ...all.filter(r => r.id !== saved.id)]));
+    assertActor(actor);
+  },
+
+  assignRoutineToStudent: async (routineId: string, studentId: string): Promise<Workout> => {
+    const actor = requireActor();
+    const { data, error } = await supabase.rpc('assign_routine_to_student', { p_routine_id: routineId, p_student_id: studentId, p_remove: false });
+    if (error) throw mutationError(error);
+    if (!data?.id) throw new Error('A atribuição não foi confirmada. Recarregue a lista.');
+    assertActor(actor);
+    return rowToWorkout(data);
+  },
+  unassignRoutineFromStudent: async (routineId: string, studentId: string): Promise<void> => {
+    const actor = requireActor();
+    const { error } = await supabase.rpc('assign_routine_to_student', { p_routine_id: routineId, p_student_id: studentId, p_remove: true });
+    if (error) throw mutationError(error);
+    assertActor(actor);
+    const cache = cacheForUser(actor);
+    cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(cache.readJson<Workout[]>(CACHE_KEYS.WORKOUTS, []).filter(w => !(w.routineId === routineId && w.studentId === studentId))));
   },
 
   saveAdminRoutines: async (routines: AdminRoutine[]): Promise<void> => {
@@ -751,14 +688,14 @@ export const storage = {
     cache.setRemoteItem(CACHE_KEYS.WORKOUTS, JSON.stringify(workouts.filter(w => w.routineId !== id)), { preserveLocal: true });
   },
 
-  fetchAgendaEvents: async (): Promise<any[]> => {
+  fetchAgendaEvents: async (options: { allowCached?: boolean } = {}): Promise<any[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('agenda_events')
-      .select('*')
-      .neq('type', 'media_storage');
+    let data: any[] | null = null, error: unknown;
+    try { data = await readAllRows(() => supabase.from('agenda_events').select('*').neq('type', 'media_storage').order('id')); }
+    catch (failure) { error = failure; }
       
     if (error || !data) {
+      if (!options.allowCached) throw error ?? new Error('Não foi possível atualizar a agenda.');
       return cacheStorage.readJson<any[]>('cp_agenda_events', []).filter(event => event.type !== 'media_storage');
     }
     
@@ -826,9 +763,8 @@ export const storage = {
   /** Read confirmed cloud rows while preserving explicitly unsaved legacy drafts. */
   fetchCustomExercises: async (): Promise<LibraryExercise[]> => {
     const cache = cacheForUser(getCacheUser());
-    const { data, error } = await supabase.from('custom_exercises').select('*').order('created_at', { ascending: false });
+    const data = await readAllRows(() => supabase.from('custom_exercises').select('*').order('created_at', { ascending: false }).order('id'));
     const local = readLibraryCache(cache);
-    if (error || !data) return local.all;
     const remote: LibraryExercise[] = data.map(row => ({
       id: row.id, title: row.title, group: row.group ?? '', category: row.category ?? '',
       videoUrl: row.video_url ?? undefined, videoFileUrl: row.video_file_url ?? undefined,
@@ -895,12 +831,7 @@ export const storage = {
 
   fetchMuscleGroups: async (): Promise<string[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('muscle_groups')
-      .select('name')
-      .order('id', { ascending: true });
-
-    if (error || !data) return cacheStorage.readJson<string[]>('cadu_ponce_muscle_groups', ['Abdômen', 'Pernas', 'Peito', 'Ombros', 'Costas', 'Braços', 'Cardio', 'Core']);
+    const data = await readAllRows(() => supabase.from('muscle_groups').select('id,name').order('id'));
     const groups = data.map(r => r.name as string);
     cacheStorage.setRemoteItem('cadu_ponce_muscle_groups', JSON.stringify(groups));
     return groups;
@@ -915,12 +846,7 @@ export const storage = {
 
   fetchCategories: async (): Promise<string[]> => {
     const cacheStorage = cacheForUser(getCacheUser());
-    const { data, error } = await supabase
-      .from('exercise_categories')
-      .select('name')
-      .order('id', { ascending: true });
-
-    if (error || !data) return cacheStorage.readJson<string[]>('cadu_ponce_categories', ['Musculação', 'Funcional', 'Alongamento']);
+    const data = await readAllRows(() => supabase.from('exercise_categories').select('id,name').order('id'));
     const cats = data.map(r => r.name as string);
     cacheStorage.setRemoteItem('cadu_ponce_categories', JSON.stringify(cats));
     return cats;
@@ -1032,13 +958,27 @@ export const storage = {
 
   syncPendingData: async (userId: string): Promise<void> => {
     if (userId !== getCacheUser()) return;
+    for (const deletion of photoDeletions(userId).filter(item => item.pending)) {
+      if (userId !== getCacheUser()) return;
+      try { await storage.deletePhoto(deletion.id); } catch { /* The durable deletion remains queued. */ }
+    }
+    const mediaCache = cacheForUser(userId);
+    for (const item of mediaCache.readJson<{id:string;reference:string}[]>('cadu_media_cleanup', [])) {
+      if (userId !== getCacheUser()) return;
+      try {
+        const { error } = await supabase.from('agenda_events').delete().eq('id', item.id).eq('type', 'student_file');
+        if (error) throw error;
+        await removeUnusedMedia(item.reference, userId);
+        mediaCache.setItem('cadu_media_cleanup', JSON.stringify(mediaCache.readJson<{id:string;reference:string}[]>('cadu_media_cleanup', []).filter(entry => entry.id !== item.id)));
+      } catch { /* Keep failed cleanup durable for the next authenticated retry. */ }
+    }
     const profile = storage.getUser();
     const canSync = (studentId: string) => studentId === userId || profile?.role === 'admin';
     for (const log of storage.getWorkoutLogs().filter(log => log.syncStatus === 'pending' && canSync(log.studentId))) {
       if (userId !== getCacheUser()) return;
       await storage.saveWorkoutLog(log);
     }
-    for (const photo of storage.getPhotos().filter(photo => (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')) && canSync(photo.studentId))) {
+    for (const photo of storage.getPhotos().filter(photo => (photo.syncStatus === 'pending' || photo.localFileKey || photo.photoURL.startsWith('idb:')) && canSync(photo.studentId))) {
       if (userId !== getCacheUser()) return;
       try { await storage.savePhoto(photo); } catch { /* Keep the durable file and pending record. */ }
     }
@@ -1106,47 +1046,141 @@ export const storage = {
     if (actor === getCacheUser() && typeof window !== 'undefined') window.dispatchEvent(new Event('cadu_notifications_changed'));
   },
 
+  fetchStudentAgenda: async (studentId: string): Promise<AgendaEvent[]> => {
+    const events = await storage.fetchAgendaEvents({ allowCached: false });
+    return events.filter(event => event.studentId === studentId && ['presential','online','other'].includes(event.type));
+  },
+
+  fetchAssessments: async (studentId: string): Promise<Assessment[]> => {
+    const rows = await readAllRows(() => supabase.from('assessments').select('*').eq('student_id', studentId).order('date', { ascending: false }).order('id'));
+    return rows.map(row => ({ id: row.id, studentId: row.student_id, date: row.date, weight: row.weight ?? undefined,
+      height: row.height ?? undefined, bodyFat: row.body_fat ?? undefined, measurements: row.measurements ?? {}, notes: row.notes ?? undefined, createdAt: row.created_at }));
+  },
+  saveAssessment: async (record: Assessment): Promise<void> => {
+    requireActor();
+    for (const value of [record.weight,record.height,record.bodyFat,...Object.values(record.measurements ?? {})])
+      if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error('Informe medidas válidas.');
+    const { data, error } = await supabase.from('assessments').upsert({ id: record.id, student_id: record.studentId, date: record.date,
+      weight: record.weight ?? null, height: record.height ?? null, body_fat: record.bodyFat ?? null, measurements: record.measurements ?? {}, notes: record.notes ?? null }).select('id').single();
+    if (error || data?.id !== record.id) throw error ?? new Error('A avaliação não foi confirmada.');
+  },
+  deleteAssessment: async (id: string): Promise<void> => {
+    const { data, error } = await supabase.from('assessments').delete().eq('id', id).select('id').single();
+    if (error || !data?.id) throw error ?? new Error('Avaliação não encontrada.');
+  },
+  fetchAnamneses: async (studentId: string): Promise<Anamnesis[]> => {
+    const rows = await readAllRows(() => supabase.from('anamnesis').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).order('id'));
+    return rows.map(row => ({ id: row.id, studentId: row.student_id, title: row.responses?.title ?? 'Anamnese',
+      questions: Array.isArray(row.responses?.questions) ? row.responses.questions : [], status: row.responses?.status === 'answered' ? 'answered' : 'pending',
+      version: Number(row.version), createdAt: row.created_at, updatedAt: row.updated_at }));
+  },
+  saveAnamnesis: async (record: Anamnesis): Promise<Anamnesis> => {
+    requireActor();
+    const { data, error } = await supabase.rpc('save_anamnesis', { p_payload: { id: record.id, student_id: record.studentId,
+      responses: { title: record.title, questions: record.questions, status: record.status } }, p_expected_version: record.version ?? null });
+    if (error) throw mutationError(error);
+    if (!data?.id) throw new Error('O formulário não foi confirmado.');
+    return { ...record, version: Number(data.version), createdAt: data.created_at, updatedAt: data.updated_at };
+  },
+  deleteAnamnesis: async (id: string): Promise<void> => {
+    const { data, error } = await supabase.from('anamnesis').delete().eq('id', id).select('id').single();
+    if (error || !data?.id) throw error ?? new Error('Formulário não encontrado.');
+  },
+  fetchStudentFiles: async (studentId: string): Promise<StudentFile[]> => {
+    const rows = await readAllRows(() => supabase.from('agenda_events').select('*').eq('type','student_file').eq('student_id', studentId).order('created_at', { ascending: false }).order('id'));
+    return rows.flatMap(row => { try { const notes = JSON.parse(row.notes ?? '{}');
+      if (!notes.filePath) return [];
+      return [{ id: row.id, studentId: row.student_id, name: notes.fileName ?? row.title, storagePath: notes.filePath.startsWith('storage://') ? notes.filePath : toStorageReference('arquivos-alunos',notes.filePath),
+        mimeType: notes.fileType ?? '', size: Number(notes.fileSize) || 0, category: notes.category, createdAt: row.created_at }];
+    } catch { return []; } });
+  },
+  uploadStudentFile: async (studentId: string, file: File, category?: string): Promise<StudentFile> => {
+    const actor = requireActor();
+    const allowed = ['image/jpeg','image/png','image/webp','application/pdf','text/plain','application/msword','application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','video/mp4','video/quicktime'];
+    if (!allowed.includes(file.type) || !file.size || file.size > 20 * 1024 * 1024) throw new Error('Use um formato permitido de até 20 MB.');
+    const id = crypto.randomUUID(), path = studentId + '/' + id + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(-120);
+    const { error: uploadError } = await supabase.storage.from('arquivos-alunos').upload(path,file,{ upsert: false,contentType:file.type });
+    if (uploadError) throw uploadError;
+    assertActor(actor);
+    const result: StudentFile = { id,studentId,name:file.name,storagePath:toStorageReference('arquivos-alunos',path),mimeType:file.type,size:file.size,category,createdAt:new Date().toISOString() };
+    const { data,error } = await supabase.from('agenda_events').insert({ id,student_id:studentId,title:'Arquivo enviado: '+file.name,
+      date:result.createdAt.slice(0,10),start_time:'00:00',end_time:'00:00',type:'student_file',
+      notes:JSON.stringify({fileName:file.name,filePath:path,fileType:file.type,fileSize:file.size,category}),created_at:result.createdAt }).select('id').single();
+    if (error || !data?.id) {
+      await removeUnusedMedia(result.storagePath,actor).catch(() => {});
+      throw error ?? new Error('O envio do arquivo não foi confirmado.');
+    }
+    return result;
+  },
+  saveStudentFile: (studentId: string,file: File,category?: string): Promise<StudentFile> => storage.uploadStudentFile(studentId,file,category),
+  deleteStudentFile: async (id: string): Promise<void> => {
+    const actor=requireActor();
+    const { data:row,error:readError }=await supabase.from('agenda_events').select('*').eq('id',id).eq('type','student_file').single();
+    if (readError || !row) throw readError ?? new Error('Arquivo não encontrado.');
+    const notes=JSON.parse(row.notes ?? '{}');
+    const reference=notes.filePath?.startsWith('storage://')?notes.filePath:toStorageReference('arquivos-alunos',notes.filePath);
+    const cache=cacheForUser(actor), key='cadu_media_cleanup';
+    const pending=cache.readJson<{id:string;reference:string}[]>(key,[]);
+    cache.setItem(key,JSON.stringify([{id,reference},...pending.filter(item=>item.id!==id)]));
+    const {data,error}=await supabase.from('agenda_events').delete().eq('id',id).eq('type','student_file').select('id').single();
+    if(error || !data?.id) throw error ?? new Error('A remoção não foi confirmada.');
+    await removeUnusedMedia(reference,actor);
+    cache.setItem(key,JSON.stringify(cache.readJson<{id:string;reference:string}[]>(key,[]).filter(item=>item.id!==id)));
+  },
+  uploadProfilePhoto: async (studentId: string,file: File): Promise<string> => {
+    const actor=requireActor();
+    if(!file.type.startsWith('image/') || !file.size || file.size>20*1024*1024) throw new Error('Selecione uma imagem de até 20 MB.');
+    const blob=await compressImage(file,800,0.85);assertActor(actor);
+    const path=studentId+'/avatar-'+crypto.randomUUID()+'.jpg';
+    const {error}=await supabase.storage.from('evolution-photos').upload(path,blob,{contentType:blob.type,upsert:false});
+    if(error)throw error;assertActor(actor);return toStorageReference('evolution-photos',path);
+  },
+  fetchWorkoutFeedbacks: async (studentId?: string): Promise<WorkoutFeedback[]> => {
+    const rows=await readAllRows(()=>{let q=supabase.from('agenda_events').select('*').eq('type','workout_feedback').order('created_at',{ascending:false}).order('id');return studentId?q.eq('student_id',studentId):q;});
+    const feedback:WorkoutFeedback[]=rows.flatMap(row=>{try{const n=JSON.parse(row.notes??'{}');return [{id:row.id,studentId:row.student_id,routineId:n.routineId,routineName:n.routineName??'Treino',rating:Number(n.rating)||0,comment:n.comment??'',createdAt:row.created_at,updatedAt:n.updatedAt,source:'feedback' as const}];}catch{return [];}});
+    const logs=await queryWorkoutLogs(studentId);
+    return [...feedback,...logs.filter(log=>log.comment||log.rpe).map(log=>({id:log.id,logId:log.id,studentId:log.studentId,routineId:log.routineId,routineName:log.routineName,
+      rating:Math.max(0,Math.min(5,(log.rpe??0)/2)),comment:log.comment??'',createdAt:log.completedAt,source:'completion' as const}))].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
+  },
+  saveWorkoutFeedback: async (record: WorkoutFeedback): Promise<WorkoutFeedback> => {
+    requireActor();
+    if(!Number.isFinite(record.rating)||record.rating<1||record.rating>5||record.comment.length>5000) throw new Error('Informe uma nota de 1 a 5 e comentário de até 5000 caracteres.');
+    const saved={...record,updatedAt:new Date().toISOString()};
+    if(record.source==='completion'&&record.logId){
+      const {data,error}=await supabase.from('workout_logs').update({rpe:record.rating*2,comment:record.comment}).eq('id',record.logId).eq('student_id',record.studentId).select('id').single();
+      if(error||!data?.id)throw error??new Error('Feedback não confirmado.');
+    }else{
+      const {data,error}=await supabase.from('agenda_events').upsert({id:record.id,student_id:record.studentId,title:'Feedback de treino',date:record.createdAt.slice(0,10),start_time:'00:00',end_time:'00:00',type:'workout_feedback',notes:JSON.stringify(saved),created_at:record.createdAt}).select('id').single();
+      if(error||!data?.id)throw error??new Error('Feedback não confirmado.');
+    }
+    return saved;
+  },
+  deleteWorkoutFeedback: async (id: string): Promise<void> => {
+    const {data,error}=await supabase.from('agenda_events').delete().eq('id',id).eq('type','workout_feedback').select('id').single();
+    if(error||!data?.id)throw error??new Error('Feedback não encontrado. O registro de conclusão do treino é preservado.');
+  },
+  fetchStudentNotifications: async (studentId: string): Promise<StudentNotification[]> => {
+    const rows=await readAllRows(()=>supabase.from('student_notifications').select('*').eq('recipient_id',studentId).order('created_at',{ascending:false}).order('id'));
+    return rows.map(row=>({id:row.id,recipientId:row.recipient_id,title:row.title,body:row.body,type:row.type,createdAt:row.created_at,readAt:row.read_at??undefined}));
+  },
+  markStudentNotificationRead: async (id: string): Promise<void> => {
+    const actor=requireActor();
+    const {data,error}=await supabase.from('student_notifications').update({read_at:new Date().toISOString()}).eq('id',id).eq('recipient_id',actor).select('id').single();
+    if(error||!data?.id)throw error??new Error('A leitura da notificação não foi confirmada.');
+  },
+
   // ── Financial / Pendências & Faturas 100% Manuais e Editáveis ───────────────
 
   /** Busca todas as faturas e pendências financeiras registradas no Supabase */
   fetchFinancialInvoices: async (): Promise<FinancialInvoice[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    try {
-      const { data, error } = await supabase
-        .from('agenda_events')
-        .select('*')
-        .eq('type', 'financial_invoice')
-        .order('date', { ascending: true });
-
-      if (!error && data) {
-        const invoices: FinancialInvoice[] = data.map(row => {
-          let extra: any = {};
-          try { extra = JSON.parse(row.notes || '{}'); } catch {}
-          return {
-            id: row.id,
-            studentId: row.student_id ?? extra.studentId,
-            studentName: row.student_name || extra.studentName || 'Aluno',
-            studentPhone: extra.studentPhone || '',
-            amount: Number(row.start_time) || Number(extra.amount) || 0,
-            dueDate: row.date,
-            paymentMethod: row.end_time || extra.paymentMethod || 'PIX',
-            status: extra.status === 'paid' ? 'paid' : 'pending',
-            description: row.title || extra.description || 'Mensalidade',
-            paidAt: extra.paidAt,
-            createdAt: row.created_at,
-          };
-        });
-        cacheStorage.setRemoteItem('cadu_financial_invoices', JSON.stringify(invoices));
-        return invoices;
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar faturas do Supabase:', e);
-    }
-
-    try {
-      const cached = cacheStorage.getItem('cadu_financial_invoices');
-      return cached ? JSON.parse(cached) : [];
-    } catch { return []; }
+    const cache=cacheForUser(getCacheUser());
+    const data=await readAllRows(()=>supabase.from('agenda_events').select('*').eq('type','financial_invoice').order('date').order('id'));
+    const invoices:FinancialInvoice[]=data.map(row=>{let extra:any={};try{extra=JSON.parse(row.notes??'{}');}catch{}
+      return {id:row.id,studentId:row.student_id??extra.studentId,studentName:row.student_name||extra.studentName||'Aluno',studentPhone:extra.studentPhone||'',
+        amount:Number(row.start_time)||Number(extra.amount)||0,dueDate:row.date,paymentMethod:row.end_time||extra.paymentMethod||'PIX',status:extra.status==='paid'?'paid':'pending',
+        description:row.title||extra.description||'Mensalidade',paidAt:extra.paidAt,createdAt:row.created_at};});
+    cache.setRemoteItem('cadu_financial_invoices',JSON.stringify(invoices));return invoices;
   },
 
   /** Salva ou atualiza uma fatura no Supabase com sincronização total */

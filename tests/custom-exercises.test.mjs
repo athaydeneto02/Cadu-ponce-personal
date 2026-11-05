@@ -33,6 +33,7 @@ function harness() {
     const call = { table, operation: 'select', filters: [] };
     const chain = {
       select() { return this; }, order() { return this; }, single() { call.single = true; return this; },
+      range(from, to) { call.range = [from,to]; return this; },
       upsert(value) { call.operation = 'upsert'; call.value = value; return this; },
       delete() { call.operation = 'delete'; return this; },
       eq(column, value) { call.filters.push([column, value]); return this; },
@@ -42,7 +43,7 @@ function harness() {
         if (call.operation === 'upsert') rows.set(call.value.id, JSON.parse(JSON.stringify(call.value)));
         const result = [...rows.values()].filter(row => call.filters.every(([column, value]) => row[column] === value));
         if (call.operation === 'delete') result.forEach(row => rows.delete(row.id));
-        return Promise.resolve({ data: call.single ? result.find(row => row.id === call.value?.id) : result, error: null }).then(resolve, reject);
+        return Promise.resolve({ data: call.single ? result.find(row => row.id === call.value?.id) : call.range ? result.slice(call.range[0],call.range[1]+1) : result, error: null }).then(resolve, reject);
       },
     };
     return chain;

@@ -1,532 +1,114 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect } from 'react';
-import {
-  ChevronLeft,
-  Calendar,
-  Eye,
-  TrendingUp,
-  ClipboardCheck,
-  Clock,
-  Dumbbell,
-  X,
-  Star,
-  Send,
-  CheckCircle2
-} from 'lucide-react';
-import { Workout, AdminRoutine } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, Calendar, CheckCircle2, Dumbbell, RefreshCw, Star, X } from 'lucide-react';
+import type { AdminRoutine, Workout, WorkoutFeedback, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
-import { routineMatchesUser } from '../lib/workoutAssignment';
-import { TRAINER_CONFIG } from '../lib/trainerConfig';
+import { actualWorkoutLoads, routineWorkoutLogs, studentWorkoutCatalog, type StudentRoutine, type StudentWorkoutKind } from '../lib/studentWorkouts';
+import { getTrainerWhatsAppUrl } from '../lib/trainerConfig';
 import AdminWorkoutSession from './AdminWorkoutSession';
 
 interface WorkoutListProps {
-  workouts: Workout[];
-  onSelectWorkout: (workout: Workout) => void;
-  trainerPhone?: string;
-  onBack?: () => void;
+  workouts: Workout[]; onSelectWorkout: (workout: Workout) => void; trainerPhone?: string;
+  onBack?: () => void; initialKind?: StudentWorkoutKind;
 }
+const dateLabel = (date?: string) => date ? new Date(date.length === 10 ? date + 'T12:00:00' : date).toLocaleDateString('pt-BR') : '';
+const kindLabels = { strength: 'Musculação', aerobic: 'Aeróbicos', extra: 'Extras' };
 
-function getDayLabel(raw: string): string {
-  const map: Record<string, string> = {
-    'segunda': 'Segunda', 'segunda-feira': 'Segunda',
-    'terca': 'Terça', 'terça': 'Terça', 'terca-feira': 'Terça', 'terça-feira': 'Terça',
-    'quarta': 'Quarta', 'quarta-feira': 'Quarta',
-    'quinta': 'Quinta', 'quinta-feira': 'Quinta',
-    'sexta': 'Sexta', 'sexta-feira': 'Sexta',
-    'sabado': 'Sábado', 'sábado': 'Sábado',
-    'domingo': 'Domingo',
-  };
-  return map[raw.toLowerCase().trim()] ?? raw;
-}
-
-function sortByDayOfWeek(routines: AdminRoutine[]): AdminRoutine[] {
-  const order = ['segunda', 'terça', 'terca', 'quarta', 'quinta', 'sexta', 'sábado', 'sabado', 'domingo'];
-  return [...routines].sort((a, b) => {
-    const ai = order.findIndex(d => (a.dayOfWeek ?? '').toLowerCase().includes(d));
-    const bi = order.findIndex(d => (b.dayOfWeek ?? '').toLowerCase().includes(d));
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
-}
-
-function formatDate(iso?: string): string {
-  if (!iso) return '';
-  try {
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${y}`;
-  } catch {
-    return iso;
-  }
-}
-
-interface RoutineGroup {
-  groupName: string;
-  goal: string;
-  difficulty: string;
-  startDate?: string;
-  endDate?: string;
-  days: AdminRoutine[];
-}
-
-function groupRoutines(routines: AdminRoutine[]): RoutineGroup[] {
-  const map: Record<string, RoutineGroup> = {};
-  for (const r of routines) {
-    const key = r.routineGroupName || 'Treino Musculação I';
-    if (!map[key]) {
-      map[key] = {
-        groupName: key,
-        goal: r.goal || 'Hipertrofia',
-        difficulty: r.difficulty || 'Intermediário',
-        startDate: r.startDate,
-        endDate: r.endDate,
-        days: [],
-      };
-    }
-    map[key].days.push(r);
-    if (r.startDate && (!map[key].startDate || r.startDate < map[key].startDate!)) map[key].startDate = r.startDate;
-    if (r.endDate && (!map[key].endDate || r.endDate > map[key].endDate!)) map[key].endDate = r.endDate;
-  }
-  return Object.values(map);
-}
-
-export default function WorkoutList({ workouts, onSelectWorkout, trainerPhone, onBack }: WorkoutListProps) {
-  const [adminRoutines, setAdminRoutines] = useState<AdminRoutine[]>([]);
-  const [activeSession, setActiveSession] = useState<AdminRoutine | null>(null);
-  const [selectedGroupIdx, setSelectedGroupIdx] = useState<number>(0);
-  const [notesOpen, setNotesOpen] = useState<Record<string, boolean>>({});
-  const [evolutionRoutine, setEvolutionRoutine] = useState<AdminRoutine | null>(null);
-  const [feedbackRoutine, setFeedbackRoutine] = useState<AdminRoutine | null>(null);
-
-  const [isLoadingRoutines, setIsLoadingRoutines] = useState(() => storage.getAdminRoutines().length === 0);
-
+export default function WorkoutList({ workouts, onBack, trainerPhone, initialKind = 'strength' }: WorkoutListProps) {
+  const studentId = storage.getUser()?.uid || '';
+  const [routines, setRoutines] = useState<AdminRoutine[]>([]);
+  const [legacyWorkouts, setLegacyWorkouts] = useState(workouts);
+  const [logs, setLogs] = useState<WorkoutLog[]>([]);
+  const [feedbacks, setFeedbacks] = useState<WorkoutFeedback[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  const [kind, setKind] = useState<StudentWorkoutKind>(initialKind);
+  const [session, setSession] = useState<StudentRoutine | null>(null);
+  const [history, setHistory] = useState<StudentRoutine | null>(null);
+  const [feedback, setFeedback] = useState<StudentRoutine | null>(null);
+  useEffect(() => { setLegacyWorkouts(workouts); }, [workouts]);
   useEffect(() => {
-    const user = storage.getUser();
-
-    const loadAndFilter = (routinesList: AdminRoutine[]) => {
-      let deletedSet = new Set<string>();
-      try {
-        const deletedList: string[] = JSON.parse(storage.getCacheItem('cadu_ponce_deleted_routines') || '[]');
-        const validIds = deletedList.filter(item => 
-          item.startsWith('routine_') || 
-          item.startsWith('w_') || 
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item)
-        );
-        deletedSet = new Set(validIds.map(s => s.toLowerCase().trim()));
-        storage.setCacheItem('cadu_ponce_deleted_routines', JSON.stringify(validIds));
-      } catch {}
-
-      // Active routines must never be suppressed
-      for (const r of routinesList) {
-        if (r.id) deletedSet.delete(r.id.toLowerCase().trim());
-      }
-
-      return routinesList.filter(r => {
-        if (r.id && deletedSet.has(r.id.toLowerCase().trim())) return false;
-        return routineMatchesUser(r, user);
-      });
+    let active = true; let request = 0;
+    const refresh = async () => {
+      if (!studentId || storage.getUser()?.uid !== studentId) return;
+      const version = ++request; setLoading(true); setError('');
+      setLogs(storage.getWorkoutLogs().filter(log => log.studentId === studentId));
+      const results = await Promise.allSettled([storage.fetchAdminRoutines(), storage.fetchWorkouts(studentId), storage.fetchWorkoutLogs(studentId, { allowCached: false }), storage.fetchWorkoutFeedbacks(studentId)]);
+      if (!active || version !== request || storage.getUser()?.uid !== studentId) return;
+      if (results[0].status === 'fulfilled') setRoutines(results[0].value);
+      if (results[1].status === 'fulfilled') setLegacyWorkouts(results[1].value);
+      if (results[2].status === 'fulfilled') setLogs(results[2].value);
+      if (results[3].status === 'fulfilled') setFeedbacks(results[3].value);
+      if (results.some(result => result.status === 'rejected')) setError('Não foi possível atualizar todos os dados. Confira a conexão e tente novamente.');
+      setLoading(false);
     };
-
-    // 1. Initial cached filter
-    const cachedRoutines = storage.getAdminRoutines();
-    setAdminRoutines(loadAndFilter(cachedRoutines));
-    if (cachedRoutines.length > 0) setIsLoadingRoutines(false);
-
-    // 2. Fetch fresh from cloud and apply updated deletion filters
-    storage.fetchAdminRoutines().then(freshAll => {
-      setAdminRoutines(loadAndFilter(freshAll));
-    }).catch(() => {}).finally(() => setIsLoadingRoutines(false));
-  }, []);
-
-  if (activeSession) {
-    return <AdminWorkoutSession routine={activeSession} onClose={() => setActiveSession(null)} trainerPhone={trainerPhone} />;
-  }
-
-  const groups = groupRoutines(adminRoutines);
-  const activeGroup = groups[selectedGroupIdx] || groups[0];
-  const sortedDays = activeGroup ? sortByDayOfWeek(activeGroup.days) : [];
-
-  return (
-    <div className="min-h-screen bg-[#F4F6FA] flex flex-col pb-24">
-      {/* ── Dark Navy Header ─────────────────────────────────────────────── */}
-      <div className="bg-[#1c2b3e] px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="text-white/80 hover:text-white p-1 -ml-1 transition cursor-pointer"
-                title="Voltar"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-            )}
-            <h1 className="text-white text-xl font-bold tracking-tight">Treinos</h1>
-          </div>
-
-          {/* Clock badge icon */}
-          <div className="relative p-1">
-            <Clock className="w-6 h-6 text-white" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center border-2 border-[#1c2b3e]">
-              2
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Main Content Area ────────────────────────────────────────────── */}
-      <div className="p-4 space-y-4 max-w-lg mx-auto w-full">
-        {isLoadingRoutines ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-4">
-            <div className="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-slate-500 font-medium animate-pulse">Buscando seus treinos...</p>
-          </div>
-        ) : groups.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center space-y-4 my-8">
-            <div className="w-16 h-16 rounded-full bg-blue-50 text-[#0070f3] flex items-center justify-center mx-auto">
-              <Dumbbell className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-800">Nenhum treino prescrito</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Seu treinador Cadu Ponce está preparando suas fichas personalizadas. Em breve elas aparecerão aqui!
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* If student has multiple routine sheets, allow toggling tabs */}
-            {groups.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {groups.map((g, idx) => (
-                  <button
-                    key={g.groupName}
-                    onClick={() => setSelectedGroupIdx(idx)}
-                    className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-sm cursor-pointer ${
-                      selectedGroupIdx === idx
-                        ? 'bg-[#0070f3] text-white shadow-blue-500/20'
-                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {g.groupName}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* ── Floating Top Card (Treino Musculação I) ────────────────── */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-3.5">
-              {/* Torso outline avatar */}
-              <div className="w-14 h-14 rounded-full bg-[#e8f3ff] flex items-center justify-center shrink-0 border border-blue-100">
-                <svg
-                  className="w-8 h-8 text-[#0070f3]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M7 3h10l1 3.5-2.5 2.5v11H8.5V9L6 6.5 7 3Z" />
-                  <path d="M9 3v4.5a3 3 0 0 0 6 0V3" />
-                  <path d="M12 7.5V17" />
-                  <path d="M9 12h6" />
-                  <path d="M9.5 15h5" />
-                </svg>
-              </div>
-
-              {/* Sheet details */}
-              <div className="flex-1 min-w-0">
-                <h2 className="text-slate-900 font-bold text-[15px] truncate">
-                  {activeGroup.groupName}
-                </h2>
-
-                {/* Date range with Calendar icon */}
-                <div className="flex items-center gap-1.5 text-slate-500 text-xs mt-0.5">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>
-                    {activeGroup.startDate && activeGroup.endDate
-                      ? `${formatDate(activeGroup.startDate)} – ${formatDate(activeGroup.endDate)}`
-                      : `${new Date().toLocaleDateString('pt-BR')} – ${new Date(Date.now() + 30 * 86400000).toLocaleDateString('pt-BR')}`}
-                  </span>
-                </div>
-
-                {/* Goal | Difficulty */}
-                <p className="text-slate-500 text-xs mt-0.5">
-                  {[activeGroup.goal || 'Hipertrofia', activeGroup.difficulty || 'Intermediário']
-                    .filter(Boolean)
-                    .join(' | ')}
-                </p>
-              </div>
-            </div>
-
-            {/* ── Day-by-Day Cards (Segunda, Terça, Quarta...) ──────────── */}
-            <div className="space-y-4">
-              {sortedDays.map((routine) => {
-                const dayLabel = routine.dayOfWeek ? getDayLabel(routine.dayOfWeek) : routine.name;
-                const muscleSubtitle = routine.muscleGroup || (routine.name !== dayLabel ? routine.name : 'Musculação');
-                const isOpen = !!notesOpen[routine.id];
-
-                return (
-                  <div
-                    key={routine.id}
-                    className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3"
-                  >
-                    {/* Day Title & Muscle Group */}
-                    <div>
-                      <h3 className="text-slate-900 font-bold text-base leading-tight">
-                        {dayLabel}
-                      </h3>
-                      {muscleSubtitle && (
-                        <p className="text-slate-500 text-xs mt-0.5">
-                          {muscleSubtitle}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Orientações gerais Accordion */}
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setNotesOpen(prev => ({ ...prev, [routine.id]: !prev[routine.id] }))}
-                        className="w-full bg-[#EEEEEE] hover:bg-[#E2E4E8] transition rounded-lg px-3.5 py-2.5 flex items-center justify-between cursor-pointer"
-                      >
-                        <span className="text-slate-800 text-xs font-semibold">Orientações gerais</span>
-                        <Eye className="w-4 h-4 text-slate-600" />
-                      </button>
-
-                      {isOpen && (
-                        <div className="bg-slate-50 rounded-lg p-3 mt-1.5 border border-slate-100 text-xs text-slate-700 leading-relaxed animate-in fade-in duration-200">
-                          {routine.generalNotes || routine.notes || 'Sem orientações adicionais informadas pelo treinador.'}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Status */}
-                    <p className="text-[#2b88ff] text-xs font-normal">
-                      Você ainda não realizou esse treino
-                    </p>
-
-                    {/* Evolução + Feedbacks Buttons */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setEvolutionRoutine(routine)}
-                        className="border border-[#2b88ff] text-[#2b88ff] hover:bg-blue-50 transition rounded-xl py-2.5 flex items-center justify-center gap-1.5 text-xs font-semibold active:scale-[0.98] cursor-pointer"
-                      >
-                        <TrendingUp className="w-4 h-4 text-[#2b88ff]" />
-                        <span>Evolução</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFeedbackRoutine(routine)}
-                        className="border border-[#2b88ff] text-[#2b88ff] hover:bg-blue-50 transition rounded-xl py-2.5 flex items-center justify-center gap-1.5 text-xs font-semibold active:scale-[0.98] cursor-pointer"
-                      >
-                        <ClipboardCheck className="w-4 h-4 text-[#2b88ff]" />
-                        <span>Feedbacks</span>
-                      </button>
-                    </div>
-
-                    {/* Big bright blue button: Ver treino */}
-                    <button
-                      type="button"
-                      onClick={() => setActiveSession(routine)}
-                      className="w-full bg-[#0070f3] hover:bg-[#005cd6] text-white font-bold py-3.5 rounded-xl text-sm transition shadow-sm active:scale-[0.99] flex items-center justify-center cursor-pointer"
-                    >
-                      Ver treino
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Evolution Modal ──────────────────────────────────────────────── */}
-      {evolutionRoutine && (
-        <EvolutionModal
-          routine={evolutionRoutine}
-          onClose={() => setEvolutionRoutine(null)}
-        />
-      )}
-
-      {/* ── Feedback Modal ───────────────────────────────────────────────── */}
-      {feedbackRoutine && (
-        <FeedbackModal
-          routine={feedbackRoutine}
-          trainerPhone={trainerPhone}
-          onClose={() => setFeedbackRoutine(null)}
-        />
-      )}
+    setRoutines(storage.getAdminRoutines()); void refresh();
+    const onChange = () => { void refresh(); };
+    window.addEventListener('cadu_workout_completed', onChange); window.addEventListener('cadu_data_synced', onChange); window.addEventListener('focus', onChange);
+    return () => { active = false; window.removeEventListener('cadu_workout_completed', onChange); window.removeEventListener('cadu_data_synced', onChange); window.removeEventListener('focus', onChange); };
+  }, [studentId, revision]);
+  const catalog = studentWorkoutCatalog(routines, legacyWorkouts, studentId);
+  const visible = catalog.filter(routine => (routine.kind || 'strength') === kind);
+  if (session) return <AdminWorkoutSession key={session.id} routine={session} trainerPhone={trainerPhone} onClose={() => { setSession(null); setRevision(value => value + 1); }} />;
+  return <div className="min-h-full bg-slate-100 pb-8">
+    <header className="bg-[#1c2b3e] p-4 text-white flex items-center justify-between">
+      <div className="flex items-center gap-2">{onBack && <button onClick={onBack} aria-label="Voltar"><ChevronLeft className="w-5 h-5" /></button>}<h1 className="font-bold text-xl">Meus treinos</h1></div>
+      <button onClick={() => setRevision(value => value + 1)} disabled={loading} aria-label="Atualizar treinos" className="disabled:opacity-50"><RefreshCw className="w-5 h-5" /></button>
+    </header>
+    <div className="p-4 space-y-4">
+      <nav aria-label="Tipo de treino" className="flex gap-2">{(['strength', 'aerobic', 'extra'] as const).map(value => <button key={value} onClick={() => setKind(value)} aria-pressed={kind === value} className={'flex-1 py-3 rounded-xl font-semibold text-sm ' + (kind === value ? 'bg-blue-600 text-white' : 'bg-white text-slate-600')}>{kindLabels[value]}</button>)}</nav>
+      {loading && <p role="status" className="text-sm text-slate-500">Atualizando seus treinos...</p>}
+      {error && <p role="alert" className="bg-amber-50 text-amber-900 rounded-xl p-3 text-sm">{error}</p>}
+      {!loading && !visible.length && <div className="bg-white rounded-xl p-8 text-center text-slate-600"><Dumbbell className="w-8 h-8 mx-auto mb-3 text-blue-600" /><p>Nenhum treino de {kindLabels[kind].toLowerCase()} disponível neste período.</p></div>}
+      {visible.map(routine => {
+        const completed = routineWorkoutLogs(logs, routine, studentId); const latest = completed[0];
+        return <article key={routine.id} className="bg-white rounded-2xl p-5 space-y-4 shadow-sm">
+          <div><h2 className="font-bold text-lg text-slate-800">{routine.name}</h2>{routine.dayOfWeek && <p className="text-sm text-blue-700">{routine.dayOfWeek}</p>}{routine.routineGroupName && <p className="text-xs text-slate-500 mt-1">{routine.routineGroupName}</p>}</div>
+          {(routine.startDate || routine.endDate) && <p className="text-xs text-slate-500 flex gap-2"><Calendar className="w-4 h-4" />{routine.startDate ? 'De ' + dateLabel(routine.startDate) : ''}{routine.endDate ? ' até ' + dateLabel(routine.endDate) : ''}</p>}
+          {(routine.goal || routine.difficulty) && <p className="text-sm text-slate-600">{[routine.goal, routine.difficulty].filter(Boolean).join(' · ')}</p>}
+          <details className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><summary className="font-semibold cursor-pointer">Orientações gerais</summary><p className="pt-2 whitespace-pre-wrap">{routine.generalNotes || routine.notes || 'Sem orientações adicionais.'}</p></details>
+          <p className={'text-sm flex gap-2 items-center ' + (latest ? 'text-emerald-700' : 'text-slate-500')}>{latest && <CheckCircle2 className="w-4 h-4" />}{latest ? completed.length + ' conclusão(ões) · Última: ' + dateLabel(latest.completedAt) + (latest.syncStatus === 'pending' ? ' · sincronização pendente' : '') : 'Nenhuma conclusão registrada.'}</p>
+          <div className="grid grid-cols-2 gap-3"><button onClick={() => setHistory(routine)} className="border border-blue-600 rounded-xl p-3 text-blue-700 font-semibold text-sm">Evolução</button><button onClick={() => setFeedback(routine)} className="border border-blue-600 rounded-xl p-3 text-blue-700 font-semibold text-sm">Feedbacks</button></div>
+          <button onClick={() => setSession(routine)} disabled={!routine.exercises.length} className="w-full rounded-xl bg-blue-600 p-3 text-white font-bold disabled:opacity-50">{routine.exercises.length ? 'Ver treino' : 'Aguardando exercícios do personal'}</button>
+        </article>;
+      })}
     </div>
-  );
+    {history && <EvolutionModal routine={history} logs={routineWorkoutLogs(logs, history, studentId)} onClose={() => setHistory(null)} />}
+    {feedback && <FeedbackModal key={feedback.id} routine={feedback} studentId={studentId} feedbacks={feedbacks.filter(item => item.studentId === studentId && (item.routineId === feedback.id || item.routineId === feedback.legacyWorkoutId))} onSaved={saved => setFeedbacks(items => [saved, ...items.filter(item => item.id !== saved.id)])} onClose={() => setFeedback(null)} />}
+  </div>;
 }
 
-// ── Evolution Modal Component ────────────────────────────────────────────────
-
-function EvolutionModal({ routine, onClose }: { routine: AdminRoutine; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-blue-50 text-[#0070f3] flex items-center justify-center">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Evolução do Treino</h3>
-              <p className="text-xs text-slate-500">{routine.name}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {(!routine.exercises || routine.exercises.length === 0) ? (
-            <p className="text-xs text-slate-500 text-center py-6">Nenhum exercício registrado nesta ficha.</p>
-          ) : (
-            routine.exercises.map((ex, idx) => (
-              <div key={ex.id || idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">{ex.name}</h4>
-                  <p className="text-[11px] text-slate-500">{ex.sets} séries × {ex.reps} reps • Descanso: {ex.rest || '60s'}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-[#0070f3] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-                    {ex.prescribedLoads && ex.prescribedLoads.length > 0
-                      ? `${Math.max(...ex.prescribedLoads)} kg`
-                      : 'Em progresso'}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full bg-[#0070f3] text-white font-bold py-3 rounded-xl text-sm transition cursor-pointer"
-        >
-          Fechar
-        </button>
-      </div>
-    </div>
-  );
+export function EvolutionModal({ routine, logs, onClose }: { routine: StudentRoutine; logs: WorkoutLog[]; onClose: () => void }) {
+  return <div className="fixed inset-0 z-[90] bg-black/60 p-4 flex items-center justify-center"><section role="dialog" aria-modal="true" aria-label="Evolução do treino" className="bg-white rounded-2xl p-5 max-w-md w-full max-h-[85vh] overflow-y-auto space-y-4">
+    <header className="flex justify-between gap-3"><div><h2 className="font-bold text-slate-800">Evolução do treino</h2><p className="text-sm text-slate-500">{routine.name}</p></div><button onClick={onClose} aria-label="Fechar evolução"><X className="w-5 h-5" /></button></header>
+    {!logs.length && <p className="text-sm text-slate-500">Conclua este treino para acompanhar as cargas executadas.</p>}
+    {logs.map(log => <article key={log.id} className="border rounded-xl p-4 space-y-3">
+      <h3 className="text-sm font-bold text-slate-700">{new Date(log.completedAt).toLocaleString('pt-BR')}</h3>
+      <p className="text-xs text-slate-500">{Math.floor(log.durationSeconds / 60)} min · Esforço: {log.rpe ? log.rpe + '/10' : 'não informado'}{log.syncStatus === 'pending' ? ' · Envio pendente' : ''}</p>
+      {actualWorkoutLoads(log).map((exercise, index) => <div key={index} className="text-sm text-slate-700"><p className="font-semibold">{exercise.name}</p><p>{exercise.completed}/{exercise.total} séries · {exercise.loads.length ? exercise.loads.map(load => load + ' kg').join(' / ') : 'Carga não informada'}</p></div>)}
+      {log.comment && <p className="text-sm text-slate-600 whitespace-pre-wrap">{log.comment}</p>}
+    </article>)}
+  </section></div>;
 }
 
-// ── Feedback Modal Component ─────────────────────────────────────────────────
-
-function FeedbackModal({
-  routine,
-  trainerPhone,
-  onClose,
-}: {
-  routine: AdminRoutine;
-  trainerPhone?: string;
-  onClose: () => void;
-}) {
-  const [rating, setRating] = useState<number>(5);
-  const [feedbackText, setFeedbackText] = useState<string>('');
-  const [submitted, setSubmitted] = useState<boolean>(false);
-
-  const handleSubmit = () => {
-    const text = `*Feedback de Treino - Cadu Ponce Personal*\nTreino: ${routine.name}\nAvaliação: ${'⭐'.repeat(rating)}\nMensagem: ${feedbackText || 'Sem observações adicionais.'}`;
-    const phone = TRAINER_CONFIG.phone;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
-    setSubmitted(true);
-    setTimeout(() => {
-      onClose();
-    }, 1500);
+export function FeedbackModal({ routine, studentId, feedbacks, onSaved, onClose }: { routine: StudentRoutine; studentId: string; feedbacks: WorkoutFeedback[]; onSaved: (feedback: WorkoutFeedback) => void; onClose: () => void }) {
+  const [rating, setRating] = useState(5), [comment, setComment] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(false);
+  const id = useRef(crypto.randomUUID()); const createdAt = useRef(new Date().toISOString()); const lock = useRef(false);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); if (lock.current || saved) return; lock.current = true; setBusy(true); setError('');
+    try { const result = await storage.saveWorkoutFeedback({ id: id.current, studentId, routineId: routine.id, routineName: routine.name, rating, comment: comment.trim(), createdAt: createdAt.current }); onSaved(result); setSaved(true); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível salvar. Suas respostas foram mantidas.'); }
+    finally { lock.current = false; setBusy(false); }
   };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-blue-50 text-[#0070f3] flex items-center justify-center">
-              <ClipboardCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Feedback do Treino</h3>
-              <p className="text-xs text-slate-500">{routine.name}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {submitted ? (
-          <div className="py-8 text-center space-y-2">
-            <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-800">Feedback enviado com sucesso!</h4>
-            <p className="text-xs text-slate-500">Obrigado por compartilhar seu feedback com o Cadu.</p>
-          </div>
-        ) : (
-          <>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Como você avalia a intensidade e o treino de hoje?
-              </label>
-              <div className="flex items-center gap-2 justify-center py-2">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setRating(s)}
-                    className="p-1 transition active:scale-125 cursor-pointer"
-                  >
-                    <Star
-                      className={`w-7 h-7 ${
-                        s <= rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300'
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Observações para o treinador:
-              </label>
-              <textarea
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value)}
-                placeholder="Sentiu dor em alguma articulação? Conseguiu aumentar carga? Deixe seu recado..."
-                rows={3}
-                className="w-full border border-slate-200 rounded-xl p-3 text-xs text-slate-800 focus:outline-none focus:border-[#0070f3] resize-none"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                className="flex-1 py-3 bg-[#0070f3] hover:bg-[#005cd6] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20 cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Enviar Feedback</span>
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  return <div className="fixed inset-0 z-[90] bg-black/60 p-4 flex items-center justify-center"><section role="dialog" aria-modal="true" aria-label="Feedback do treino" className="bg-white rounded-2xl p-5 max-w-md w-full max-h-[85vh] overflow-y-auto space-y-4">
+    <header className="flex justify-between"><h2 className="font-bold text-slate-800">Feedbacks · {routine.name}</h2><button onClick={onClose} disabled={busy} aria-label="Fechar feedbacks"><X className="w-5 h-5" /></button></header>
+    {error && <p role="alert" className="text-red-700 text-sm">{error}</p>}
+    {saved ? <p role="status" className="text-emerald-700 font-semibold">Feedback salvo e disponível para o personal.</p> : <form onSubmit={submit} className="space-y-4">
+      <fieldset disabled={busy}><legend className="text-sm text-slate-600 mb-2">Como foi o treino?</legend><div className="flex gap-2">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" aria-label={value + ' estrelas'} aria-pressed={rating === value} onClick={() => setRating(value)}><Star className={'w-7 h-7 ' + (value <= rating ? 'text-amber-500 fill-amber-500' : 'text-slate-300')} /></button>)}</div></fieldset>
+      <label className="block text-sm text-slate-600">Comentário<textarea value={comment} onChange={event => setComment(event.target.value)} disabled={busy} maxLength={4000} rows={3} className="block w-full rounded-xl border p-3 mt-2" /></label>
+      <button disabled={busy} className="w-full bg-blue-600 rounded-xl p-3 text-white font-semibold">{busy ? 'Salvando...' : 'Salvar feedback'}</button>
+    </form>}
+    <a href={getTrainerWhatsAppUrl('Olá Cadu! Gostaria de conversar sobre o treino "' + routine.name + '".')} target="_blank" rel="noopener noreferrer" className="block text-sm text-emerald-700 underline">Conversar no WhatsApp</a>
+    {feedbacks.map(item => <article key={item.id} className="border-t pt-3 text-sm text-slate-600"><p className="font-semibold">{dateLabel(item.createdAt)} · {item.rating}/5{item.source === 'completion' ? ' · Comentário da conclusão' : ''}</p><p className="whitespace-pre-wrap mt-1">{item.comment || 'Sem comentário.'}</p></article>)}
+  </section></div>;
 }

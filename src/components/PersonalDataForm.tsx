@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronDown } from 'lucide-react';
 import { UserProfile } from '../types';
+import { storage } from '../lib/storage';
+import { useMediaUrl } from '../lib/mediaDb';
 
 interface PersonalDataFormProps {
   user: UserProfile | null;
@@ -26,25 +28,43 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
   const [instagram, setInstagram] = useState(user?.metadata?.instagram || '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoReference, setPhotoReference] = useState(user?.photoURL || '');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const resolvedPhoto = useMediaUrl(photoReference);
+  const saveLock = useRef(false);
+  useEffect(() => {
+    if (!photoFile) { setPhotoPreview(''); return; }
+    const url = URL.createObjectURL(photoFile); setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isSaving) return;
+    if (!user || saveLock.current) return;
+    saveLock.current = true;
     setIsSaving(true);
     setSaveError('');
     try {
+      let photoURL = photoReference;
+      if (photoFile) {
+        photoURL = await storage.uploadProfilePhoto(user.uid, photoFile);
+        setPhotoReference(photoURL); setPhotoFile(null);
+      }
       await onSave({
         ...user,
         name: `${firstName} ${lastName}`.trim(),
+        photoURL: photoURL || undefined,
         metadata: {
           ...user.metadata,
           phone: whatsapp,
           instagram: instagram
         }
       } as UserProfile);
-    } catch {
-      setSaveError('Não foi possível salvar seus dados. Verifique a conexão e tente novamente.');
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : 'Não foi possível salvar seus dados. Verifique a conexão e tente novamente.');
     } finally {
+      saveLock.current = false;
       setIsSaving(false);
     }
   };
@@ -66,6 +86,16 @@ export default function PersonalDataForm({ user, onSave, onClose }: PersonalData
       {/* Form Container */}
       <div className="bg-white flex-1 rounded-t-xl px-4 pt-6 pb-20 shadow-[0_-8px_20px_rgba(0,0,0,0.1)] overflow-y-auto">
         <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
+          <div className="flex items-center gap-4 rounded-xl bg-slate-50 p-4">
+            {(photoPreview || resolvedPhoto) && <img src={photoPreview || resolvedPhoto} alt="Sua foto de perfil" className="w-16 h-16 rounded-full object-cover" />}
+            <label className="text-sm font-semibold text-blue-700 cursor-pointer">Alterar foto
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={isSaving} className="block mt-2 text-xs max-w-[210px]" onChange={event => {
+                const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) { setSaveError('Escolha uma imagem JPG, PNG ou WebP de até 20 MB.'); return; }
+                setSaveError(''); setPhotoFile(file);
+              }} />
+            </label>
+          </div>
           
           {/* Nome */}
           <div className="space-y-1.5">

@@ -21,7 +21,8 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function harness({ save = async () => {}, remove = async () => {}, events = [] } = {}) {
+const settle = () => new Promise(resolve => setImmediate(resolve));
+function harness({ save = async () => {}, remove = async () => {}, events = [], fetch = async () => events } = {}) {
   const state = [], effects = [], calls = { saves: [], deletes: [] };
   let cursor = 0, firstRender = true, sequence = 0;
   const react = {
@@ -36,16 +37,19 @@ function harness({ save = async () => {}, remove = async () => {}, events = [] }
       return state[index];
     },
     useEffect(effect) { if (firstRender) effects.push(effect); },
+    useCallback: fn => fn,
   };
   const storage = {
-    getAgendaEvents: () => events,
+    getAgendaEvents: () => [],
+    fetchAgendaEvents: fetch,
+    fetchUsersList: async () => [],
     getUsersList: () => [],
     async saveAgendaEvent(event) { calls.saves.push(event); await save(event); },
     async deleteAgendaEvent(id) { calls.deletes.push(id); await remove(id); },
   };
   const jsx = (type, props) => ({ type, props });
   const context = {
-    exports: {},
+    exports: {}, Error,
     require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
@@ -55,7 +59,8 @@ function harness({ save = async () => {}, remove = async () => {}, events = [] }
       throw new Error('Unexpected dependency: ' + name);
     },
     crypto: { randomUUID: () => `event-${++sequence}` },
-    window: { confirm: () => true },
+    window: { confirm: () => true, addEventListener() {}, removeEventListener() {}, setInterval: () => 0, clearInterval() {} },
+    document: { visibilityState: 'visible' },
   };
   vm.runInNewContext(compiled, context, { filename: 'AdminAgenda.js' });
   const render = () => {
@@ -80,6 +85,7 @@ function harness({ save = async () => {}, remove = async () => {}, events = [] }
 test('agenda waits for saving and prevents duplicate requests while the form is busy', async () => {
   const pending = deferred();
   const app = harness({ save: () => pending.promise });
+  await settle();
   app.openNew();
   app.change(node => node.type === 'input' && node.props.placeholder, 'Avaliação');
   const saving = app.submit();
@@ -97,6 +103,7 @@ test('agenda waits for saving and prevents duplicate requests while the form is 
 test('failed saving retains the draft and reuses the same ID on retry', async () => {
   let attempts = 0;
   const app = harness({ save: async () => { if (++attempts === 1) throw new Error('offline'); } });
+  await settle();
   app.openNew();
   app.change(node => node.type === 'input' && node.props.placeholder, 'Treino mantido');
   await app.submit();
@@ -115,6 +122,7 @@ test('failed deletion keeps the event visible and only removes it after confirma
   const pending = deferred();
   let attempts = 0;
   const app = harness({ events: [event], remove: async () => { if (++attempts === 1) await pending.promise; } });
+  await settle();
   app.openEvent('Consulta');
   const deleting = app.remove();
   assert.ok(app.find(node => node.props.role === 'dialog'));
@@ -132,6 +140,7 @@ test('failed deletion keeps the event visible and only removes it after confirma
 
 test('agenda rejects a reversed time interval before sending data', async () => {
   const app = harness();
+  await settle();
   app.openNew();
   app.change(node => node.type === 'input' && node.props.placeholder, 'Horário inválido');
   app.change(node => node.type === 'input' && node.props.type === 'time' && node.props.value === '09:00', '07:00');
@@ -149,4 +158,18 @@ test('shared legacy table records cannot be edited or deleted through the appoin
   app.find(node => node.type === 'button' && text(node) === 'Mês').props.onClick();
   assert.doesNotMatch(text(app.render()), /Internal record/);
   assert.equal(app.calls.deletes.length, 0);
+});
+
+ test('agenda loads remote appointments and exposes refresh failures without erasing the list', async () => {
+  let fail = false;
+  const event = { id: 'remote', title: 'Agendamento remoto', date: require('date-fns').format(new Date(), 'yyyy-MM-dd'), startTime: '10:00', endTime: '11:00', type: 'online' };
+  const app = harness({ fetch: async () => { if (fail) throw new Error('Sem conexão'); return [event, { ...event, id: 'hidden', title: 'Mídia interna', type: 'media_storage' }]; } });
+  await settle();
+  assert.match(text(app.render()), /Agendamento remoto/);
+  assert.doesNotMatch(text(app.render()), /Mídia interna/);
+  fail = true;
+  await app.find(node => node.type === 'button' && text(node) === 'Atualizar agenda').props.onClick();
+  await settle();
+  assert.match(text(app.render()), /Sem conexão/);
+  assert.match(text(app.render()), /Agendamento remoto/);
 });

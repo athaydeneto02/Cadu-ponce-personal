@@ -1,5 +1,6 @@
 import { bearerToken, boundedText, createServerClient, enforceRateLimit, HttpError,
   jsonBody, postOnly, requireAdmin, safeError } from '../server/security.js';
+import { normalizeStudentPhone } from '../src/lib/studentContact.js';
 
 export function newUserInput(body: Record<string, unknown>) {
   const email = boundedText(body.email, 254, 'E-mail').toLowerCase();
@@ -12,7 +13,15 @@ export function newUserInput(body: Record<string, unknown>) {
   if (!['student', 'admin'].includes(role as string) || !['active', 'inactive'].includes(status as string)) {
     throw new HttpError(400, 'Perfil inválido.');
   }
-  const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {};
+  const rawMetadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata as Record<string, unknown> : {};
+  let phone = '';
+  try { phone = normalizeStudentPhone(typeof rawMetadata.phone === 'string' ? rawMetadata.phone : ''); }
+  catch { throw new HttpError(400, 'WhatsApp do aluno inválido.'); }
+  const birthDate = typeof rawMetadata.birthDate === 'string' ? rawMetadata.birthDate : '';
+  if (birthDate && (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || !Number.isFinite(Date.parse(birthDate)) || new Date(birthDate).toISOString().slice(0, 10) !== birthDate)) throw new HttpError(400, 'Data de nascimento inválida.');
+  const metadata = { phone, birthDate,
+    group: typeof rawMetadata.group === 'string' ? rawMetadata.group.slice(0, 120) : '',
+    gender: typeof rawMetadata.gender === 'string' ? rawMetadata.gender.slice(0, 80) : '' };
   const weight = body.weight == null ? null : Number(body.weight);
   const height = body.height == null ? null : Number(body.height);
   if ((weight !== null && (!Number.isFinite(weight) || weight < 0 || weight > 1000)) ||

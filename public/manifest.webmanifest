@@ -1,0 +1,12 @@
+{
+  "name": "Cadu Ponce Consultoria",
+  "short_name": "Cadu Ponce",
+  "description": "Treinos e acompanhamento com seu personal",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "pt-BR",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [{ "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }]
+}
