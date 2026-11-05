@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { AdminRoutine, AdminExercise, WorkoutLog } from '../types';
 import { storage } from '../lib/storage';
+import { useWorkoutFrequency } from '../lib/useWorkoutFrequency';
+import { localWorkoutDateKey } from '../lib/workoutFrequency';
 import { useMediaUrl, getCachedVideoBlobUrl } from '../lib/mediaDb';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { isImageMedia, youtubeVideoId } from '../lib/mediaPresentation';
@@ -405,6 +407,11 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   const [saveLogError, setSaveLogError] = useState('');
   const [saveLogStatus, setSaveLogStatus] = useState('');
   const sessionLogId = useRef(crypto.randomUUID());
+  const sessionStudentId = useRef(storage.getUser()?.uid);
+  const completedLog = useRef<WorkoutLog | null>(null);
+  const savingLog = useRef(false);
+  const completedDate = completedLog.current ? new Date(completedLog.current.completedAt) : new Date();
+  const frequency = useWorkoutFrequency(sessionStudentId.current, completedDate, screen, completedDate);
 
   // ── Video ─────────────────────────────────────────────────────────────────
   const [showVideo, setShowVideo] = useState(false);
@@ -419,7 +426,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   useEffect(() => {
     const refresh = () => {
       const saved = storage.getWorkoutLogs().find(log => log.id === sessionLogId.current);
-      if (saved?.syncStatus === 'synced') setSaveLogStatus('Treino salvo e sincronizado.');
+      if (saved?.studentId === sessionStudentId.current && saved?.syncStatus === 'synced') setSaveLogStatus('Treino salvo e sincronizado.');
     };
     window.addEventListener('cadu_data_synced', refresh);
     return () => window.removeEventListener('cadu_data_synced', refresh);
@@ -438,15 +445,17 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
       setEndTimestamp(end);
       setSessionActive(false);
       // Small delay so the last check animation is visible
-      setTimeout(() => setShowCompletionModal(true), 400);
+      const timeout = setTimeout(() => setShowCompletionModal(true), 400);
+      return () => clearTimeout(timeout);
     }
   }, [completedExs, total, screen]);
 
   useEffect(() => {
     if (screen === 'finish') {
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.5 } });
-      setTimeout(() => confetti({ particleCount: 50, angle: 60, spread: 50, origin: { x: 0 } }), 400);
-      setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 50, origin: { x: 1 } }), 700);
+      const left = setTimeout(() => confetti({ particleCount: 50, angle: 60, spread: 50, origin: { x: 0 } }), 400);
+      const right = setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 50, origin: { x: 1 } }), 700);
+      return () => { clearTimeout(left); clearTimeout(right); };
     }
   }, [screen]);
 
@@ -487,7 +496,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
   const saveLog = async () => {
       const user = storage.getUser();
-      if (!user?.uid) throw new Error('Entre na sua conta para salvar este treino.');
+      if (!user?.uid || user.uid !== sessionStudentId.current) throw new Error('Entre na mesma conta em que iniciou este treino para salvá-lo.');
 
       const rpeMap: Record<string, number> = {
         muito_facil: 2, facil: 4, adequado: 6, dificil: 8, muito_dificil: 10,
@@ -499,8 +508,8 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         studentName: user.name ?? undefined,
         routineId: routine.id,
         routineName: routine.name,
-        completedAt: new Date().toISOString(),
-        durationSeconds: sessionTime,
+        completedAt: completedLog.current?.completedAt || (endTimestamp || new Date()).toISOString(),
+        durationSeconds: completedLog.current?.durationSeconds ?? sessionTime,
         rpe: rpeMap[activityRating] ?? 0,
         comment: activityComment.trim() || undefined,
         exercisesSummary: exercises.map(ex => ({
@@ -511,31 +520,18 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         })),
       };
 
-      await storage.saveWorkoutLog(log);
-      const saved = storage.getWorkoutLogs().find(item => item.id === log.id);
-      setSaveLogStatus(saved?.syncStatus === 'pending'
+      completedLog.current = log;
+      const saved = await storage.saveWorkoutLog(log);
+      completedLog.current = saved;
+      setEndTimestamp(new Date(saved.completedAt));
+      setSaveLogStatus(saved.syncStatus === 'pending'
         ? 'Treino salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
         : 'Treino salvo e sincronizado.');
-
-      const studentPersonalPhone = (() => {
-        const p = user.metadata?.phone || '';
-        if (typeof p === 'string' && !p.includes('84639369')) return p;
-        return '';
-      })();
-
-      if (saved?.syncStatus !== 'pending') void storage.notifyTrainerWorkoutCompleted({
-        logId: log.id,
-        studentName: user.name || log.studentName || 'Aluno',
-        studentId: user.uid || log.studentId || 'unknown',
-        studentPhone: studentPersonalPhone,
-        routineName: routine.name,
-        durationFormatted: fmtDuration(sessionTime),
-        durationSeconds: sessionTime,
-      }).catch(() => setSaveLogStatus('Treino salvo. Não foi possível enviar o aviso ao treinador.'));
   };
 
   const handleConcluir = async () => {
-    if (isSavingLog) return;
+    if (savingLog.current || total === 0 || !exercises.every(ex => completedExs.has(ex.id))) return;
+    savingLog.current = true;
     setIsSavingLog(true);
     setSaveLogError('');
     try {
@@ -545,6 +541,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     } catch (error) {
       setSaveLogError(error instanceof Error ? error.message : 'Não foi possível salvar o treino. Tente novamente.');
     } finally {
+      savingLog.current = false;
       setIsSavingLog(false);
     }
   };
@@ -884,7 +881,6 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
             </div>
             <div className="relative p-1">
               <Clock className="w-6 h-6 text-white" />
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center border-2 border-[#1565C0]">2</span>
             </div>
           </div>
         </div>
@@ -997,8 +993,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
   // FINISH SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
   if (screen === 'finish') {
-    const today = new Date();
-    const todayIdx = jsDayToIdx(today.getDay());
+    const today = completedDate;
     const start = startTimestamp ?? new Date(today.getTime() - sessionTime * 1000);
     const end = endTimestamp ?? today;
 
@@ -1014,37 +1009,8 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     const firstDayJs = new Date(currentYear, currentMonth, 1).getDay();
     const startOffset = jsDayToIdx(firstDayJs); // 0=Segunda ... 6=Domingo
 
-    // Get real trained days from workout logs + today
-    let logs: any[] = [];
-    try {
-      const rawLogs = storage.getWorkoutLogs();
-      if (Array.isArray(rawLogs)) logs = rawLogs;
-    } catch {}
-
-    const trainedDaysMonth = new Set<number>();
-    trainedDaysMonth.add(today.getDate());
-
-    const trainedWeekdays = new Set<number>();
-    trainedWeekdays.add(todayIdx);
-
-    // Compute start of current week (Monday)
-    const mondayDate = new Date(today);
-    mondayDate.setDate(today.getDate() - todayIdx);
-    mondayDate.setHours(0, 0, 0, 0);
-
-    logs.forEach(l => {
-      if (!l || !l.completedAt) return;
-      try {
-        const d = new Date(l.completedAt);
-        if (isNaN(d.getTime())) return;
-        if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
-          trainedDaysMonth.add(d.getDate());
-        }
-        if (d >= mondayDate && d <= today) {
-          trainedWeekdays.add(jsDayToIdx(d.getDay()));
-        }
-      } catch {}
-    });
+    const trainedDaysMonth = frequency.monthCompletedDays;
+    const trainedWeekdays = new Set(frequency.weekCompletedDays.flatMap((done, index) => done ? [index] : []));
 
     const daysCountMonth = trainedDaysMonth.size;
     const daysCountWeek = trainedWeekdays.size;
@@ -1063,7 +1029,6 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
             </div>
             <div className="relative p-1">
               <Clock className="w-6 h-6 text-white" />
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center border-2 border-[#1565C0]">2</span>
             </div>
           </div>
         </div>
@@ -1075,6 +1040,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
             <h1 className="text-white text-3xl font-black italic">Parabéns!</h1>
             <p className="text-white/70 text-base mt-1">Você concluiu o seu treino!</p>
             {saveLogStatus && <p role="status" className="text-amber-200 text-sm mt-3 px-4">{saveLogStatus}</p>}
+            {frequency.error && <p role="status" className="text-amber-200 text-xs mt-2 px-4">{frequency.error}</p>}
           </div>
 
           {/* Swipeable cards carousel */}
@@ -1144,9 +1110,9 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                     const isTrained = trainedWeekdays.has(idx);
                     return (
                       <div key={idx} className="flex flex-col items-center gap-1.5">
-                        <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
+                        <div aria-label={`${localWorkoutDateKey(frequency.weekDates[idx])}: ${isTrained ? 'treino concluído' : 'sem treino registrado'}`} className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
                           isTrained
-                            ? 'bg-[#1976D2] border-[#1976D2] text-white shadow-sm'
+                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
                             : 'border-[#1976D2] bg-white'
                         }`}>
                           {isTrained && <Check className="w-4 h-4 stroke-[3]" />}
@@ -1159,7 +1125,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
                 <p className="text-slate-800 text-sm font-semibold">
                   Você treinou{' '}
-                  <span className="text-[#1976D2] font-black">{daysCountWeek} {daysCountWeek === 1 ? 'dia' : 'dias'}</span>
+                  <span className="text-emerald-700 font-black">{daysCountWeek} {daysCountWeek === 1 ? 'dia' : 'dias'}</span>
                   {' '}essa semana
                 </p>
               </div>
@@ -1203,12 +1169,13 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
                     const isTrained = trainedDaysMonth.has(dayNum);
                     return (
                       <div key={dayNum} className="flex items-center justify-center">
-                        <div className={`w-7 h-7 rounded-full text-[11px] flex items-center justify-center transition-all ${
+                        <div aria-label={`${localWorkoutDateKey(new Date(currentYear, currentMonth, dayNum))}: ${isTrained ? 'treino concluído' : 'sem treino registrado'}`} className={`relative w-7 h-7 rounded-full text-[11px] flex items-center justify-center transition-all ${
                           isTrained
-                            ? 'bg-[#1976D2] text-white font-black shadow-sm'
+                            ? 'bg-emerald-600 text-white font-black shadow-sm'
                             : 'bg-slate-100 text-slate-600 font-medium'
                         }`}>
                           {dayNum}
+                          {isTrained && <Check aria-hidden="true" className="absolute -right-1 -bottom-1 w-3 h-3 bg-white text-emerald-700 rounded-full" />}
                         </div>
                       </div>
                     );
@@ -1217,7 +1184,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
 
                 <p className="text-slate-800 text-sm font-semibold mt-4 text-center">
                   Você treinou{' '}
-                  <span className="text-[#1976D2] font-black">{daysCountMonth} {daysCountMonth === 1 ? 'dia' : 'dias'}</span>
+                  <span className="text-emerald-700 font-black">{daysCountMonth} {daysCountMonth === 1 ? 'dia' : 'dias'}</span>
                   {' '}esse mês
                 </p>
               </div>
@@ -1379,7 +1346,6 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
           </div>
           <div className="relative p-1">
             <Clock className="w-6 h-6 text-white" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center border-2 border-[#1c2b3e]">2</span>
           </div>
         </div>
 
@@ -1553,6 +1519,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
               {/* Checkbox circle */}
               <button
                 type="button"
+                aria-label={`${done ? 'Desmarcar' : 'Concluir'} exercício ${ex.name}`}
                 onClick={() => toggleExercise(ex.id)}
                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-all cursor-pointer ${
                   done
@@ -1676,6 +1643,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
               <div className="space-y-1.5">
                 <label className="text-slate-700 text-sm font-semibold">O que você achou dessa atividade?</label>
                 <select
+                  disabled={isSavingLog}
                   value={activityRating}
                   onChange={e => setActivityRating(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-700 focus:outline-none focus:border-[#1976D2] bg-white cursor-pointer"
@@ -1693,6 +1661,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
               <div className="space-y-1.5">
                 <label className="text-slate-700 text-sm font-semibold">Deixe seu comentário aqui</label>
                 <textarea
+                  disabled={isSavingLog}
                   value={activityComment}
                   onChange={e => setActivityComment(e.target.value)}
                   placeholder="Seu comentário aqui"

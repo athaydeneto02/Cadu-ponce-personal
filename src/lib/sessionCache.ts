@@ -15,7 +15,7 @@ function hasLocalChanges(value: unknown): boolean {
   if (typeof value === 'string') return /^(idb:|blob:)/.test(value);
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
-  return record.syncStatus === 'pending' || !!record.localFileKey || Object.values(record).some(hasLocalChanges);
+  return record.syncStatus === 'pending' || record.notificationStatus === 'pending' || !!record.localFileKey || Object.values(record).some(hasLocalChanges);
 }
 
 function hasInlineMedia(value: unknown): boolean {

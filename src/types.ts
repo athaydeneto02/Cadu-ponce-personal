@@ -146,6 +146,7 @@ export interface WorkoutLog {
   comment?: string;
   syncStatus?: 'pending' | 'synced';
   syncError?: string;
+  notificationStatus?: 'pending' | 'sent';
 }
 
 export interface FinancialInvoice {

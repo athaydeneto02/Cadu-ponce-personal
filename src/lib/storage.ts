@@ -13,6 +13,7 @@ import { Workout, ProgressEntry, EvolutionPhoto, UserProfile, AdminRoutine, Admi
 import { storeLocalFile, compressImage, resolveMediaUrl, getLocalBlob, toStorageReference, clearMediaCache, normalizeStoredMediaReference } from './mediaDb';
 import { LibraryExercise, readLibraryCache, storeLibrarySnapshot, markLibraryExerciseDeleted, hasExerciseChanges } from './exerciseLibrary';
 import { sessionCache as cacheStorage, cacheForUser, getCacheUser, setCacheUser, readCached } from './sessionCache';
+import type { TrainerNotification } from './trainerNotifications';
 
 // Best effort only for snapshots already confirmed by the server. Local-only
 // drafts and outboxes must use the durable cache.setItem API instead.
@@ -20,16 +21,76 @@ export function safeSetItem(key: string, value: string, cache = cacheStorage): b
   return cache.setRemoteItem(key, value);
 }
 
-function persistOutbox<T extends { syncStatus?: string; localFileKey?: string; photoURL?: string }>(
+function persistOutbox<T extends { syncStatus?: string; notificationStatus?: string; localFileKey?: string; photoURL?: string }>(
   cache: ReturnType<typeof cacheForUser>, key: string, entries: T[],
 ): void {
   try { cache.setItem(key, JSON.stringify(entries)); }
   catch {
     // Confirmed history can be fetched again. Pending/legacy records and their
     // IndexedDB references must all survive; failure of this write is fatal.
-    const pending = entries.filter(entry => entry.syncStatus !== 'synced' || entry.localFileKey || /^(idb:|blob:)/.test(entry.photoURL ?? ''));
+    const pending = entries.filter(entry => entry.syncStatus !== 'synced' || entry.notificationStatus === 'pending' || entry.localFileKey || /^(idb:|blob:)/.test(entry.photoURL ?? ''));
     cache.setItem(key, JSON.stringify(pending));
   }
+}
+
+type LogRange = { from?: string; to?: string; allowCached?: boolean };
+function inLogRange(log: WorkoutLog, range: LogRange): boolean {
+  const date = Date.parse(log.completedAt);
+  return Number.isFinite(date) && (!range.from || date >= Date.parse(range.from)) && (!range.to || date < Date.parse(range.to));
+}
+
+async function queryWorkoutLogs(studentId?: string, range: LogRange = {}): Promise<WorkoutLog[]> {
+  const pageSize = 500;
+  const logs: WorkoutLog[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase.from('workout_logs').select('*').order('completed_at', { ascending: false }).order('id', { ascending: false });
+    if (studentId) query = query.eq('student_id', studentId);
+    if (range.from) query = query.gte('completed_at', range.from);
+    if (range.to) query = query.lt('completed_at', range.to);
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    if (!data) throw new Error('Não foi possível carregar o histórico de treinos.');
+    logs.push(...data.map(row => ({
+      id: row.id, studentId: row.student_id, studentName: row.student_name ?? undefined,
+      routineId: row.routine_id, routineName: row.routine_name, completedAt: row.completed_at,
+      durationSeconds: row.duration_seconds, rpe: row.rpe, exercisesSummary: row.exercises_summary ?? [],
+      comment: row.comment ?? undefined, syncStatus: 'synced' as const,
+    })));
+    if (data.length < pageSize) return logs;
+  }
+}
+
+function emitWorkoutChange(log: WorkoutLog, actor: string): void {
+  if (typeof window !== 'undefined' && actor === getCacheUser()) {
+    window.dispatchEvent(new CustomEvent('cadu_workout_completed', { detail: { studentId: log.studentId, logId: log.id, syncStatus: log.syncStatus } }));
+  }
+}
+
+const completionPushRequests = new Map<string, Promise<boolean>>();
+/** The database already created the in-app notice; this requests optional device delivery. */
+function requestCompletionPush(logId: string, actor: string): Promise<boolean> {
+  const requestKey = `${actor}:${logId}`;
+  const running = completionPushRequests.get(requestKey);
+  if (running) return running;
+  const request = (async () => {
+    try {
+      if (actor !== getCacheUser() || (typeof navigator !== 'undefined' && !navigator.onLine)) return false;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || session.user.id !== actor || actor !== getCacheUser()) return false;
+      const response = await fetch('/api/workout-completed', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ logId }), signal: AbortSignal.timeout(25_000),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.pending !== false || !['sentCount', 'failedCount', 'skippedCount'].every(key => Number.isFinite(result[key]))) return false;
+      const cache = cacheForUser(actor);
+      const logs = cache.readJson<WorkoutLog[]>('cadu_workout_logs', []);
+      cache.setRemoteItem('cadu_workout_logs', JSON.stringify(logs.map(log => log.id === logId ? { ...log, notificationStatus: 'sent' } : log)), { preserveLocal: true });
+      return true;
+    } catch { return false; }
+  })().finally(() => completionPushRequests.delete(requestKey));
+  completionPushRequests.set(requestKey, request);
+  return request;
 }
 
 async function changeNamedValue(table: 'muscle_groups' | 'exercise_categories', name: string, remove: boolean): Promise<string[]> {
@@ -893,25 +954,28 @@ export const storage = {
   /** @deprecated no-op shim */
   fetchAdminData: async (): Promise<null> => null,
 
-  // ── Workout Logs ──────────────────────────────────────────────────────────
-  // Stores completed session history for each student.
+  // ── Workout completion and administrator notifications ──────────────────
 
   WORKOUT_LOGS_KEY: 'cadu_workout_logs',
 
-  /** Keep an outbox until the database confirms the write. */
-  saveWorkoutLog: async (log: WorkoutLog): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
+  /** A durable completion marks the local day; the database creates notices atomically. */
+  saveWorkoutLog: async (log: WorkoutLog): Promise<WorkoutLog> => {
     const actor = getCacheUser();
     if (!actor) throw new Error('Entre na sua conta para registrar o treino.');
     const cache = cacheForUser(actor);
-    let entry: WorkoutLog = { ...log, syncStatus: 'pending', syncError: undefined };
+    const previous = cache.readJson<WorkoutLog[]>('cadu_workout_logs', []).find(item => item.id === log.id);
+    let entry: WorkoutLog = { ...log, syncStatus: 'pending', syncError: undefined,
+      notificationStatus: previous?.notificationStatus === 'sent' ? 'sent' : 'pending' };
     const saveCache = () => {
-      const all = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
-      if (entry.syncStatus === 'pending') persistOutbox(cache, 'cadu_workout_logs', [entry, ...all.filter(item => item.id !== entry.id)]);
-      else cache.setRemoteItem('cadu_workout_logs', JSON.stringify([entry, ...all.filter(item => item.id !== entry.id)]));
+      const all = cache.readJson<WorkoutLog[]>('cadu_workout_logs', []);
+      const merged = [entry, ...all.filter(item => item.id !== entry.id)];
+      if (entry.syncStatus === 'pending') persistOutbox(cache, 'cadu_workout_logs', merged);
+      else cache.setRemoteItem('cadu_workout_logs', JSON.stringify(merged), { preserveLocal: true });
     };
     saveCache();
+    emitWorkoutChange(entry, actor);
     try {
+      if (actor !== getCacheUser()) throw new Error('A sessão mudou.');
       if (typeof navigator !== 'undefined' && !navigator.onLine) throw new Error('Sem conexão. Treino salvo neste dispositivo.');
       const { error } = await supabase.from('workout_logs').upsert({
         id: log.id, student_id: log.studentId, student_name: log.studentName ?? null,
@@ -925,193 +989,121 @@ export const storage = {
       entry = { ...entry, syncError: error instanceof Error ? error.message : 'Sincronização pendente. Tentaremos novamente ao conectar.' };
     }
     saveCache();
+    emitWorkoutChange(entry, actor);
+    if (entry.syncStatus === 'synced') {
+      if (typeof window !== 'undefined' && actor === getCacheUser()) window.dispatchEvent(new Event('cadu_data_synced'));
+      if (entry.notificationStatus !== 'sent') void requestCompletionPush(log.id, actor);
+    }
+    return entry;
   },
 
   getWorkoutLogs: (): WorkoutLog[] => readCached<WorkoutLog[]>('cadu_workout_logs', []),
 
-  fetchWorkoutLogs: async (studentId: string): Promise<WorkoutLog[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
+  fetchWorkoutLogs: async (studentId: string, range: LogRange = {}): Promise<WorkoutLog[]> => {
     const actor = getCacheUser();
     const cache = cacheForUser(actor);
-    const cached = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
-    const { data, error } = await supabase.from('workout_logs').select('*').eq('student_id', studentId).order('completed_at', { ascending: false }).limit(100);
-    if (error || !data) return cached.filter(log => log.studentId === studentId);
-    const logs: WorkoutLog[] = data.map(row => ({
-      id: row.id, studentId: row.student_id, studentName: row.student_name ?? undefined,
-      routineId: row.routine_id, routineName: row.routine_name, completedAt: row.completed_at,
-      durationSeconds: row.duration_seconds, rpe: row.rpe, exercisesSummary: row.exercises_summary ?? [],
-      comment: row.comment ?? undefined, syncStatus: 'synced',
-    }));
-    const latest = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor);
-    const pending = latest.filter(log => log.studentId === studentId && log.syncStatus === 'pending');
+    const startingValues = new Map(cache.readJson<WorkoutLog[]>('cadu_workout_logs', []).map(log => [log.id, JSON.stringify(log)]));
+    let remote: WorkoutLog[];
+    try { remote = await queryWorkoutLogs(studentId, range); }
+    catch (error) {
+      if (range.allowCached === false) throw error;
+      return cache.readJson<WorkoutLog[]>('cadu_workout_logs', []).filter(log => log.studentId === studentId && inLogRange(log, range));
+    }
+    // Read after the request so a newly completed offline session cannot be lost.
+    const latest = cache.readJson<WorkoutLog[]>('cadu_workout_logs', []);
+    const pending = latest.filter(log => log.studentId === studentId && inLogRange(log, range) &&
+      (log.syncStatus === 'pending' || startingValues.get(log.id) !== JSON.stringify(log)));
     const pendingIds = new Set(pending.map(log => log.id));
+    const logs = remote.map(log => ({ ...log, notificationStatus: latest.find(item => item.id === log.id)?.notificationStatus ?? 'sent' as const }));
     const merged = [...pending, ...logs.filter(log => !pendingIds.has(log.id))];
-    cache.setRemoteItem('cadu_workout_logs', JSON.stringify([...latest.filter(log => log.studentId !== studentId), ...merged]));
+    const mergedIds = new Set(merged.map(log => log.id));
+    const others = latest.filter(log => !mergedIds.has(log.id) && (log.studentId !== studentId || !inLogRange(log, range)));
+    cache.setRemoteItem('cadu_workout_logs', JSON.stringify([...others, ...merged]), { preserveLocal: true });
     return merged;
   },
 
+  /** Administrator reporting uses actual server rows, never a successful-looking fallback. */
+  fetchWorkoutLogsRange: async (from: string, to: string): Promise<WorkoutLog[]> => {
+    if (!Number.isFinite(Date.parse(from)) || !Number.isFinite(Date.parse(to)) || Date.parse(from) >= Date.parse(to)) {
+      throw new Error('Período de frequência inválido.');
+    }
+    return queryWorkoutLogs(undefined, { from, to });
+  },
+
   syncPendingData: async (userId: string): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
     if (userId !== getCacheUser()) return;
     const profile = storage.getUser();
     const canSync = (studentId: string) => studentId === userId || profile?.role === 'admin';
     for (const log of storage.getWorkoutLogs().filter(log => log.syncStatus === 'pending' && canSync(log.studentId))) {
       if (userId !== getCacheUser()) return;
       await storage.saveWorkoutLog(log);
-      if (storage.getWorkoutLogs().find(item => item.id === log.id)?.syncStatus === 'synced') {
-        await storage.notifyTrainerWorkoutCompleted({
-          logId: log.id, studentId: log.studentId, studentName: log.studentName || 'Aluno',
-          routineName: log.routineName, durationSeconds: log.durationSeconds,
-          durationFormatted: `${Math.floor(log.durationSeconds / 60)} min`,
-        });
-      }
     }
     for (const photo of storage.getPhotos().filter(photo => (photo.syncStatus === 'pending' || photo.photoURL.startsWith('idb:')) && canSync(photo.studentId))) {
       if (userId !== getCacheUser()) return;
-      try { await storage.savePhoto(photo); } catch { /* keep file and pending record for recovery */ }
+      try { await storage.savePhoto(photo); } catch { /* Keep the durable file and pending record. */ }
+    }
+    // Failed device delivery is independent of the already persisted in-app notice.
+    const notifications = storage.getWorkoutLogs().filter(log => log.syncStatus === 'synced' && log.notificationStatus === 'pending' && canSync(log.studentId));
+    for (const log of notifications.slice(0, 10)) {
+      if (userId !== getCacheUser()) return;
+      await requestCompletionPush(log.id, userId);
     }
     if (typeof window !== 'undefined' && userId === getCacheUser()) window.dispatchEvent(new Event('cadu_data_synced'));
   },
 
-  /**
-   * Envia uma notificação em tempo real para a nuvem do Supabase avisando que um aluno concluiu o treino.
-   * O celular do personal recebe essa notificação instantaneamente!
-   */
+  /** Compatibility wrapper: recipients and message are always derived on the server. */
   notifyTrainerWorkoutCompleted: async (details: {
-    studentName: string;
-    studentId: string;
-    studentPhone?: string;
-    routineName: string;
-    durationFormatted: string;
-    durationSeconds: number;
-    logId?: string;
+    logId?: string; studentId: string; studentName: string; studentPhone?: string;
+    routineName: string; durationFormatted: string; durationSeconds: number;
   }): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
-    // Gera UUID v4 válido compatível com a coluna UUID NOT NULL do Supabase
-    const notifUuid = details.logId || crypto.randomUUID();
-
-    const notifPayload: Record<string, unknown> = {
-      id: notifUuid,
-      studentName: details.studentName,
-      studentId: details.studentId,
-      studentPhone: details.studentPhone || '',
-      workoutTitle: details.routineName,
-      duration: details.durationFormatted,
-      durationSeconds: details.durationSeconds,
-      timestamp: timeStr,
-      fullDate: now.toISOString(),
-      isRead: false,
-      type: 'completion',
-      detailMessage: `${details.studentName} finalizou "${details.routineName}" em ${details.durationFormatted}.`
-    };
-
-    // 1. Salva no Supabase agenda_events com UUID válido
-    try {
-      const { error } = await supabase.from('agenda_events').upsert({
-        id: notifUuid,
-        student_id: details.studentId,
-        student_name: details.studentName,
-        title: `${details.studentName} concluiu "${details.routineName}"`,
-        date: dateStr,
-        start_time: timeStr,
-        end_time: timeStr,
-        type: 'trainer_notification',
-        notes: JSON.stringify(notifPayload)
-      }, { onConflict: 'id', ignoreDuplicates: true });
-
-      if (error) {
-        console.warn('Erro ao salvar notificação do treino no Supabase:', error.message, error.code);
-        return;
-      }
-    } catch (err) {
-      console.warn('Erro ao salvar notificação do treino no Supabase:', err);
-      return;
-    }
-
-    // 2. Salva no cache local para atualização imediata (mesmo aparelho)
-    try {
-      if (!notifPayload.id) notifPayload.id = `local_${Date.now()}`;
-      const existing = JSON.parse(cacheStorage.getItem('cadu_notifs_admin') ?? '[]');
-      cacheStorage.setRemoteItem('cadu_notifs_admin', JSON.stringify([notifPayload, ...existing.filter((item: any) => item.id !== notifUuid)]));
-      window.dispatchEvent(new CustomEvent('cadu_new_notification', { detail: notifPayload }));
-    } catch {}
+    const actor = getCacheUser();
+    if (!actor || !details.logId) throw new Error('Conclua e salve o treino antes de enviar o aviso.');
+    const log = readCached<WorkoutLog[]>('cadu_workout_logs', [], actor).find(item => item.id === details.logId);
+    if (!log || log.syncStatus !== 'synced') throw new Error('O treino ainda aguarda sincronização.');
+    if (!await requestCompletionPush(log.id, actor)) throw new Error('O treino foi salvo; o aviso no dispositivo será tentado novamente.');
   },
 
-  /**
-   * Busca todas as notificações de treinos concluídos pelos alunos diretamente do Supabase.
-   */
-  fetchTrainerNotifications: async (): Promise<any[]> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    // Limpa o cache antigo que pode ter dados falsos
-    cacheStorage.removeItem('cadu_notifs_admin');
-
-    try {
-      const { data, error } = await supabase
-        .from('agenda_events')
-        .select('*')
-        .eq('type', 'trainer_notification')
-        .order('created_at', { ascending: false })
-        .limit(40);
-
-      // Se Supabase respondeu (com ou sem registros), usamos só ele — sem fallback
-      if (!error) {
-        if (!data || data.length === 0) return [];
-
-        return data.map(row => {
-          try {
-            const n = JSON.parse(row.notes || '{}');
-            return {
-              id: row.id,
-              studentName: row.student_name || n.studentName || 'Aluno',
-              studentId: row.student_id || n.studentId || '',
-              studentPhone: n.studentPhone || '',
-              workoutTitle: n.workoutTitle || row.title,
-              duration: n.duration || '',
-              timestamp: n.timestamp || new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-              fullDate: n.fullDate || row.created_at,
-              isRead: n.isRead ?? false,
-              type: 'completion',
-              detailMessage: n.detailMessage || `${row.student_name} concluiu o treino!`
-            };
-          } catch {
-            return {
-              id: row.id,
-              studentName: row.student_name || 'Aluno',
-              workoutTitle: row.title,
-              duration: '',
-              timestamp: new Date(row.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-              isRead: false,
-              type: 'completion',
-              detailMessage: row.title
-            };
-          }
-        });
-      }
-
-      console.warn('Supabase retornou erro ao buscar notificações:', error?.message);
-      return [];
-    } catch (err) {
-      // Só chega aqui se não houver conexão com a internet
-      console.warn('Sem conexão ao buscar notificações:', err);
-      return [];
+  fetchTrainerNotifications: async (): Promise<TrainerNotification[]> => {
+    const actor = getCacheUser();
+    if (!actor) throw new Error('Entre novamente para consultar as notificações.');
+    const { data: recent, error } = await supabase.from('workout_completion_notifications').select('*')
+      .eq('recipient_id', actor).order('created_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    if (!recent) throw new Error('Não foi possível carregar as notificações.');
+    // Include every unread notice even when it is older than the recent history window.
+    const rows = new Map(recent.map(row => [row.id, row]));
+    for (let offset = 0; ; offset += 500) {
+      const { data: unread, error: unreadError } = await supabase.from('workout_completion_notifications').select('*')
+        .eq('recipient_id', actor).is('read_at', null).order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 499);
+      if (unreadError) throw unreadError;
+      if (!unread) throw new Error('Não foi possível carregar as notificações pendentes.');
+      unread.forEach(row => rows.set(row.id, row));
+      if (unread.length < 500) break;
     }
+    const notifications: TrainerNotification[] = [...rows.values()].map(row => {
+      const completedAt = row.completed_at || row.created_at;
+      const duration = `${Math.floor((Number(row.duration_seconds) || 0) / 60)} min`;
+      return { id: row.id, logId: row.workout_log_id, studentId: row.student_id,
+        studentName: row.student_name || 'Aluno', workoutTitle: row.routine_name || 'Treino', duration,
+        timestamp: new Date(completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        fullDate: row.created_at, completedAt, isRead: !!row.read_at, type: 'completion' as const,
+        detailMessage: `${row.student_name || 'Aluno'} concluiu "${row.routine_name || 'Treino'}". Duração: ${duration}.` };
+    }).sort((a, b) => Date.parse(b.fullDate) - Date.parse(a.fullDate));
+    cacheForUser(actor).setRemoteItem('cadu_notifs_admin', JSON.stringify(notifications));
+    return notifications;
   },
 
-  /** Marca notificação como lida no Supabase */
-  markTrainerNotificationRead: async (notifId: string): Promise<void> => {
-    const cacheStorage = cacheForUser(getCacheUser());
-    try {
-      const { data } = await supabase.from('agenda_events').select('notes').eq('id', notifId).single();
-      if (data?.notes) {
-        const parsed = JSON.parse(data.notes);
-        parsed.isRead = true;
-        await supabase.from('agenda_events').update({ notes: JSON.stringify(parsed) }).eq('id', notifId);
-      }
-    } catch {}
+  markTrainerNotificationRead: async (id: string): Promise<void> => {
+    const actor = getCacheUser();
+    if (!actor) throw new Error('Entre novamente para atualizar a notificação.');
+    const { data, error } = await supabase.from('workout_completion_notifications')
+      .update({ read_at: new Date().toISOString() }).eq('id', id).eq('recipient_id', actor).select('id').single();
+    if (error) throw error;
+    if (!data?.id) throw new Error('A notificação não foi encontrada para esta conta.');
+    const cache = cacheForUser(actor);
+    const items = cache.readJson<TrainerNotification[]>('cadu_notifs_admin', []);
+    cache.setRemoteItem('cadu_notifs_admin', JSON.stringify(items.map(item => item.id === id ? { ...item, isRead: true } : item)));
+    if (actor === getCacheUser() && typeof window !== 'undefined') window.dispatchEvent(new Event('cadu_notifications_changed'));
   },
 
   // ── Financial / Pendências & Faturas 100% Manuais e Editáveis ───────────────

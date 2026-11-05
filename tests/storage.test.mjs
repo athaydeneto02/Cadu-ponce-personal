@@ -47,11 +47,12 @@ function deferred() {
   return { promise, resolve };
 }
 
-function setup({ query = async () => ({ data: [], error: null }), local = localStorageFake(), mediaUpload = async () => ({ error: null }), auth = {} } = {}) {
+function setup({ query = async () => ({ data: [], error: null }), local = localStorageFake(), mediaUpload = async () => ({ error: null }), auth = {}, push = async () => ({ pending: false, sentCount: 1, failedCount: 0, skippedCount: 0 }) } = {}) {
   const calls = [];
+  const events = [], pushes = [];
   const blobs = new Map();
   const supabase = {
-    auth: { getSession: async () => ({ data: { session: { access_token: 'fake-test-token' } } }), ...auth },
+    auth: { getSession: async () => ({ data: { session: { access_token: 'fake-test-token', user: { id: 'student-a' } } } }), ...auth },
     storage: { from: bucket => ({ upload: async (path, blob) => { calls.push({ bucket, path, upload: true }); return mediaUpload(path, blob); } }) },
     rpc: async (name, args) => { const call = { table: name, operation: 'rpc', values: args, filters: [] }; calls.push(call); return query(call); },
     from(table) {
@@ -64,6 +65,10 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
         delete() { call.operation = 'delete'; return this; },
         eq(column, value) { call.filters.push(['eq', column, value]); return this; },
         neq(column, value) { call.filters.push(['neq', column, value]); return this; },
+        is(column, value) { call.filters.push(['is', column, value]); return this; },
+        gte(column, value) { call.filters.push(['gte', column, value]); return this; },
+        lt(column, value) { call.filters.push(['lt', column, value]); return this; },
+        range(from, to) { call.range = [from, to]; return this; },
         in(column, value) { call.filters.push(['in', column, value]); return this; },
         order() { return this; }, limit() { return this; }, maybeSingle() { return this; }, single() { return this; },
         then(resolve, reject) { calls.push(call); return Promise.resolve(query(call)).then(resolve, reject); },
@@ -75,7 +80,8 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
   const context = {
     module, exports: module.exports, testSupabase: supabase, localStorage: local,
     testMedia: { storeLocalFile: async blob => { const key = `idb:${randomUUID()}`; blobs.set(key, blob); return key; }, getLocalBlob: async key => blobs.get(key) ?? null },
-    navigator: { onLine: true }, window: { dispatchEvent() {} }, Event, CustomEvent,
+    navigator: { onLine: true }, window: { dispatchEvent(event) { events.push(event); } }, Event, CustomEvent, AbortSignal,
+    fetch: async (url, options) => { pushes.push({ url, options }); return { ok: true, json: async () => push(url, options) }; },
     crypto: { randomUUID }, console: { warn() {}, error() {}, log() {} },
     Blob, File, URL, setTimeout, clearTimeout,
   };
@@ -83,11 +89,12 @@ function setup({ query = async () => ({ data: [], error: null }), local = localS
   const storage = module.exports.storage;
   storage.setSessionUser('student-a');
   storage.saveUser({ uid: 'student-a', name: 'Pessoa A', email: 'a@example.test', role: 'student', status: 'active', createdAt: '2026-11-05' });
-  return { storage, calls, local, context, blobs };
+  return { storage, calls, local, context, blobs, events, pushes };
 }
 
 const log = id => ({ id, studentId: 'student-a', studentName: 'Pessoa A', routineId: 'routine-a', routineName: 'Treino A', completedAt: '2026-11-05T12:00:00Z', durationSeconds: 300, rpe: 5, exercisesSummary: [], comment: 'Concluído com boa técnica.' });
 const photo = id => ({ id, studentId: 'student-a', photoURL: 'blob:temporary-preview', date: '2026-11-05' });
+const finishAsync = () => new Promise(resolve => setImmediate(resolve));
 
 function cloudDatabase() {
   const tables = new Map();
@@ -98,12 +105,112 @@ function cloudDatabase() {
       for (const row of Array.isArray(call.values) ? call.values : [call.values]) table.set(row.id ?? row.name, structuredClone(row));
     }
     const rows = [...table.values()].filter(row => call.filters.every(([op, column, value]) =>
-      op === 'in' ? value.includes(row[column]) : op === 'neq' ? row[column] !== value : row[column] === value));
+      op === 'in' ? value.includes(row[column]) : op === 'neq' ? row[column] !== value : op === 'gte' ? row[column] >= value : op === 'lt' ? row[column] < value : row[column] === value));
     if (call.operation === 'delete') for (const row of rows) table.delete(row.id ?? row.name);
-    return { data: structuredClone(rows), error: null };
+    return { data: structuredClone(call.range && call.operation === 'select' ? rows.slice(call.range[0], call.range[1] + 1) : rows), error: null };
   };
   return { tables, query };
 }
+
+test('completion marks the local day only after durable saving and delegates messages to the server', async () => {
+  const { storage, events, calls, pushes } = setup();
+  const saved = await storage.saveWorkoutLog(log('complete-day'));
+  await finishAsync();
+  assert.equal(saved.syncStatus, 'synced');
+  assert.deepEqual(events.filter(event => event.type === 'cadu_workout_completed').map(event => event.detail.syncStatus), ['pending', 'synced']);
+  assert.equal(calls.some(call => call.table === 'agenda_events'), false, 'client must not invent a completion notification');
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].url, '/api/workout-completed');
+  assert.deepEqual(JSON.parse(pushes[0].options.body), { logId: 'complete-day' });
+  assert.equal(storage.getWorkoutLogs()[0].notificationStatus, 'sent');
+});
+
+test('offline completion survives reload and sends the optional push only after synchronizing', async () => {
+  const first = setup();
+  first.context.navigator.onLine = false;
+  const saved = await first.storage.saveWorkoutLog(log('offline-day'));
+  assert.equal(saved.syncStatus, 'pending');
+  assert.equal(first.pushes.length, 0);
+  assert.equal(first.events[0].detail.logId, 'offline-day');
+  const reloaded = setup({ local: first.local });
+  await reloaded.storage.syncPendingData('student-a');
+  await finishAsync();
+  assert.equal(reloaded.storage.getWorkoutLogs()[0].syncStatus, 'synced');
+  assert.equal(reloaded.storage.getWorkoutLogs()[0].completedAt, log('offline-day').completedAt);
+  assert.equal(reloaded.pushes.length, 1);
+});
+
+test('optional push failure does not undo completion and is retried without resaving the workout', async () => {
+  let attempts = 0;
+  const { storage, calls, pushes } = setup({ push: async () => ({ pending: ++attempts === 1, sentCount: 0, failedCount: 1, skippedCount: 0 }) });
+  await storage.saveWorkoutLog(log('push-retry'));
+  await finishAsync();
+  assert.equal(storage.getWorkoutLogs()[0].syncStatus, 'synced');
+  assert.equal(storage.getWorkoutLogs()[0].notificationStatus, 'pending');
+  await storage.syncPendingData('student-a');
+  assert.equal(pushes.length, 2);
+  assert.equal(calls.filter(call => call.table === 'workout_logs' && call.operation === 'upsert').length, 1);
+  assert.equal(storage.getWorkoutLogs()[0].notificationStatus, 'sent');
+});
+
+test('a failed durable completion never emits a positive day', async () => {
+  const { storage, local, events } = setup();
+  local.denyWrites(true);
+  await assert.rejects(storage.saveWorkoutLog(log('not-saved')));
+  assert.equal(events.length, 0);
+});
+
+test('month history is paginated beyond 500 sessions and retains cached records outside the period', async () => {
+  const cloud = cloudDatabase();
+  const rows = new Map(Array.from({ length: 501 }, (_, index) => [`session-${index}`, {
+    id: `session-${index}`, student_id: 'student-a', completed_at: '2026-11-05T12:00:00Z',
+    routine_id: 'routine', routine_name: 'Treino', duration_seconds: 60, exercises_summary: [],
+  }]));
+  rows.set('last-month', { ...rows.get('session-0'), id: 'last-month', completed_at: '2026-10-15T12:00:00Z' });
+  cloud.tables.set('workout_logs', rows);
+  const { storage, calls } = setup({ query: cloud.query });
+  storage.setCacheItem('cadu_workout_logs', JSON.stringify([{ ...log('october-local'), completedAt: '2026-10-10T12:00:00Z', syncStatus: 'pending' }]));
+  const range = { from: '2026-11-01T03:00:00Z', to: '2026-12-01T03:00:00Z', allowCached: false };
+  const found = await storage.fetchWorkoutLogs('student-a', range);
+  assert.equal(found.length, 501);
+  assert.equal(calls.filter(call => call.table === 'workout_logs').length, 2);
+  assert.ok(storage.getWorkoutLogs().some(item => item.id === 'october-local'));
+  assert.equal(found.some(item => item.id === 'last-month'), false);
+});
+
+test('admin reporting surfaces server failures and validates its date range', async () => {
+  const { storage } = setup({ query: async () => ({ data: null, error: new Error('offline') }) });
+  await assert.rejects(storage.fetchWorkoutLogsRange('2026-11-01T03:00:00Z', '2026-12-01T03:00:00Z'), /offline/);
+  await assert.rejects(storage.fetchWorkoutLogsRange('invalid', 'invalid'), /Período/);
+});
+
+test('notification feed and read confirmation are scoped to the current recipient and errors are visible', async () => {
+  let fail = false;
+  const { storage, calls } = setup({ query: async call => fail ? { data: null, error: new Error('offline') }
+    : call.operation === 'update' ? { data: { id: 'notice' }, error: null }
+    : { data: [{ id: 'notice', workout_log_id: 'log', student_id: 'student', student_name: 'Aluno', routine_name: 'Treino A',
+      completed_at: '2026-11-05T23:00:00Z', created_at: '2026-11-05T23:00:00Z', duration_seconds: 120, read_at: null }], error: null } });
+  const feed = await storage.fetchTrainerNotifications();
+  assert.equal(feed[0].workoutTitle, 'Treino A');
+  assert.equal(feed[0].isRead, false);
+  assert.ok(calls[0].filters.some(([, column, value]) => column === 'recipient_id' && value === 'student-a'));
+  await storage.markTrainerNotificationRead('notice');
+  assert.deepEqual(Object.keys(calls.at(-1).values), ['read_at']);
+  fail = true;
+  await assert.rejects(storage.markTrainerNotificationRead('notice'), /offline/);
+  await assert.rejects(storage.fetchTrainerNotifications(), /offline/);
+});
+
+test('an older unread notification remains visible beyond the recent 100 notices', async () => {
+  const notice = id => ({ id, workout_log_id: id, student_id: 'student', student_name: 'Aluno', routine_name: 'Treino',
+    completed_at: '2026-11-05T12:00:00Z', created_at: '2026-11-05T12:00:00Z', read_at: '2026-11-05T12:01:00Z' });
+  const { storage } = setup({ query: async call => ({ error: null, data: call.filters.some(([op]) => op === 'is')
+    ? [{ ...notice('old-unread'), read_at: null, created_at: '2026-10-05T12:00:00Z' }]
+    : Array.from({ length: 100 }, (_, index) => notice(`read-${index}`)) }) });
+  const feed = await storage.fetchTrainerNotifications();
+  assert.equal(feed.length, 101);
+  assert.equal(feed.filter(item => !item.isRead)[0].id, 'old-unread');
+});
 
 test('a successful routine edit survives total cache failure and reloads from the cloud', async () => {
   const cloud = cloudDatabase();
@@ -417,6 +524,19 @@ test('a fetch in flight cannot overwrite a newly saved pending workout', async (
   gate.resolve({ data: [], error: null });
   await fetching;
   assert.equal(storage.getWorkoutLogs()[0].id, 'new-log');
+});
+
+test('an older fetch cannot erase a newly synchronized workout or turn its day negative', async () => {
+  const gate = deferred();
+  const { storage } = setup({ query: call => call.table === 'workout_logs' && call.operation === 'select' ? gate.promise : Promise.resolve({ data: [], error: null }) });
+  const fetching = storage.fetchWorkoutLogs('student-a');
+  await storage.saveWorkoutLog(log('new-synced-log'));
+  await finishAsync();
+  gate.resolve({ data: [], error: null });
+  const result = await fetching;
+  assert.equal(result[0].id, 'new-synced-log');
+  assert.equal(result[0].syncStatus, 'synced');
+  assert.equal(storage.getWorkoutLogs()[0].id, 'new-synced-log');
 });
 
 test('a fetch in flight cannot overwrite a newly saved pending photo', async () => {

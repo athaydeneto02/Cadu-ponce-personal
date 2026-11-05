@@ -12,6 +12,8 @@ import { supabase } from '../lib/supabase';
 import LoadHistory from './LoadHistory';
 import PersonalGoals from './PersonalGoals';
 import WeeklyCalendar from './WeeklyCalendar';
+import { useWorkoutFrequency } from '../lib/useWorkoutFrequency';
+import { localWorkoutDateKey } from '../lib/workoutFrequency';
 import WorkoutList from './WorkoutList';
 import { TRAINER_CONFIG } from '../lib/trainerConfig';
 import { compressImage, useMediaUrl } from '../lib/mediaDb';
@@ -173,6 +175,7 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
 
   const [showFreqCalendar, setShowFreqCalendar] = useState(false);
   const [calMonth, setCalMonth] = useState(() => new Date());
+  const frequency = useWorkoutFrequency(user?.uid, calMonth, showFreqCalendar);
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -239,50 +242,6 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
     storage.fetchPaymentSettings().then(cfg => setPaymentSettings(cfg as any));
   }, []);
 
-  // Dias da semana atual com treino concluído (0=seg, 1=ter, ..., 6=dom)
-  const [weekCompletedDays, setWeekCompletedDays] = useState<boolean[]>([false, false, false, false, false, false, false]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-    // Calcula o início e fim da semana atual (segunda a domingo)
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0=dom, 1=seg..6=sab
-    const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diffToMonday);
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-
-    // Carrega do cache local primeiro (instantâneo), depois do Supabase
-    const localLogs = storage.getWorkoutLogs();
-    const completed = new Array(7).fill(false);
-    localLogs.forEach(log => {
-      const d = new Date(log.completedAt);
-      if (d >= monday && d <= sunday) {
-        const dow = d.getDay(); // 0=dom
-        const idx = dow === 0 ? 6 : dow - 1; // converte para 0=seg..6=dom
-        completed[idx] = true;
-      }
-    });
-    setWeekCompletedDays([...completed]);
-
-    // Atualiza do Supabase em background
-    storage.fetchWorkoutLogs(user.uid).then(logs => {
-      const fresh = new Array(7).fill(false);
-      logs.forEach(log => {
-        const d = new Date(log.completedAt);
-        if (d >= monday && d <= sunday) {
-          const dow = d.getDay();
-          const idx = dow === 0 ? 6 : dow - 1;
-          fresh[idx] = true;
-        }
-      });
-      setWeekCompletedDays([...fresh]);
-    });
-  }, [user?.uid]);
-
   if (showFreqCalendar) {
     const { startOffset, daysInMonth } = getDaysInMonth(calMonth);
     const cells: (number | null)[] = Array(startOffset).fill(null);
@@ -311,7 +270,12 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
               <p className="text-slate-800 font-bold text-lg leading-tight">{calMonth.getFullYear()}</p>
               <p className="text-slate-500 text-sm">{monthNames[calMonth.getMonth()]}</p>
             </div>
-            <div className="w-20" /> {/* spacer */}
+            <button
+              onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+              className="text-[#0070f3] flex items-center gap-1 text-sm font-semibold"
+            >
+              Próximo <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Day headers */}
@@ -326,18 +290,21 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
             {cells.map((day, i) => (
               <div key={i} className="flex items-center justify-center py-1">
                 {day !== null ? (
-                  <div className="w-9 h-9 rounded-full bg-[#f0f4f8] flex items-center justify-center text-slate-700 text-[13px] font-medium">
+                  <div
+                    aria-label={`${localWorkoutDateKey(new Date(calMonth.getFullYear(), calMonth.getMonth(), day))}: ${frequency.monthCompletedDays.has(day) ? 'treino concluído' : 'sem treino registrado'}`}
+                    className={`relative w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-medium ${frequency.monthCompletedDays.has(day) ? 'bg-emerald-600 text-white' : 'bg-[#f0f4f8] text-slate-700'}`}
+                  >
                     {day}
+                    {frequency.monthCompletedDays.has(day) && <Check aria-hidden="true" className="absolute -right-1 -bottom-1 w-4 h-4 bg-white text-emerald-700 rounded-full" />}
                   </div>
                 ) : null}
               </div>
             ))}
           </div>
 
-          {/* Ver ano completo */}
-          <div className="text-right mt-4">
-            <button className="text-[#0070f3] text-sm font-semibold">Ver ano completo</button>
-          </div>
+          <p className="text-center text-emerald-700 text-sm font-semibold mt-4">{frequency.monthCompletedDays.size} {frequency.monthCompletedDays.size === 1 ? 'dia com treino concluído' : 'dias com treino concluído'}</p>
+          {frequency.loading && <p role="status" className="text-slate-500 text-xs mt-2 text-center">Atualizando frequência...</p>}
+          {frequency.error && <p role="status" className="text-amber-700 text-xs mt-2">{frequency.error}</p>}
         </div>
       </div>
     );
@@ -1100,35 +1067,8 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
           onClick={() => setShowFreqCalendar(true)}
           className="w-full bg-white rounded-xl shadow-sm p-4 relative z-10 text-left"
         >
-          <h3 className="text-slate-800 font-bold text-[15px] mb-4">Frequência de Treinos</h3>
-          <div className="flex justify-between items-center px-1">
-            {(['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const).map((day, i) => {
-              const today = new Date();
-              const todayIdx = today.getDay() === 0 ? 6 : today.getDay() - 1; // 0=seg..6=dom
-              const isDone = weekCompletedDays[i];
-              const isToday = i === todayIdx;
-              const isPendingToday = isToday && !isDone;
-              return (
-                <div key={i} className="flex flex-col items-center gap-2">
-                  {isDone ? (
-                    // ✓ Treino concluído — círculo azul preenchido com check
-                    <div className="w-8 h-8 rounded-full bg-[#0070f3] flex items-center justify-center shadow-sm">
-                      <Check className="w-4 h-4 text-white stroke-[3]" />
-                    </div>
-                  ) : isPendingToday ? (
-                    // ! Hoje pendente — círculo vermelho com exclamação
-                    <div className="w-8 h-8 rounded-full border-2 border-red-500 bg-red-50 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                    </div>
-                  ) : (
-                    // Dia sem treino / futuro — círculo vazio azul
-                    <div className="w-8 h-8 rounded-full border-2 border-[#0070f3] flex items-center justify-center" />
-                  )}
-                  <span className={`text-[10px] font-bold ${isToday ? 'text-[#0070f3]' : 'text-slate-400'}`}>{day}</span>
-                </div>
-              );
-            })}
-          </div>
+          <WeeklyCalendar dates={frequency.weekDates} completedDates={frequency.dates} />
+          {frequency.error && <p role="status" className="text-amber-700 text-xs mt-2">{frequency.error}</p>}
         </button>
 
 

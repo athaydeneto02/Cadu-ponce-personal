@@ -11,6 +11,8 @@ const transpile = path => ts.transpileModule(readFileSync(new URL(path, import.m
 const component = transpile('../src/components/AccountManagement.tsx');
 const library = { exports: {} };
 vm.runInNewContext(transpile('../src/lib/exerciseLibrary.ts'), { exports: library.exports });
+const attendance = { exports: {} };
+vm.runInNewContext(transpile('../src/lib/workoutAttendance.ts'), { exports: attendance.exports });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
 const label = node => !node ? '' : typeof node === 'string' ? node : Array.isArray(node) ? node.map(label).join('') : label(node.props?.children);
@@ -21,6 +23,7 @@ function harness() {
   const calls = { saved: [], routines: [], groups: [] };
   let saveResolve, saveReject;
   const storage = {
+    getUser: () => ({ uid: 'admin' }),
     getCacheItem: key => key === 'cadu_ponce_exercises_v3' ? JSON.stringify([item]) : null,
     getMuscleGroups: () => ['Pernas'], getCategories: () => ['Livre'], getWorkouts: () => [],
     getAdminRoutines: () => [{ id: 'routine', name: 'Rotina', exercises: [{ id: 'prescribed-id', name: item.title }] }],
@@ -42,12 +45,16 @@ function harness() {
   };
   const jsx = (type, props) => ({ type, props });
   const channel = { on() { return this; }, subscribe() { return this; } };
-  const context = { exports: {}, crypto: { randomUUID }, URL, Error, console,
+  const context = { exports: {}, crypto: { randomUUID }, URL, URLSearchParams, Error, console,
     require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === '../lib/storage') return { storage, safeSetItem() {} };
       if (name === '../lib/exerciseLibrary') return library.exports;
+      if (name === '../lib/workoutAttendance') return attendance.exports;
+      if (name === '../lib/useTrainerNotifications') return { useTrainerNotifications: () => ({ items: [], loading: false, error: '', busy: false, refresh: async () => {}, markRead: async () => {} }) };
+      if (name === '../lib/useWorkoutAttendance') return { useWorkoutAttendance: () => ({ logs: [], loading: false, error: '', refresh() {} }) };
+      if (name === '../lib/usePushNotifications') return { usePushNotifications: () => ({ status: 'unsupported', error: '', enable: async () => {} }) };
       if (name === '../lib/mediaDb') return { useMediaUrl: value => value || '', normalizeStoredMediaReference: value => value || null };
       if (name === '../lib/supabase') return { supabase: { channel: () => channel } };
       if (name === '../lib/trainerConfig') return { TRAINER_CONFIG: { phone: '5500000000000' }, getTrainerWhatsAppUrl: () => 'https://wa.me/5500000000000' };

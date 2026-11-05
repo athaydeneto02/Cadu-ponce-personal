@@ -160,9 +160,20 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthenticated || !user?.uid || !isOnline) return;
-    storage.syncPendingData(user.uid).catch(() => {
-      setNotification({ title: 'Sincronização pendente', body: 'Seus registros continuam salvos neste dispositivo. Tentaremos sincronizar quando a conexão estiver disponível.' });
-    });
+    let active = true;
+    let running = false;
+    const sync = async () => {
+      if (!active || running) return;
+      running = true;
+      try { await storage.syncPendingData(user.uid); }
+      catch {
+        if (active) setNotification({ title: 'Sincronização pendente', body: 'Seus registros continuam salvos neste dispositivo. Tentaremos sincronizar quando a conexão estiver disponível.' });
+      } finally { running = false; }
+    };
+    void sync();
+    const retry = setInterval(() => void sync(), 60_000);
+    window.addEventListener('focus', sync);
+    return () => { active = false; clearInterval(retry); window.removeEventListener('focus', sync); };
   }, [isAuthenticated, user?.uid, isOnline]);
 
   useEffect(() => {

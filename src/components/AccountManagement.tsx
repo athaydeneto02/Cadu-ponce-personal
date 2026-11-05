@@ -82,6 +82,11 @@ import { LibraryExercise, exerciseVideoFields } from '../lib/exerciseLibrary';
 import { youtubeVideoId, isImageMedia } from '../lib/mediaPresentation';
 import { generateWorkoutPDF } from '../lib/pdfGenerator';
 import { TRAINER_CONFIG, getTrainerWhatsAppUrl } from '../lib/trainerConfig';
+import { useTrainerNotifications } from '../lib/useTrainerNotifications';
+import { useWorkoutAttendance } from '../lib/useWorkoutAttendance';
+import { usePushNotifications } from '../lib/usePushNotifications';
+import { workoutAttendance } from '../lib/workoutAttendance';
+import { WorkoutAttendanceReport, StudentWorkoutAttendance } from './WorkoutAttendance';
 
 function PrivateImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
   const resolved = useMediaUrl(src);
@@ -111,48 +116,8 @@ function playNotificationChime() {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
     osc.start(now);
     osc.stop(now + 0.5);
+    osc.onended = () => { void ctx.close(); };
   } catch (e) {}
-}
-
-// System notification function for mobile/desktop (ServiceWorker + window.Notification fallback)
-function triggerSystemPush(title: string, body: string) {
-  if (typeof window === 'undefined') return;
-
-  const showNotification = () => {
-    // 1. Tenta via ServiceWorker (obrigatório para Chrome Android e PWA iOS)
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(reg => {
-        if (reg && typeof reg.showNotification === 'function') {
-          reg.showNotification(title, {
-            body,
-            icon: '/favicon.ico',
-            badge: '/favicon.ico',
-            vibrate: [200, 100, 200],
-            tag: 'cadu-workout-' + Date.now(),
-          } as any);
-        }
-      }).catch(() => {});
-    }
-
-    // 2. Fallback para browsers desktop
-    if ('Notification' in window) {
-      try {
-        new Notification(title, { body, icon: '/favicon.ico' });
-      } catch {}
-    }
-  };
-
-  if ('Notification' in window) {
-    if (Notification.permission === 'granted') {
-      showNotification();
-    } else if (Notification.permission === 'default') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          showNotification();
-        }
-      }).catch(() => {});
-    }
-  }
 }
 
 // Vibration function for phone
@@ -275,108 +240,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
     }
   };
 
-  const [adminNotifs, setAdminNotifs] = useState<any[]>([]);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [bannerNotif, setBannerNotif] = useState<{ title: string; message: string; workoutTitle?: string; studentPhone?: string } | null>(null);
-  const seenNotifIdsRef = useRef<Set<string>>(new Set());
-  const isInitialLoadRef = useRef(true);
-
-  const handleIncomingNotifs = (notifs: any[]) => {
-    if (!notifs || !Array.isArray(notifs)) return;
-    setAdminNotifs(notifs);
-
-    let hasNewCompletion = false;
-    let latestNewNotif: any = null;
-
-    notifs.forEach(n => {
-      if (!seenNotifIdsRef.current.has(n.id)) {
-        seenNotifIdsRef.current.add(n.id);
-        if (!n.isRead && !isInitialLoadRef.current) {
-          hasNewCompletion = true;
-          latestNewNotif = n;
-        }
-      }
-    });
-
-    if (hasNewCompletion && latestNewNotif) {
-      playNotificationChime();
-      triggerVibration();
-      triggerSystemPush(
-        'Treino Concluído! 🏋️‍♂️',
-        `${latestNewNotif.studentName} concluiu "${latestNewNotif.workoutTitle}"!`
-      );
-      setBannerNotif({
-        title: latestNewNotif.studentName,
-        message: latestNewNotif.detailMessage || `${latestNewNotif.studentName} concluiu o treino!`,
-        workoutTitle: latestNewNotif.workoutTitle,
-        studentPhone: latestNewNotif.studentPhone,
-      });
-    }
-
-    if (isInitialLoadRef.current) {
-      isInitialLoadRef.current = false;
-    }
-  };
-
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(() => new URLSearchParams(window.location.search).get('notifications') === '1');
+  const [bannerNotif, setBannerNotif] = useState<{ title: string; message: string } | null>(null);
+  const notifications = useTrainerNotifications(items => {
+    if (!items.length) return;
+    const latest = items[0];
+    playNotificationChime();
+    triggerVibration();
+    setBannerNotif({ title: latest.studentName, message: latest.detailMessage || latest.studentName + ' concluiu ' + latest.workoutTitle + '.' });
+  });
+  const adminNotifs = notifications.items;
+  const attendanceFeed = useWorkoutAttendance(adminNotifs.map(item => item.id).join(','));
+  const attendance = workoutAttendance(attendanceFeed.logs);
+  const push = usePushNotifications(storage.getUser()?.uid);
+  const unreadNotifCount = adminNotifs.filter(item => !item.isRead).length;
   useEffect(() => {
-    storage.fetchTrainerNotifications().then(notifs => {
-      handleIncomingNotifs(notifs);
-    });
-
-    const interval = setInterval(() => {
-      storage.fetchTrainerNotifications().then(notifs => {
-        handleIncomingNotifs(notifs);
-      });
-    }, 10000);
-
-    let channel: any = null;
-    try {
-      channel = supabase
-        .channel('admin-workout-notifs')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'agenda_events',
-            filter: 'type=eq.trainer_notification'
-          },
-          () => {
-            storage.fetchTrainerNotifications().then(notifs => {
-              handleIncomingNotifs(notifs);
-            });
-          }
-        )
-        .subscribe();
-    } catch (e) {
-      console.warn('Realtime subscription error:', e);
-    }
-
-    const onLocalNotif = () => {
-      storage.fetchTrainerNotifications().then(notifs => {
-        handleIncomingNotifs(notifs);
-      });
-    };
-    window.addEventListener('cadu_new_notification', onLocalNotif);
-
-    // Carrega as configurações de pagamento do personal
-    storage.fetchPaymentSettings().then(cfg => setPaymentSettings(cfg));
-
-    return () => {
-      clearInterval(interval);
-      if (channel) supabase.removeChannel(channel);
-      window.removeEventListener('cadu_new_notification', onLocalNotif);
-    };
+    storage.fetchPaymentSettings().then(setPaymentSettings).catch(() => {});
   }, []);
-
   useEffect(() => {
-    if (bannerNotif) {
-      const t = setTimeout(() => setBannerNotif(null), 8000);
-      return () => clearTimeout(t);
-    }
+    if (!bannerNotif) return;
+    const timeout = setTimeout(() => setBannerNotif(null), 8000);
+    return () => clearTimeout(timeout);
   }, [bannerNotif]);
-
-  const unreadNotifCount = adminNotifs.filter(n => !n.isRead).length;
 
   const handleDeleteStudent = async (uid: string) => {
     if (window.confirm('Tem certeza que deseja excluir este aluno?')) {
@@ -441,21 +326,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const studentUsers = users.filter(u => u.role === 'student');
   const activeCount = studentUsers.filter(u => u.status === 'active' || !u.status).length;
   const inactiveCount = studentUsers.filter(u => u.status === 'inactive').length;
-  const engagementRate = studentUsers.length > 0 ? 75 : 0; // Simulated for now
-
-  // Categories for Retention
-  const engajamentoCategorias = [
-    { label: 'Engajado', count: Math.max(0, activeCount - 2), percent: activeCount > 0 ? Math.round((Math.max(0, activeCount - 2) / activeCount) * 100) : 0, color: 'bg-emerald-400' },
-    { label: 'Oscilando', count: activeCount > 1 ? 1 : 0, percent: activeCount > 0 ? Math.round(( (activeCount > 1 ? 1 : 0) / activeCount) * 100) : 0, color: 'bg-amber-300' },
-    { label: 'Em risco', count: activeCount > 2 ? 1 : 0, percent: activeCount > 0 ? Math.round(( (activeCount > 2 ? 1 : 0) / activeCount) * 100) : 0, color: 'bg-amber-400' },
-    { label: 'Abandono', count: inactiveCount, percent: studentUsers.length > 0 ? Math.round((inactiveCount / studentUsers.length) * 100) : 0, color: 'bg-rose-500' },
-    { label: 'Recuperado', count: 0, percent: 0, color: 'bg-[#dc2626]' },
+  const engagedCount = studentUsers.filter(user => user.status === 'active' && attendance.studentsThisMonth.has(user.uid)).length;
+  const engagementRate = attendanceFeed.loading || attendanceFeed.error || isLoadingUsers || usersLoadError ? null : activeCount ? Math.round(engagedCount / activeCount * 100) : 0;
+  const engajamentoCategorias = attendanceFeed.loading || attendanceFeed.error || isLoadingUsers || usersLoadError ? [] : [
+    { label: 'Com treino no mês', count: engagedCount, percent: activeCount ? Math.round(engagedCount / activeCount * 100) : 0, color: 'bg-emerald-400' },
+    { label: 'Sem treino no mês', count: activeCount - engagedCount, percent: activeCount ? Math.round((activeCount - engagedCount) / activeCount * 100) : 0, color: 'bg-slate-300' },
   ];
 
   const [selectedDetailTab, setSelectedDetailTab] = useState<'inicio' | 'opcoes' | 'treinos' | 'criar_rotina' | 'criar_planilha' | 'progresso' | 'treinos_extras' | 'criar_treino_extra' | 'arquivos'>('inicio');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [showFrequencyCalendar, setShowFrequencyCalendar] = useState(false);
   const [treinosSubTab, setTreinosSubTab] = useState<'rotinas' | 'aerobico'>('rotinas');
   const [treinosViewStatus, setTreinosViewStatus] = useState<'ativas' | 'arquivadas' | 'excluidas'>('ativas');
 
@@ -494,7 +374,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   });
 
   const [showFinanceModal, setShowFinanceModal] = useState(false);
-  const [frequency, setFrequency] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [editWeight, setEditWeight] = useState('');
   const [editHeight, setEditHeight] = useState('');
   const [editBF, setEditBF] = useState('');
@@ -917,24 +796,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       const savedPresc = storage.getCacheItem(`cadu_presc_${selectedStudent.uid}`) || '';
       setExtraPrescription(savedPresc);
 
-      const savedFreq = storage.getCacheItem(`cadu_freq_${selectedStudent.uid}`);
-      if (savedFreq) {
-        setFrequency(JSON.parse(savedFreq));
-      } else {
-        const def = [true, false, true, false, true, false, false];
-        setFrequency(def);
-        storage.setCacheItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(def));
-      }
     }
   }, [selectedStudent]);
-
-  const handleToggleDay = (index: number) => {
-    if (!selectedStudent) return;
-    const updated = [...frequency];
-    updated[index] = !updated[index];
-    setFrequency(updated);
-    storage.setCacheItem(`cadu_freq_${selectedStudent.uid}`, JSON.stringify(updated));
-  };
 
   const handleSaveAssessment = () => {
     if (!selectedStudent) return;
@@ -1219,6 +1082,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
               onClick={() => setIsNotificationsOpen(true)}
               className="relative p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white transition active:scale-95 cursor-pointer"
               title="Notificações de treinos concluídos"
+              aria-label="Abrir notificações de treinos concluídos"
             >
               <Bell className="w-5 h-5 text-white" />
               {unreadNotifCount > 0 && (
@@ -1242,6 +1106,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         <AnimatePresence>
           {bannerNotif && (
             <motion.div
+              role="status" aria-live="polite"
               initial={{ opacity: 0, y: -60 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -60 }}
@@ -1268,6 +1133,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   setBannerNotif(null);
                 }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg shrink-0"
+                aria-label="Fechar aviso de treino concluído"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1279,12 +1145,16 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
         <AnimatePresence>
           {isNotificationsOpen && (
             <NotificationsModal
-              onClose={() => {
-                setIsNotificationsOpen(false);
-                storage.fetchTrainerNotifications().then(notifs => setAdminNotifs(notifs));
-              }}
-              isDark={true}
-              userRole="admin"
+              onClose={() => setIsNotificationsOpen(false)} isDark={true}
+              notifications={adminNotifs} loading={notifications.loading} error={notifications.error}
+              busy={notifications.busy} onMarkRead={notifications.markRead} onRefresh={notifications.refresh}
+              pushControl={<div className="text-xs text-slate-400">
+                {push.status === 'ready' ? <p className="text-emerald-500">Notificações neste dispositivo ativadas.</p>
+                  : push.status === 'denied' ? <p>As notificações estão bloqueadas nas configurações do navegador. Os registros continuam disponíveis aqui.</p>
+                  : push.status === 'unsupported' ? <p>Este navegador não oferece notificações em segundo plano. Acompanhe os registros neste painel.</p>
+                  : <button onClick={() => void push.enable()} disabled={push.status === 'syncing'} className="text-red-500 font-bold disabled:opacity-50">{push.status === 'syncing' ? 'Ativando…' : 'Ativar notificações neste dispositivo'}</button>}
+                {push.error && <p role="alert" className="text-red-400 mt-1">{push.error}</p>}
+              </div>}
             />
           )}
         </AnimatePresence>
@@ -1455,7 +1325,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                   <span className="text-[11px] font-black italic uppercase text-[#dc2626]">Retenção</span>
                                </div>
                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black text-[#dc2626] uppercase tracking-tighter">{engagementRate}% de engajamento</span>
+                                  <span className="text-[10px] font-black text-[#dc2626] uppercase tracking-tighter">{engagementRate === null ? '—' : engagementRate + '%'} de engajamento</span>
                                   <ChevronLeft className="w-4 h-4 text-[#dc2626] rotate-180" />
                                </div>
                             </button>
@@ -1536,7 +1406,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                       </div>
                                       <div className="space-y-0">
                                          <p className="text-xl font-black text-slate-900 leading-none">{activeCount}</p>
-                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">+{activeCount > 0 ? '12' : '0'}%</p>
+                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">Cadastro atual</p>
                                       </div>
                                    </div>
                                    <div className="border border-slate-100 rounded-lg p-3 space-y-2 text-left">
@@ -1545,28 +1415,28 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                          <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500 leading-none">Engajamento</span>
                                       </div>
                                       <div className="space-y-0">
-                                         <p className="text-xl font-black text-slate-900 leading-none">{engagementRate}%</p>
-                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">+8%</p>
+                                         <p className="text-xl font-black text-slate-900 leading-none">{engagementRate === null ? '—' : engagementRate + '%'}</p>
+                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">Com treino concluído no mês</p>
                                       </div>
                                    </div>
                                    <div className="border border-slate-100 rounded-lg p-3 space-y-2 text-left">
                                       <div className="flex items-center gap-1.5 grayscale opacity-50">
                                          <Sparkles className="w-3 h-3" />
-                                         <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500 leading-none">Crescimento</span>
+                                         <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500 leading-none">Treinos no mês</span>
                                       </div>
                                       <div className="space-y-0">
-                                         <p className="text-xl font-black text-slate-900 leading-none">12%</p>
-                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">+2%</p>
+                                         <p className="text-xl font-black text-slate-900 leading-none">{attendanceFeed.loading || attendanceFeed.error ? '—' : attendance.monthLogs.length}</p>
+                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">Registros sincronizados</p>
                                       </div>
                                    </div>
                                    <div className="border border-slate-100 rounded-lg p-3 space-y-2 text-left">
                                       <div className="flex items-center gap-1.5 grayscale opacity-50">
                                          <ArrowUpRight className="w-3 h-3" />
-                                         <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500 leading-none">Recuperação</span>
+                                         <span className="text-[8px] font-bold uppercase tracking-wider text-slate-500 leading-none">Alunos hoje</span>
                                       </div>
                                       <div className="space-y-0">
-                                         <p className="text-xl font-black text-slate-900 leading-none">5%</p>
-                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">+1%</p>
+                                         <p className="text-xl font-black text-slate-900 leading-none">{attendanceFeed.loading || attendanceFeed.error ? '—' : attendance.studentsToday}</p>
+                                         <p className="text-[9px] font-bold text-emerald-500 leading-none mt-1">Com treino concluído</p>
                                       </div>
                                    </div>
                                 </div>
@@ -1580,7 +1450,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4 border border-slate-100">
                                 <div className="text-left px-1">
                                    <h5 className="text-[11px] font-black italic uppercase text-slate-900 leading-none">Engajamento dos alunos</h5>
-                                   <p className="text-[9px] text-slate-400 font-bold mt-1">Referente à semana anterior concluída</p>
+                                   <p className="text-[9px] text-slate-400 font-bold mt-1">Alunos ativos, considerando os treinos concluídos neste mês</p>
                                 </div>
 
                                 <div className="space-y-3 px-1">
@@ -1650,55 +1520,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                            </div>
                         </div>
                     ) : homeSubView === 'frequency_report' ? (
-                       /* FREQUENCY REPORT VIEW */
-                       <div className="flex flex-col h-full bg-[#f4f7fa]">
-                          {/* Header */}
-                          <div className="bg-[#0c1622] p-4 pt-1 flex flex-col items-start gap-4 shrink-0">
-                             <button 
-                               onClick={() => setHomeSubView('dashboard')}
-                               className="text-white text-[10px] font-bold flex items-center gap-1 opacity-80"
-                             >
-                               <ChevronLeft className="w-3.5 h-3.5" /> Voltar
-                             </button>
-                             <h4 className="text-white text-xl font-black italic uppercase italic tracking-tighter text-left leading-none">Relatório de frequência</h4>
-                          </div>
-                          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                             <div className="bg-white rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-4 border border-slate-100 shadow-sm">
-                                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-[#dc2626]">
-                                   <FileText className="w-8 h-8" />
-                                </div>
-                                <div className="space-y-1">
-                                   <h3 className="text-lg font-black uppercase text-slate-900 tracking-tight">Frequência dos Alunos</h3>
-                                   <p className="text-xs font-medium text-slate-500">Visualize a assiduidade e check-ins aqui.</p>
-                                </div>
-                                <div className="w-full pt-4 border-t border-slate-50 grid grid-cols-2 gap-4">
-                                   <div className="bg-slate-50 p-4 rounded-xl text-left">
-                                      <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Média Mensal</span>
-                                      <span className="text-2xl font-black text-slate-900">88%</span>
-                                   </div>
-                                   <div className="bg-slate-50 p-4 rounded-xl text-left">
-                                      <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Presenças Hoje</span>
-                                      <span className="text-2xl font-black text-slate-900">12</span>
-                                   </div>
-                                </div>
-                             </div>
-                             <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
-                                <h5 className="text-[11px] font-black italic uppercase text-slate-900 mb-3">Últimas atividades</h5>
-                                <div className="space-y-3">
-                                   {[1, 2, 3].map(i => (
-                                      <div key={i} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0 text-left">
-                                         <div className="w-8 h-8 bg-slate-100 rounded-full shrink-0" />
-                                         <div className="flex-1">
-                                            <p className="text-xs font-bold text-slate-900">Aluno {i}</p>
-                                            <p className="text-[10px] text-slate-500">Check-in às 0{i}:30</p>
-                                         </div>
-                                         <div className="px-2 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase rounded">Presente</div>
-                                      </div>
-                                   ))}
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
+                       <WorkoutAttendanceReport logs={attendanceFeed.logs} loading={attendanceFeed.loading} error={attendanceFeed.error} onRefresh={attendanceFeed.refresh} users={users} onBack={() => setHomeSubView('dashboard')} />
                      ) : homeSubView === 'exercise_library' ? (
                        /* EXERCISE LIBRARY VIEW (Image-accurate) */
                         (() => {
@@ -4545,33 +4367,20 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                     {/* ── TREINOS SUB-VIEW ── */}
                     {updatesSubView === 'treinos' && (() => {
-                      const treinosNotifs = adminNotifs.filter(n => n.type === 'treinos');
-                      const pendentes = treinosNotifs.filter(n => !n.read);
-                      const resolvidas = treinosNotifs.filter(n => n.read);
+                      const treinosNotifs = adminNotifs.filter(n => n.type === 'completion');
+                      const pendentes = treinosNotifs.filter(n => !n.isRead);
+                      const resolvidas = treinosNotifs.filter(n => n.isRead);
                       
                       let listToShow = treinosTab === 'pendentes' ? pendentes : resolvidas;
                       if (treinosSearch) {
                         listToShow = listToShow.filter(n => 
-                          (n.title && n.title.toLowerCase().includes(treinosSearch.toLowerCase())) ||
-                          (n.body && n.body.toLowerCase().includes(treinosSearch.toLowerCase()))
+                          n.studentName.toLowerCase().includes(treinosSearch.toLowerCase()) ||
+                          n.workoutTitle.toLowerCase().includes(treinosSearch.toLowerCase())
                         );
                       }
 
-                      const markAllAsRead = () => {
-                        try {
-                          const updated = adminNotifs.map(n => n.type === 'treinos' ? { ...n, read: true } : n);
-                          storage.setCacheItem('cadu_notifs_admin', JSON.stringify(updated));
-                          setAdminNotifs(updated);
-                        } catch {}
-                      };
-
-                      const toggleReadStatus = (id: string) => {
-                        try {
-                          const updated = adminNotifs.map(n => n.id === id ? { ...n, read: !n.read } : n);
-                          storage.setCacheItem('cadu_notifs_admin', JSON.stringify(updated));
-                          setAdminNotifs(updated);
-                        } catch {}
-                      };
+                      const markAllAsRead = () => { void notifications.markRead(pendentes.map(item => item.id)).catch(() => {}); };
+                      const toggleReadStatus = (id: string) => { void notifications.markRead([id]).catch(() => {}); };
 
                       return (
                         <div className="space-y-3">
@@ -4593,7 +4402,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
 
                           {/* Marcar como lidas button (Pendentes only) */}
                           {treinosTab === 'pendentes' && listToShow.length > 0 && (
-                            <button onClick={markAllAsRead} className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
+                            <button onClick={markAllAsRead} disabled={notifications.busy} className="w-full py-3 bg-[#3182ce] hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition cursor-pointer">
                               Marcar todas como lidas
                             </button>
                           )}
@@ -4616,7 +4425,8 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                           </div>
 
                           {/* Section label */}
-                          <p className="text-slate-900 font-black text-sm">Treinos</p>
+                          <p className="text-slate-900 font-black text-sm">Treinos concluídos</p>
+                          {notifications.error && <p role="alert" className="text-xs text-red-600">{notifications.error}</p>}
 
                           {/* Cards or empty state */}
                           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -4641,17 +4451,18 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                                     <div>
                                       <div className="flex items-center gap-2 mb-1">
                                         <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                        <h4 className="text-sm font-bold text-slate-800">{notif.title}</h4>
+                                        <h4 className="text-sm font-bold text-slate-800">{notif.studentName}</h4>
                                       </div>
-                                      <p className="text-xs text-slate-600 mb-1 leading-relaxed">{notif.body}</p>
+                                      <p className="text-xs text-slate-600 mb-1 leading-relaxed">{notif.workoutTitle} — Treino concluído</p>
                                       <span className="text-[10px] text-slate-400 font-medium">
-                                        {new Date(notif.date).toLocaleString()}
+                                        {new Date(notif.fullDate).toLocaleString('pt-BR')}
                                       </span>
                                     </div>
                                     <button
                                       onClick={() => toggleReadStatus(notif.id)}
+                                      disabled={notifications.busy || notif.isRead}
                                       className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
-                                      title={treinosTab === 'pendentes' ? 'Marcar como lida' : 'Mover para pendentes'}
+                                      title={notif.isRead ? 'Lida' : 'Marcar como lida'}
                                     >
                                       <CheckCircle2 className="w-5 h-5" />
                                     </button>
@@ -5276,54 +5087,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </button>
                     </div>
                     
-                    {/* Weekly Frequency Section */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                      <h4 className="text-xs font-bold text-slate-800 mb-4">Frequência de Treinos</h4>
-                      
-                      <div className="flex justify-between items-center">
-                        {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, idx) => {
-                          const isActive = frequency[idx];
-                          return (
-                            <div
-                              key={idx}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleDay(idx);
-                              }}
-                              className="flex flex-col items-center gap-1.5 cursor-pointer group"
-                            >
-                              <div className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-                                isActive 
-                                  ? 'border-amber-400 text-amber-500 font-black' 
-                                  : 'border-[#2b88ff] text-transparent'
-                              }`}>
-                                {isActive ? '!' : ''}
-                              </div>
-                              <span className="text-xs font-bold text-slate-800">{day}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Engajamento do aluno */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="text-xs font-bold text-slate-800">Engajamento do aluno</h4>
-                        <span className="bg-amber-100 text-amber-600 text-[10px] font-bold px-2 py-0.5 rounded-full">Oscilando</span>
-                      </div>
-                      
-                      <div className="flex justify-between">
-                        <div>
-                          <p className="text-[11px] text-slate-500 font-medium">Último treino há</p>
-                          <p className="text-sm font-bold text-slate-800">0 dias</p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] text-slate-500 font-medium">Frequência média</p>
-                          <p className="text-sm font-bold text-slate-800">0x semana</p>
-                        </div>
-                      </div>
-                    </div>
+                    <StudentWorkoutAttendance logs={attendanceFeed.logs} loading={attendanceFeed.loading} error={attendanceFeed.error} onRefresh={attendanceFeed.refresh} studentId={selectedStudent.uid} />
 
                     {/* List Items */}
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-100">
@@ -6328,67 +6092,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                 </div>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* FREQUENCY CALENDAR MODAL */}
-      <AnimatePresence>
-        {showFrequencyCalendar && (
-          <div className="fixed inset-0 z-[150] bg-[#22354a] flex flex-col items-center justify-start overflow-y-auto">
-            <div className="w-full max-w-xl flex flex-col min-h-screen relative">
-              {/* Header */}
-              <div className="px-6 pt-8 pb-20 shrink-0 text-center relative">
-                <h2 className="text-white text-xl font-bold">
-                  Frequência de Treinos
-                </h2>
-              </div>
-
-              {/* Calendar Card */}
-              <motion.div 
-                initial={{ y: 50, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 50, opacity: 0 }}
-                className="flex-1 bg-white rounded-xl shadow-xl p-6 relative -mt-14 mx-4 mb-8"
-              >
-                {/* < Anterior and Date */}
-                <div className="flex justify-between items-start mb-8">
-                  <button 
-                    onClick={() => setShowFrequencyCalendar(false)} 
-                    className="text-[#3182ce] flex items-center gap-1 font-medium text-sm"
-                  >
-                    <ChevronLeft className="w-4 h-4" /> Anterior
-                  </button>
-                  <div className="text-center absolute left-1/2 -translate-x-1/2">
-                    <h3 className="font-bold text-lg text-slate-800 tracking-tight">2026</h3>
-                    <p className="text-slate-700 text-sm capitalize">{format(new Date(), 'MMMM', { locale: ptBR })}</p>
-                  </div>
-                  <div className="w-20" />
-                </div>
-
-                {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-y-6 text-center mt-12">
-                  {['Seg.', 'Ter.', 'Qua.', 'Qui.', 'Sex.', 'Sáb.', 'Dom.'].map(d => (
-                    <div key={d} className="text-sm font-medium text-slate-800">{d}</div>
-                  ))}
-                  {/* Empty spaces if month doesn't start on Monday. Hardcoded for image demo (starts on Monday) */}
-                  {Array.from({ length: 30 }).map((_, i) => (
-                    <div key={i} className="flex justify-center">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold bg-[#f1f5f9] text-slate-700">
-                        {i + 1}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Ver ano completo */}
-                <div className="mt-12 text-right pr-2">
-                  <button className="text-[#3182ce] text-sm font-medium hover:underline">
-                    Ver ano completo
-                  </button>
-                </div>
-              </motion.div>
-            </div>
           </div>
         )}
       </AnimatePresence>

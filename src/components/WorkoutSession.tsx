@@ -26,7 +26,10 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const sessionLogId = useRef(crypto.randomUUID());
+  const sessionStudentId = useRef(storage.getUser()?.uid);
   const completedLog = useRef<WorkoutLog | null>(null);
+  const logSaving = useRef(false);
+  const [isSavingLog, setIsSavingLog] = useState(false);
   const [logSaveMessage, setLogSaveMessage] = useState('');
   const [logSaveFailed, setLogSaveFailed] = useState(false);
   const [progressError, setProgressError] = useState('');
@@ -35,19 +38,26 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   const progressSaving = useRef(false);
 
   const persistCompletedLog = async (log: WorkoutLog) => {
+    if (logSaving.current) return false;
+    logSaving.current = true;
+    setIsSavingLog(true);
     setLogSaveFailed(false);
     setLogSaveMessage('Salvando seu treino...');
     try {
-      await storage.saveWorkoutLog(log);
-      const saved = storage.getWorkoutLogs().find(item => item.id === log.id);
-      setLogSaveMessage(saved?.syncStatus === 'pending'
+      if (storage.getUser()?.uid !== sessionStudentId.current) throw new Error('A sessão mudou. Entre na mesma conta em que iniciou o treino.');
+      const saved = await storage.saveWorkoutLog(log);
+      completedLog.current = saved;
+      setLogSaveMessage(saved.syncStatus === 'pending'
         ? 'Salvo neste dispositivo. A sincronização será retomada quando a conexão estiver disponível.'
         : 'Treino salvo e sincronizado.');
-      return saved?.syncStatus !== 'pending';
-    } catch {
+      return true;
+    } catch (error) {
       setLogSaveFailed(true);
-      setLogSaveMessage('Não foi possível salvar o treino. Tente novamente antes de sair.');
+      setLogSaveMessage(error instanceof Error ? error.message : 'Não foi possível salvar o treino. Tente novamente antes de sair.');
       return false;
+    } finally {
+      logSaving.current = false;
+      setIsSavingLog(false);
     }
   };
   const [userNotes, setUserNotes] = useState<Record<string, string>>({});
@@ -56,7 +66,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
   useEffect(() => {
     const refresh = () => {
       const saved = storage.getWorkoutLogs().find(log => log.id === sessionLogId.current);
-      if (saved?.syncStatus === 'synced') {
+      if (saved?.studentId === sessionStudentId.current && saved?.syncStatus === 'synced') {
         setLogSaveFailed(false);
         setLogSaveMessage('Treino salvo e sincronizado.');
       }
@@ -180,46 +190,39 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
         confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
       }, 250);
 
-      const user = storage.getUser();
-      if (!user?.uid) {
-        setLogSaveFailed(true);
-        setLogSaveMessage('Entre novamente na sua conta para salvar o treino.');
-      } else {
-        const log: WorkoutLog = {
-          id: sessionLogId.current,
-          studentId: user.uid,
-          studentName: user.name,
-          routineId: workout.routineId || workout.id,
-          routineName: workout.name || 'Treino do Dia',
-          completedAt: new Date().toISOString(),
-          durationSeconds: timer,
-          rpe,
-          exercisesSummary: workout.exercises?.map(ex => ({
-            name: ex.name,
-            setsCompleted: getCheckedSetsForExercise(ex.id, Number(ex.sets) || 1).filter(Boolean).length,
-            totalSets: Number(ex.sets) || 1,
-            loads: loads[ex.id] || [],
-          })) ?? [],
-        };
-        completedLog.current = log;
-        void persistCompletedLog(log).then(synced => {
-          if (!synced) return;
-          return storage.notifyTrainerWorkoutCompleted({
-            logId: log.id,
-            studentName: user.name || 'Aluno',
-            studentId: user.uid,
-            studentPhone: user.metadata?.phone || '',
-            routineName: workout.name || 'Treino do Dia',
-            durationFormatted: Math.round(timer / 60) + ' min',
-            durationSeconds: timer,
-          }).catch(() => setLogSaveMessage('Treino salvo. Não foi possível enviar o aviso ao treinador.'));
-        });
-      }
-
       return () => clearInterval(interval);
     }
   }, [isFinished]);
 
+
+  const completeWorkout = async () => {
+    if (logSaving.current || progressSaving.current || !workout.exercises.length || !workout.exercises.every(ex => completedExercises.has(ex.id))) return;
+    const user = storage.getUser();
+    if (!user?.uid || user.uid !== sessionStudentId.current) {
+      setLogSaveFailed(true);
+      setLogSaveMessage('Entre na mesma conta em que iniciou este treino para salvá-lo.');
+      return;
+    }
+    completedLog.current ??= {
+      id: sessionLogId.current,
+      studentId: user.uid,
+      studentName: user.name,
+      routineId: workout.routineId || workout.id,
+      routineName: workout.name || 'Treino do Dia',
+      completedAt: new Date().toISOString(),
+      durationSeconds: timer,
+      rpe: rpe * 2,
+      exercisesSummary: workout.exercises.map(ex => ({
+        name: ex.name,
+        setsCompleted: completedExercises.has(ex.id) ? (Number(ex.sets) || 1) : getCheckedSetsForExercise(ex.id, Number(ex.sets) || 1).filter(Boolean).length,
+        totalSets: Number(ex.sets) || 1,
+        loads: loads[ex.id] || [],
+      })),
+    };
+    setIsTimerActive(false);
+    setIsResting(false);
+    if (await persistCompletedLog(completedLog.current)) setIsFinished(true);
+  };
 
   const currentExercise = workout.exercises[currentIndex];
 
@@ -285,7 +288,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           </h2>
           <p className="text-slate-400 font-medium mb-4">Você deu o seu máximo hoje. Ótimo trabalho!</p>
           <p role={logSaveFailed ? 'alert' : 'status'} className="text-amber-200 text-sm mb-4 max-w-sm">{logSaveMessage}</p>
-          {logSaveFailed && completedLog.current && <button className="text-white underline mb-4" onClick={() => void persistCompletedLog(completedLog.current!)}>Tentar salvar novamente</button>}
+          {logSaveFailed && completedLog.current && <button className="text-white underline mb-4" disabled={isSavingLog} onClick={() => void persistCompletedLog(completedLog.current!)}>Tentar salvar novamente</button>}
 
           <div className="grid grid-cols-2 gap-4 w-full max-w-sm mb-8">
             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl">
@@ -306,9 +309,11 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
+                  disabled={isSavingLog}
                   onMouseEnter={() => setHoverRpe(star)}
                   onMouseLeave={() => setHoverRpe(0)}
                   onClick={() => {
+                    if (logSaving.current) return;
                     setRpe(star);
                     if (completedLog.current) {
                       completedLog.current = { ...completedLog.current, rpe: star * 2 };
@@ -347,6 +352,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           </a>
 
           <button 
+            disabled={isSavingLog}
             onClick={onClose}
             className="w-full max-w-sm bg-white text-slate-950 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all uppercase italic tracking-tighter cursor-pointer"
           >
@@ -381,7 +387,7 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       {/* Session Header */}
       <div className="bg-slate-900 pt-12 pb-6 px-6 text-white shrink-0 shadow-md">
         <div className="flex items-center justify-between mb-6">
-          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
+          <button disabled={isSavingLog} onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
             <X className="w-6 h-6" />
           </button>
           <h2 className="font-bold text-lg">Modo Treino</h2>
@@ -552,20 +558,21 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
       </div>
 
       {/* Footer Controls */}
+      {logSaveFailed && <p role="alert" className="fixed bottom-40 left-4 right-4 z-50 rounded-xl bg-red-950 p-3 text-sm text-white">{logSaveMessage}</p>}
       {progressError && <p role="alert" className="fixed bottom-28 left-4 right-4 z-50 rounded-xl bg-red-950 p-3 text-sm text-white">{progressError}</p>}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-slate-950 border-t border-slate-800 z-50 flex items-center space-x-4">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950 border-t border-slate-800 z-50 flex items-center space-x-2">
         <button 
           onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
-          disabled={currentIndex === 0 || savingProgress}
-          className="p-4 bg-slate-800 text-slate-400 rounded-2xl disabled:opacity-20 active:scale-95 transition-transform"
+          disabled={currentIndex === 0 || savingProgress || isSavingLog}
+          className="p-3 bg-slate-800 text-slate-400 rounded-2xl disabled:opacity-20 active:scale-95 transition-transform"
         >
           <ChevronLeft className="w-7 h-7" />
         </button>
         
         <button 
           onClick={() => void toggleExercise(currentExercise.id)}
-          disabled={savingProgress}
-          className={`flex-1 p-5 rounded-2xl font-black text-sm uppercase italic tracking-tighter flex items-center justify-center space-x-2 transition-all active:scale-[0.98] ${
+          disabled={savingProgress || isSavingLog}
+          className={`flex-1 p-3 rounded-2xl font-black text-xs uppercase italic tracking-tighter flex items-center justify-center space-x-2 transition-all active:scale-[0.98] ${
             completedExercises.has(currentExercise.id) 
             ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' 
             : 'bg-red-600 text-white shadow-lg shadow-red-900/20'
@@ -574,22 +581,23 @@ export default function WorkoutSession({ workout, onClose }: WorkoutSessionProps
           {savingProgress ? <span>SALVANDO...</span> : completedExercises.has(currentExercise.id) ? (
             <><Check className="w-5 h-5" /> <span>CONCLUÍDO</span></>
           ) : (
-            <span>FINALIZAR SÉRIE</span>
+            <span>CONCLUIR EXERCÍCIO</span>
           )}
         </button>
 
         <button 
-          disabled={savingProgress}
+          disabled={savingProgress || isSavingLog || (currentIndex === workout.exercises.length - 1 && !workout.exercises.every(ex => completedExercises.has(ex.id)))}
+          aria-label={currentIndex === workout.exercises.length - 1 ? 'Concluir treino' : 'Próximo exercício'}
           onClick={() => {
             if (currentIndex < workout.exercises.length - 1) {
               setCurrentIndex(currentIndex + 1);
             } else {
-              setIsFinished(true);
+              void completeWorkout();
             }
           }}
-          className="p-4 bg-white text-slate-950 rounded-2xl active:scale-95 transition-transform"
+          className="p-3 max-w-24 bg-white text-slate-950 rounded-2xl disabled:opacity-40 active:scale-95 transition-transform"
         >
-          <ChevronRight className="w-7 h-7" />
+          {currentIndex === workout.exercises.length - 1 ? <span className="text-xs font-black">{isSavingLog ? 'Salvando...' : 'Concluir treino'}</span> : <ChevronRight className="w-7 h-7" />}
         </button>
       </div>
 

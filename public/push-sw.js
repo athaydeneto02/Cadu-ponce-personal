@@ -9,6 +9,8 @@ self.addEventListener('push', function(event) {
         body: data.body || 'Você tem uma nova notificação.',
         icon: '/icon.png',
         badge: '/icon.png',
+        tag: typeof data.tag === 'string' && data.tag.length <= 200 ? data.tag : undefined,
+        renotify: false,
         vibrate: [100, 50, 100],
         data: {
           url: data.url || '/'

@@ -13,6 +13,7 @@ const text = node => typeof node === 'string' ? node : !node ? '' : Array.isArra
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 function harness(component, props, storage = {}) {
+  storage = { getUser: () => ({ uid: 'student', name: 'Aluno' }), ...storage };
   const source = readFileSync(new URL(`../src/components/${component}.tsx`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
@@ -54,7 +55,7 @@ test('exercise completion waits for persistence, reports a failure, and retries 
   const app = harness('WorkoutSession', { workout: { id: 'workout', studentId: 'student', name: 'Treino',
     exercises: [{ id: 'exercise', name: 'Agachamento', sets: 1, reps: '10', rest: '30s' }] }, onClose() {} },
     { async saveProgress(entry) { calls.push(entry); if (calls.length === 1) await pending; } });
-  const complete = () => app.find(node => node.type === 'button' && /FINALIZAR SÉRIE|SALVANDO|CONCLUÍDO/.test(text(node)));
+  const complete = () => app.find(node => node.type === 'button' && /CONCLUIR EXERCÍCIO|SALVANDO|CONCLUÍDO/.test(text(node)));
   complete().props.onClick();
   complete().props.onClick();
   assert.equal(calls.length, 1);
