@@ -49,19 +49,18 @@ export default function Login({ onLogin, onAcquireClick, errorMessage, notice }:
   };
 
   return (
-    <div className="min-h-screen bg-[#1B2A4A] flex flex-col justify-center py-12 px-8 relative overflow-x-hidden overflow-y-auto">
+    <div className="login-shell min-h-screen flex flex-col justify-center py-10 px-6 sm:px-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background decoration */}
-      <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
-      <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
+      <div className="login-shell__accent" aria-hidden="true" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="max-w-md w-full mx-auto relative z-10"
       >
-        <div className="mb-12 flex flex-col items-center">
-          <BrandLogo size="lg" className="flex-col !space-x-0 !space-y-4 mb-2" />
-          <p className="text-white/60 text-center mt-4 font-medium">Sua evolução começa aqui</p>
+        <div className="mb-9 flex flex-col items-center">
+          <BrandLogo size="lg" layout="stacked" />
+          <p className="text-white/60 text-center mt-6 text-sm font-normal tracking-wide">Sua evolução começa aqui.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -81,7 +80,7 @@ export default function Login({ onLogin, onAcquireClick, errorMessage, notice }:
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Ex: joao@email.com"
-                className="block w-full pl-12 pr-4 py-4 bg-white border border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-medium"
+                className="block w-full pl-12 pr-4 py-4 bg-[#141416] border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500 transition-all font-medium"
               />
             </div>
           </div>
@@ -102,7 +101,7 @@ export default function Login({ onLogin, onAcquireClick, errorMessage, notice }:
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="********"
-                className="block w-full pl-12 pr-12 py-4 bg-white border border-transparent rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-medium"
+                className="block w-full pl-12 pr-12 py-4 bg-[#141416] border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500 transition-all font-medium"
               />
               <button
                 type="button"
@@ -145,7 +144,7 @@ export default function Login({ onLogin, onAcquireClick, errorMessage, notice }:
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-5 rounded-2xl shadow-xl shadow-red-900/20 flex items-center justify-center space-x-2 transition-all active:scale-[0.98] disabled:opacity-50 mt-4 uppercase tracking-tighter"
+            className="w-full bg-[#d91c30] hover:bg-[#ed2940] text-white font-semibold py-4 rounded-xl shadow-xl shadow-red-950/30 flex items-center justify-center space-x-3 transition-all active:scale-[0.98] disabled:opacity-50 mt-4 tracking-wide"
           >
             {isSubmitting ? (
               <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

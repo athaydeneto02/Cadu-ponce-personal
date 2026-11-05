@@ -14,7 +14,7 @@ import { generateWorkoutPDF } from '../lib/pdfGenerator';
 import { initialExerciseLoads, completedWorkoutVolume } from '../lib/workoutSession';
 import { elapsedWorkoutSeconds, pauseWorkoutClock, readWorkoutDraft, removeWorkoutDraft, saveWorkoutDraft, workoutDraftFingerprint, type WorkoutClock } from '../lib/workoutDraft';
 import { useWorkoutClock } from '../lib/useWorkoutClock';
-import logoImg from '../assets/images/cadu_ponce_logo_new.png';
+import logoImg from '../assets/images/cadu-ponce-monogram.webp';
 
 interface WorkoutSessionProps {
   workout: Workout;

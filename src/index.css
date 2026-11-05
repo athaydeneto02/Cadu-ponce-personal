@@ -17,3 +17,99 @@
 html, body {
   overscroll-behavior-y: none;
 }
+
+body { margin: 0; background: #09090b; }
+
+/* Cadu Ponce: a quiet wordmark paired with a distinctive crimson monogram. */
+.brand-logo {
+  --brand-name-size: 25px;
+  --brand-mark-size: 64px;
+  --brand-ink: #f5f3ef;
+  --brand-muted: #a5a1a3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  color: var(--brand-ink);
+  user-select: none;
+}
+.brand-logo--light { --brand-ink: #171719; --brand-muted: #666166; }
+.brand-logo--sm { --brand-name-size: 17px; --brand-mark-size: 38px; gap: 5px; }
+.brand-logo--lg { --brand-name-size: clamp(27px, 6.9vw, 38px); --brand-mark-size: 136px; }
+.brand-logo--xl { --brand-name-size: clamp(29px, 7.4vw, 46px); --brand-mark-size: 192px; }
+.brand-logo--stacked { flex-direction: column; gap: 8px; text-align: center; }
+.brand-logo__mark { width: var(--brand-mark-size); height: var(--brand-mark-size); object-fit: contain; flex-shrink: 0; }
+.brand-logo__type { min-width: 0; }
+.brand-logo__name { font-size: var(--brand-name-size); font-weight: 650; line-height: 1.15; letter-spacing: .045em; white-space: nowrap; }
+.brand-logo__name span { color: #ed3545; font-weight: 350; }
+.brand-logo__descriptor { margin-top: 12px; font-size: 9px; font-weight: 500; letter-spacing: .3em; line-height: 1.5; text-transform: uppercase; color: var(--brand-muted); }
+.brand-logo--lg .brand-logo__descriptor, .brand-logo--xl .brand-logo__descriptor { font-size: 10px; letter-spacing: .32em; }
+
+.login-shell { background: radial-gradient(ellipse 90% 50% at 50% 0, #281014 0%, transparent 80%), #09090b; }
+.login-shell__accent { position: absolute; top: 0; left: calc(50% - 36px); height: 2px; width: 72px; background: #e32636; box-shadow: 0 0 32px #e3263666; }
+.login-shell input { color-scheme: dark; }
+.login-shell input:-webkit-autofill { -webkit-text-fill-color: #fafafa; -webkit-box-shadow: 0 0 0 1000px #141416 inset; }
+
+.app-startup { position: fixed; inset: 0; z-index: 200; background: #09090b; }
+.app-splash { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; min-height: 100svh; width: 100%; overflow: hidden; background: #09090b; color: #f5f3ef; }
+.app-startup .app-splash { height: 100%; min-height: 100%; }
+.app-splash__ambient { position: absolute; z-index: -1; inset: 0; background: radial-gradient(ellipse 55% 45% at 50% 36%, #4b101d60, transparent 78%), linear-gradient(125deg, transparent 15%, #ffffff02 49.8%, #ffffff07 50%, transparent 50.2%); }
+.app-splash__ambient::after { content: ''; position: absolute; width: min(78vw, 760px); height: 1px; left: 50%; top: 50%; transform: translateX(-50%); background: linear-gradient(90deg, transparent, #e3263625, transparent); }
+.app-splash__frame { position: absolute; inset: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); pointer-events: none; }
+.app-splash__frame span { position: absolute; height: 15px; width: 15px; border-color: #ffffff20; border-style: solid; border-width: 0; }
+.app-splash__frame span:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.app-splash__frame span:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.app-splash__frame span:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.app-splash__frame span:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+.app-splash__eyebrow { position: absolute; top: max(46px, calc(env(safe-area-inset-top) + 24px)); display: flex; align-items: center; gap: 10px; color: #aaa1a4; font-size: 9px; font-weight: 500; letter-spacing: .22em; text-transform: uppercase; }
+.app-splash__eyebrow span { height: 4px; width: 4px; background: #e32636; transform: rotate(45deg); }
+.app-splash__content { position: relative; width: 100%; max-width: 560px; padding: 70px 28px; text-align: center; }
+.app-splash__identity { position: relative; display: flex; justify-content: center; }
+.app-splash__identity .brand-logo { position: relative; z-index: 1; }
+.app-splash__identity .brand-logo__mark { animation: brand-reveal .8s cubic-bezier(.22, 1, .36, 1) both; }
+.app-splash__identity .brand-logo__type { animation: brand-rise .65s .18s both; }
+.app-splash__orbit { position: absolute; top: -15px; left: calc(50% - 111px); height: 222px; width: 222px; border: 1px solid #e326361a; border-radius: 50%; }
+.app-splash__orbit::before { content: ''; position: absolute; inset: 9px; border: 1px solid transparent; border-top-color: #e3263699; border-bottom-color: #e3263630; border-radius: 50%; animation: brand-orbit 9s linear infinite; }
+.app-splash__orbit::after { content: ''; position: absolute; inset: -14px; border: 1px solid #ffffff04; border-radius: 50%; }
+.app-splash__promise { position: relative; margin-top: 30px; font-size: 13px; font-weight: 400; letter-spacing: .025em; color: #b0a8ab; animation: brand-rise .6s .3s both; }
+.app-splash__loading { width: 200px; max-width: 100%; margin: 50px auto 0; }
+.app-splash__track { height: 2px; width: 100%; overflow: hidden; background: #ffffff12; }
+.app-splash__track span { display: block; width: 45%; height: 100%; background: linear-gradient(90deg, #e3263620, #ed3545); box-shadow: 0 0 14px #e3263670; animation: brand-load 1.8s cubic-bezier(.5, 0, .2, 1) infinite; }
+.app-splash__loading p { margin-top: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 11px; color: #b4aeb0; letter-spacing: .025em; }
+.app-splash__status-dot { width: 4px; height: 4px; border-radius: 50%; background: #ed3545; }
+.app-splash__footer { position: absolute; bottom: max(46px, calc(env(safe-area-inset-bottom) + 24px)); display: flex; align-items: center; gap: 16px; font-size: 9px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: #94878c; }
+.app-splash__footer i { width: 2px; height: 2px; border-radius: 50%; background: #e32636; }
+.app-splash--compact .app-splash__eyebrow, .app-splash--compact .app-splash__frame, .app-splash--compact .app-splash__footer { display: none; }
+
+@keyframes brand-reveal { from { opacity: 0; transform: scale(.88) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes brand-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes brand-orbit { to { transform: rotate(360deg); } }
+@keyframes brand-load { 0% { transform: translateX(-110%); } 100% { transform: translateX(330%); } }
+
+@media (min-width: 768px) {
+  .app-splash__frame { inset: 40px; }
+  .app-splash__eyebrow { top: 60px; }
+  .app-splash__footer { bottom: 60px; }
+  .app-splash__content { padding-bottom: 95px; }
+}
+@media (max-height: 600px) {
+  .app-splash .brand-logo--xl { --brand-mark-size: 124px; --brand-name-size: 29px; }
+  .app-splash__orbit { width: 146px; height: 146px; top: -11px; left: calc(50% - 73px); }
+  .app-splash__content { padding: 58px 24px; }
+  .app-splash__promise { margin-top: 18px; }
+  .app-splash__loading { margin-top: 28px; }
+  .app-splash__eyebrow { top: 24px; }
+  .app-splash__footer { bottom: 24px; }
+}
+@media (max-height: 420px) {
+  .app-splash__eyebrow, .app-splash__footer, .app-splash__frame { display: none; }
+  .app-splash__content { padding: 24px; }
+  .app-splash .brand-logo--xl { --brand-mark-size: 88px; --brand-name-size: 25px; }
+  .app-splash__orbit { display: none; }
+  .app-splash__promise { margin-top: 12px; }
+  .app-splash__loading { margin-top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-splash *, .app-splash *::before, .app-splash *::after { animation: none !important; transition: none !important; }
+  .app-splash__track span { width: 100%; opacity: .65; }
+}

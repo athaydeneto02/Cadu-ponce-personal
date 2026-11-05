@@ -37,7 +37,7 @@ import AccountAvatar from './components/AccountAvatar';
 import SplashScreen from './components/SplashScreen';
 import Login from './components/Login';
 import AcquireConsulting from './components/AcquireConsulting';
-import logoImg from './assets/images/cadu_ponce_logo_new.png';
+import logoImg from './assets/images/cadu-ponce-monogram.webp';
 
 type Tab = 'dashboard' | 'workouts' | 'evolution' | 'profile';
 
@@ -261,15 +261,7 @@ export default function App() {
   };
 
   if (isLoading) {
-    // Minimal spinner — only shown on first-ever visit (no cache)
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-10 h-10 border-3 border-red-600 border-t-transparent rounded-full animate-spin" style={{borderWidth: 3}} />
-          <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">Conectando...</span>
-        </div>
-      </div>
-    );
+    return <SplashScreen />;
   }
 
   if (isRecoveringPassword) {
@@ -531,8 +523,8 @@ export default function App() {
       {isStudent && !activeWorkout ? (
         <div className="relative w-full max-w-[430px] min-h-screen bg-[#F4F6FA] flex flex-col shadow-2xl overflow-hidden">
           {/* MFIT Header */}
-          <header className="bg-[#1c2b3e] h-14 flex items-center justify-center px-4 shrink-0 z-40 relative">
-            <img src={logoImg} alt="logo" className="w-auto h-8 object-contain" />
+          <header className="bg-[#09090b] h-14 flex items-center justify-center px-4 shrink-0 z-40 relative">
+            <BrandLogo size="sm" />
             {user && <StudentNotificationCenter key={user.uid} userId={user.uid} />}
           </header>
 

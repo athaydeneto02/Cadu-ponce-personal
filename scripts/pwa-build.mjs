@@ -10,7 +10,7 @@ export async function createPrecacheManifest(directory) {
     for (const item of await readdir(folder, { withFileTypes: true })) {
       const name = relative ? `${relative}/${item.name}` : item.name;
       if (item.isDirectory()) { if (name === 'assets') await walk(path.join(folder, item.name), name); }
-      else if ((name.startsWith('assets/') && /\.(js|css|png|jpe?g|webp|svg|woff2?)$/.test(name)) || ['index.html', 'icon.png', 'manifest.webmanifest', 'push-sw.js'].includes(name)) {
+      else if ((name.startsWith('assets/') && /\.(js|css|png|jpe?g|webp|svg|woff2?)$/.test(name)) || ['index.html', 'icon.png', 'icon-192.png', 'apple-touch-icon.png', 'manifest.webmanifest', 'push-sw.js'].includes(name)) {
         const data = await readFile(path.join(directory, name));
         files.push({ url: `/${name}`, revision: createHash('sha256').update(data).digest('hex').slice(0,20) });
       }
