@@ -57,6 +57,7 @@ import {
   Accessibility,
   MoreVertical,
   Eye,
+  EyeOff,
   ArrowUpDown,
   Archive,
   Image as ImageIcon,
@@ -722,6 +723,19 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const [formModality, setFormModality] = useState<'Presencial' | 'Online'>('Presencial');
   const [formRole, setFormRole] = useState<'student' | 'admin'>('student');
   const [formPassword, setFormPassword] = useState('');
+  const [formConfirmPassword, setFormConfirmPassword] = useState('');
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [showFormConfirmPassword, setShowFormConfirmPassword] = useState(false);
+  const [formPasswordError, setFormPasswordError] = useState('');
+  const confirmPasswordInput = useRef<HTMLInputElement>(null);
+
+  const resetNewUserPasswords = () => {
+    setFormPassword('');
+    setFormConfirmPassword('');
+    setShowFormPassword(false);
+    setShowFormConfirmPassword(false);
+    setFormPasswordError('');
+  };
 
   // Account management requires the current server list: deleted students must
   // not reappear from this device's previous cache when the network is unavailable.
@@ -778,7 +792,13 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   const handleCreateUser = async (event: React.FormEvent) => {
     event.preventDefault();
     if (createUserLock.current || !formName.trim() || !formEmail.trim()) return;
+    setFormPasswordError('');
     if (formPassword.length < 12) { alert('Informe uma senha com pelo menos 12 caracteres.'); return; }
+    if (formPassword !== formConfirmPassword) {
+      setFormPasswordError('As senhas não coincidem. Confira a confirmação.');
+      confirmPasswordInput.current?.focus();
+      return;
+    }
     createUserLock.current = true; setIsCreatingUser(true);
     try {
       const phone = normalizeStudentPhone(formPhone);
@@ -794,7 +814,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
       }
       setUsers(previous => [newUser, ...previous.filter(user => user.uid !== newUser.uid)]);
       setCreatedAccess({ name: newUser.name, email: newUser.email, password: formPassword, warning });
-      setIsAddingUser(false); setFormName(''); setFormEmail(''); setFormPhone(''); setFormPassword('');
+      setIsAddingUser(false); setFormName(''); setFormEmail(''); setFormPhone(''); resetNewUserPasswords();
     } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível criar o aluno.'); }
     finally { createUserLock.current = false; setIsCreatingUser(false); }
   };
@@ -3846,7 +3866,9 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
             {/* Header / Banner area */}
             <div className="w-full max-w-xl bg-[#0c1d2e] p-6 pb-20 md:rounded-t-3xl flex flex-col items-start relative shrink-0">
                <button
-                onClick={() => setIsAddingUser(false)}
+                type="button"
+                disabled={isCreatingUser}
+                onClick={() => { if (createUserLock.current) return; setIsAddingUser(false); resetNewUserPasswords(); }}
                 className="flex items-center text-white text-[10px] font-bold opacity-80 hover:opacity-100 transition mb-6 uppercase tracking-wider"
               >
                 <ChevronLeft className="w-4 h-4 mr-1" /> Voltar
@@ -3891,22 +3913,57 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   />
                 </div>
 
-                {/* Password and Role */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Access password and confirmation */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Senha de Acesso</label>
-                    <input
-                      required
-                      type="password"
-                      minLength={12}
-                      autoComplete="new-password"
-                      value={formPassword}
-                      onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder="Pelo menos 12 caracteres"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
-                    />
+                    <label htmlFor="new-account-password" className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Senha de Acesso</label>
+                    <div className="relative">
+                      <input
+                        id="new-account-password"
+                        required
+                        type={showFormPassword ? 'text' : 'password'}
+                        minLength={12}
+                        autoComplete="new-password"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        value={formPassword}
+                        onChange={(e) => { setFormPassword(e.target.value); setFormPasswordError(''); }}
+                        placeholder="Pelo menos 12 caracteres"
+                        className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
+                      />
+                      <button type="button" onClick={() => setShowFormPassword(value => !value)} aria-label={showFormPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-controls="new-account-password" aria-pressed={showFormPassword} className="absolute right-0 top-0 bottom-0 w-11 flex items-center justify-center text-slate-500 hover:text-red-600 rounded-lg">
+                        {showFormPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
+                    <label htmlFor="new-account-confirm-password" className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Confirmar Senha</label>
+                    <div className="relative">
+                      <input
+                        ref={confirmPasswordInput}
+                        id="new-account-confirm-password"
+                        required
+                        type={showFormConfirmPassword ? 'text' : 'password'}
+                        minLength={12}
+                        autoComplete="new-password"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        value={formConfirmPassword}
+                        onChange={(e) => { setFormConfirmPassword(e.target.value); setFormPasswordError(''); }}
+                        placeholder="Repita a senha de acesso"
+                        aria-invalid={Boolean(formPasswordError)}
+                        aria-describedby={formPasswordError ? 'new-account-password-error' : undefined}
+                        className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-100 rounded-lg font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-[#dc2626] transition duration-200"
+                      />
+                      <button type="button" onClick={() => setShowFormConfirmPassword(value => !value)} aria-label={showFormConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'} aria-controls="new-account-confirm-password" aria-pressed={showFormConfirmPassword} className="absolute right-0 top-0 bottom-0 w-11 flex items-center justify-center text-slate-500 hover:text-red-600 rounded-lg">
+                        {showFormConfirmPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {formPasswordError && <p id="new-account-password-error" role="alert" className="text-sm text-red-600">{formPasswordError}</p>}
+
+                <div className="space-y-1.5">
                     <label className="text-[11px] font-black italic uppercase tracking-tight text-slate-800">Tipo de Conta</label>
                     <div className="relative">
                       <select
@@ -3919,7 +3976,6 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     </div>
-                  </div>
                 </div>
 
                 {/* Selecione um grupo */}

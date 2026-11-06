@@ -103,6 +103,34 @@ function harness(overrides = {}) {
   return { calls, render, click, find: predicate => all(render()).find(predicate), resolve: () => saveResolve(), reject: error => saveReject(error) };
 }
 
+function accountInput(app, fieldLabel) {
+  const field = app.find(node => node.type === 'div'
+    && all(node).some(child => child.type === 'label' && label(child).trim() === fieldLabel)
+    && all(node).filter(child => child.type === 'input').length === 1);
+  assert.ok(field, `Input ${fieldLabel} exists`);
+  return all(field).find(child => child.type === 'input');
+}
+
+function changeAccountInput(app, fieldLabel, value) {
+  accountInput(app, fieldLabel).props.onChange({ target: { value } });
+}
+
+function accountButton(app, accessibleName) {
+  const button = app.find(node => node.type === 'button' && node.props['aria-label'] === accessibleName);
+  assert.ok(button, `Button ${accessibleName} exists`);
+  return button;
+}
+
+function assertFreshPasswords(app) {
+  for (const fieldLabel of ['Senha de Acesso', 'Confirmar Senha']) {
+    const input = accountInput(app, fieldLabel);
+    assert.equal(input.props.value, '', `${fieldLabel} is cleared`);
+    assert.equal(input.props.type, 'password', `${fieldLabel} is concealed`);
+  }
+  assert.ok(accountButton(app, 'Mostrar senha'));
+  assert.ok(accountButton(app, 'Mostrar confirmação de senha'));
+}
+
 
 test('inactivation and soft exclusion persist remotely before changing the selected student', async () => {
   let resolve, reject;
@@ -137,16 +165,104 @@ test('routine assignment sends one versioned atomic save and never creates cache
   assert.equal(app.find(node => node.type === 'button' && label(node).includes('Salvar Atribuição')), undefined);
 });
 
-test('creating a student normalizes their own phone and discloses manual delivery only after success', async () => {
+test('matching passwords preserve the creation payload, disclose manual delivery only after success, and reset the next form', async () => {
   let resolve; const calls = [];
   const app = harness({ adminCreateUser: (...args) => { calls.push(args); return new Promise(yes => { resolve = yes; }); } });
   await settle(); app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
-  const change = (labelText, value) => { const field = app.find(node => node.type === 'div' && all(node).some(child => child.type === 'label' && label(child).includes(labelText)) && all(node).filter(child => child.type === 'input').length === 1); assert.ok(field, labelText); all(field).find(child => child.type === 'input').props.onChange({ target: { value } }); };
-  change('Nome completo', 'Novo aluno'); change('E-mail', 'new@example.test'); change('Senha', 'senha-inicial-segura'); change('WhatsApp do aluno', '(43) 99999-1234');
+  changeAccountInput(app, 'Nome completo', 'Novo aluno');
+  changeAccountInput(app, 'E-mail', 'new@example.test');
+  changeAccountInput(app, 'Senha de Acesso', 'senha-inicial-segura');
+  changeAccountInput(app, 'Confirmar Senha', 'senha-inicial-segura');
+  changeAccountInput(app, 'WhatsApp do aluno (DDD e número)', '(43) 99999-1234');
+  accountButton(app, 'Mostrar senha').props.onClick();
+  accountButton(app, 'Mostrar confirmação de senha').props.onClick();
   const operation = app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
   assert.equal(calls.length, 1); assert.equal(calls[0][2].metadata.phone, '5543999991234'); assert.equal(calls[0][2].trainerPhone, '5500000000000');
+  assert.equal(calls[0][0], 'new@example.test'); assert.equal(calls[0][1], 'Novo aluno');
+  assert.equal(calls[0][2].password, 'senha-inicial-segura');
+  assert.equal(calls[0][2].role, 'student'); assert.equal(calls[0][2].status, 'active');
+  assert.equal('confirmPassword' in calls[0][2], false, 'confirmation is local validation, not a new API field');
   assert.equal(calls[0][2].metadata.sendAccessInfo, undefined); assert.equal(app.find(node => node.props['aria-label'] === 'Acesso criado'), undefined);
   resolve({ uid: 'new', name: 'Novo aluno', email: 'new@example.test' }); await operation;
   assert.ok(app.find(node => node.props['aria-label'] === 'Acesso criado'));
   assert.match(label(app.render()), /Nenhum e-mail ou WhatsApp foi enviado/);
+  app.click(app.render(), node => label(node).trim() === 'Concluir');
+  app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
+  assertFreshPasswords(app);
+  assert.equal(accountInput(app, 'Nome completo').props.value, '');
+  assert.equal(accountInput(app, 'E-mail').props.value, '');
+});
+
+test('password visibility controls are independent and cannot submit the account form', async () => {
+  const calls = [];
+  const app = harness({ adminCreateUser: (...args) => { calls.push(args); } });
+  await settle(); app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
+  changeAccountInput(app, 'Senha de Acesso', 'senha-inicial-segura');
+  changeAccountInput(app, 'Confirmar Senha', 'confirmacao-diferente');
+  assert.equal(accountInput(app, 'Senha de Acesso').props.type, 'password');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.type, 'password');
+
+  const revealPassword = accountButton(app, 'Mostrar senha');
+  assert.equal(revealPassword.props.type, 'button', 'visibility cannot trigger native form submission');
+  revealPassword.props.onClick();
+  assert.equal(accountInput(app, 'Senha de Acesso').props.type, 'text');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.type, 'password');
+
+  const revealConfirmation = accountButton(app, 'Mostrar confirmação de senha');
+  assert.equal(revealConfirmation.props.type, 'button');
+  revealConfirmation.props.onClick();
+  assert.equal(accountInput(app, 'Senha de Acesso').props.type, 'text');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.type, 'text');
+  accountButton(app, 'Ocultar senha').props.onClick();
+  assert.equal(accountInput(app, 'Senha de Acesso').props.type, 'password');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.type, 'text');
+  accountButton(app, 'Ocultar confirmação de senha').props.onClick();
+  assert.equal(accountInput(app, 'Confirmar Senha').props.type, 'password');
+  assert.equal(accountInput(app, 'Senha de Acesso').props.value, 'senha-inicial-segura');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.value, 'confirmacao-diferente');
+  assert.equal(calls.length, 0);
+});
+
+test('mismatched confirmation blocks account creation and a correction submits the original password', async () => {
+  const calls = [];
+  const app = harness({ adminCreateUser: async (...args) => {
+    calls.push(args); return { uid: 'new', name: 'Novo aluno', email: 'new@example.test' };
+  } });
+  await settle(); app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
+  changeAccountInput(app, 'Nome completo', 'Novo aluno');
+  changeAccountInput(app, 'E-mail', 'new@example.test');
+  changeAccountInput(app, 'Senha de Acesso', 'senha-inicial-segura');
+  changeAccountInput(app, 'Confirmar Senha', 'senha-inicial-diferente');
+  await app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(calls.length, 0);
+  assert.ok(app.find(node => node.props.role === 'alert' && label(node) === 'As senhas não coincidem. Confira a confirmação.'));
+  assert.equal(accountInput(app, 'Senha de Acesso').props.value, 'senha-inicial-segura');
+  assert.equal(accountInput(app, 'Confirmar Senha').props.value, 'senha-inicial-diferente');
+  assert.equal(app.find(node => node.props['aria-label'] === 'Acesso criado'), undefined);
+
+  changeAccountInput(app, 'Confirmar Senha', 'senha-inicial-segura');
+  await app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][2].password, 'senha-inicial-segura');
+  assert.ok(app.find(node => node.props['aria-label'] === 'Acesso criado'));
+});
+
+test('cancelling account creation clears both passwords, visibility and validation errors', async () => {
+  const calls = [];
+  const app = harness({ adminCreateUser: (...args) => { calls.push(args); } });
+  await settle(); app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
+  changeAccountInput(app, 'Nome completo', 'Novo aluno');
+  changeAccountInput(app, 'E-mail', 'new@example.test');
+  changeAccountInput(app, 'Senha de Acesso', 'senha-inicial-segura');
+  changeAccountInput(app, 'Confirmar Senha', 'senha-inicial-diferente');
+  accountButton(app, 'Mostrar senha').props.onClick();
+  accountButton(app, 'Mostrar confirmação de senha').props.onClick();
+  await app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.ok(app.find(node => node.props.role === 'alert' && label(node).includes('As senhas não coincidem')));
+  app.click(app.render(), node => label(node).trim() === 'Voltar');
+  assert.equal(app.find(node => node.type === 'form'), undefined);
+  app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
+  assertFreshPasswords(app);
+  assert.equal(app.find(node => node.props.role === 'alert' && label(node).includes('As senhas não coincidem')), undefined);
+  assert.equal(calls.length, 0);
 });
