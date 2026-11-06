@@ -1,0 +1,135 @@
+/* The legacy student screens share the shell palette. Exact utility tokens keep
+   the adapter inside the student app, including fixed dialogs and workout views. */
+.student-app[data-theme="light"] {
+  color-scheme: light;
+  --student-secondary: #4f4e56;
+  --student-success: #166d47;
+  --student-success-soft: #e8f5ed;
+  --student-success-border: #a2cfb2;
+  --student-warning: #805200;
+  --student-warning-soft: #fff2d8;
+  --student-warning-border: #dfbf7b;
+  --student-accent-ink: #ba1731;
+  --student-solid-success: #157b48;
+  --student-overlay: #101014b8;
+}
+
+.student-app[data-theme="dark"] {
+  color-scheme: dark;
+  --student-secondary: #cfccd3;
+  --student-success: #86ddb0;
+  --student-success-soft: #19372b;
+  --student-success-border: #326c4e;
+  --student-warning: #f2ce8c;
+  --student-warning-soft: #392e1b;
+  --student-warning-border: #806332;
+  --student-accent-ink: #ff8a9b;
+  --student-solid-success: #157b48;
+  --student-overlay: #070709cf;
+}
+
+@layer base {
+  .student-app :where(.border, .border-t, .border-b, .border-l, .border-r, .border-x) {
+    border-color: var(--student-border);
+  }
+}
+
+/* Neutral canvases, cards and text work in either theme, even when the older
+   component was originally written only for a dark or light surface. */
+.student-app :is(.bg-slate-950, [class~="dark:bg-black"], [class~="bg-[#1c2b3e]"], [class~="bg-[#0c1622]"], [class~="bg-[#f4f7fa]"]) { background-color: var(--student-bg); }
+.student-app :is(.bg-white, .bg-slate-900, [class~="dark:bg-slate-900"]) { background-color: var(--student-surface); }
+.student-app :is(.bg-slate-50, .bg-slate-100, .bg-slate-200, .bg-slate-800, .bg-slate-850, [class~="dark:bg-slate-800"], [class~="bg-[#111827]"], [class~="bg-[#f8fafc]"]) { background-color: var(--student-raised); }
+.student-app .bg-slate-700 { background-color: var(--student-border); }
+.student-app :is([class~="bg-slate-50/60"], [class~="bg-slate-900/60"], [class~="bg-slate-500/10"]) { background-color: var(--student-raised); }
+.student-app [class~="bg-slate-950/80"] { background-color: var(--student-overlay); }
+.student-app :is(.text-white, .text-zinc-100, .text-slate-800, .text-slate-900, .text-slate-950, [class~="dark:text-white"]) { color: var(--student-text); }
+.student-app :is(.text-slate-200, .text-slate-300, .text-slate-600, .text-slate-700, [class~="text-white/80"], [class~="text-white/90"]) { color: var(--student-secondary); }
+.student-app :is(.text-slate-400, .text-slate-500, .text-gray-500, [class~="dark:text-slate-400"], [class~="text-white/30"], [class~="text-white/40"], [class~="text-white/50"], [class~="text-white/60"], [class~="text-white/70"]) { color: var(--student-muted); }
+.student-app :is(.border-slate-100, .border-slate-200, .border-slate-300, .border-slate-500, .border-slate-600, .border-slate-700, .border-slate-750, .border-slate-800, .border-slate-850, .border-slate-900, .border-gray-100, .border-gray-200, [class~="dark:border-slate-800"], [class~="border-slate-200/60"], [class~="border-slate-500/20"], [class~="border-slate-700/30"], [class~="border-white/10"], [class~="border-white/30"], [class~="border-white/40"]) { border-color: var(--student-border); }
+.student-app :is([class~="bg-white/10"], [class~="bg-white/15"], [class~="bg-white/20"], [class~="bg-white/25"], [class~="bg-white/40"]) { background-color: var(--student-raised); }
+
+/* Red identifies navigation/actions, while completion and warnings keep their
+   own colors. Solid actions always retain white labels in the light theme. */
+.student-app :is(.bg-blue-600, .bg-blue-700, .bg-red-500, .bg-red-600, .bg-red-650, .bg-red-700, .bg-red-750, [class~="bg-[#0070f3]"], [class~="bg-[#1976D2]"], [class~="bg-[#1565C0]"]):not(.student-session-heading):not(.student-session-intro) {
+  background-color: var(--student-solid-accent);
+  color: var(--student-on-accent);
+}
+.student-app :is(.bg-blue-50, .bg-red-50, .bg-red-950, [class~="bg-red-600/5"], [class~="bg-red-600/10"], [class~="bg-red-600/20"], [class~="bg-red-700/30"]) { background-color: var(--student-accent-soft); }
+.student-app :is(.text-blue-600, .text-blue-700, .text-red-300, .text-red-400, .text-red-500, .text-red-600, .text-red-700, [class~="text-[#1565C0]"], [class~="text-[#1976D2]"]) { color: var(--student-accent-ink); }
+.student-app :is(.border-blue-500, .border-blue-600, .border-red-300, .border-red-500, .border-red-600, [class~="border-[#1976D2]"], [class~="border-[#1976D2]/20"], [class~="border-red-500/30"], [class~="border-red-500/40"], [class~="border-red-600/20"], [class~="border-red-600/30"], [class~="border-red-900/40"]) { border-color: var(--student-accent-ink); }
+.student-app :is(.bg-emerald-50, .bg-emerald-100, [class~="bg-emerald-50/60"], [class~="bg-emerald-100/60"], [class~="bg-emerald-500/10"]) { background-color: var(--student-success-soft); }
+.student-app :is(.text-emerald-400, .text-emerald-500, .text-emerald-600, .text-emerald-700, .text-emerald-800) { color: var(--student-success); }
+.student-app :is(.border-emerald-100, .border-emerald-400, .border-emerald-500, [class~="border-emerald-500/30"]) { border-color: var(--student-success-border); }
+.student-app :is(.bg-emerald-500, .bg-emerald-600, [class~="bg-[#2DA44E]"], [class~="bg-[#25D366]"], [class~="bg-[#43A047]"]) { background-color: var(--student-solid-success); color: #fff; }
+.student-app :is(.border-emerald-600, [class~="border-[#2DA44E]"]) { border-color: var(--student-solid-success); }
+.student-app :is(.bg-amber-50, .bg-amber-100) { background-color: var(--student-warning-soft); }
+.student-app :is(.text-amber-100, .text-amber-200, .text-amber-700, .text-amber-900) { color: var(--student-warning); }
+.student-app .text-amber-500 { color: var(--student-warning); }
+.student-app .fill-amber-500 { fill: var(--student-warning); }
+.student-app :is(.bg-blue-600, .bg-blue-700, .bg-red-500, .bg-red-600, .bg-red-650, .bg-red-700, .bg-red-750, .bg-emerald-500, .bg-emerald-600, [class~="bg-[#0070f3]"], [class~="bg-[#1976D2]"], [class~="bg-[#1565C0]"], [class~="bg-[#2DA44E]"], [class~="bg-[#25D366]"], [class~="bg-[#43A047]"]):not(.student-session-heading):not(.student-session-intro) :is(.text-white, [class~="text-white/80"], [class~="text-white/90"]) { color: #fff; }
+.student-app .border-t-transparent { border-top-color: transparent; }
+
+/* Explicit media boundaries preserve the cinematic player and photo captions;
+   overlay backdrops alone do not change the text inside their dialog cards. */
+.student-app .student-media-surface { color: #fff; }
+.student-app .student-media-surface :is(.text-white, [class~="text-white/80"], [class~="text-white/90"]) { color: #fff; }
+.student-app .student-media-surface :is([class~="text-white/30"], [class~="text-white/40"], [class~="text-white/50"], [class~="text-white/60"], [class~="text-white/70"]) { color: #c7c7cc; }
+.student-app .student-media-surface :is([class~="bg-white/10"], [class~="bg-white/15"], [class~="bg-white/20"], [class~="bg-white/25"]) { background-color: #ffffff20; }
+.student-app .student-media-surface [class~="border-white/10"] { border-color: #ffffff26; }
+.student-app .student-media-surface .text-amber-200 { color: #f4d69a; }
+.student-app .student-media-surface[class~="bg-slate-950/40"] { color: #fff; }
+.student-app .student-media-surface .text-red-500 { color: #ff8496; }
+
+/* A calmer hierarchy for the legacy views, consistent with the new home. */
+.student-app .italic { font-style: normal; }
+.student-app .font-black { font-weight: 700; }
+.student-app .italic.uppercase { text-transform: none; letter-spacing: normal; }
+.student-app :is(.student-workout-library, .student-resource-page) { color: var(--student-text); background: var(--student-bg); }
+.student-app .student-resource-page { padding: 1.5rem; }
+.student-app .student-resource-page > :is(article, form, .bg-white),
+.student-app .student-workout-library article { border: 1px solid var(--student-border); border-radius: 1.25rem; }
+.student-app .student-workout-library > header { padding: 1.5rem 1.25rem 1rem; background: var(--student-bg); }
+.student-app .student-session-heading { background: var(--student-surface); border-bottom: 1px solid var(--student-border); }
+.student-app .student-session-intro { background: var(--student-raised); border-bottom: 1px solid var(--student-border); }
+.student-app .student-workout-start { background-color: var(--student-solid-accent); color: var(--student-on-accent); }
+.student-app .student-workout-start:hover { filter: brightness(.94); }
+.student-app [class~="from-pink-50/60"] { background-image: linear-gradient(110deg, var(--student-accent-soft), var(--student-raised)); border-color: var(--student-border); }
+.student-app :is(.text-pink-600, .text-pink-700) { color: var(--student-accent-ink); }
+.student-app :is([class~="ring-offset-4"], [class~="dark:ring-offset-slate-950"]) { --tw-ring-offset-color: var(--student-bg); }
+.student-app :is([class~="shadow-red-900/20"], [class~="shadow-red-600/30"], [class~="shadow-green-200"]) { --tw-shadow-color: #00000014; }
+
+/* Hover and keyboard feedback remain visible without flashing a light panel. */
+.student-app :is([class~="hover:bg-slate-100"], [class~="hover:bg-slate-200"], [class~="hover:bg-slate-500/10"], [class~="hover:bg-slate-700"], [class~="hover:bg-slate-800"], [class~="hover:bg-slate-850"], [class~="hover:bg-slate-900"], [class~="hover:bg-white/10"], [class~="hover:bg-white/20"], [class~="hover:bg-white/25"]):hover { background-color: var(--student-raised); }
+.student-app :is([class~="hover:bg-blue-700"], [class~="hover:bg-red-700"], [class~="hover:bg-red-750"], [class~="hover:bg-[#1565C0]"]):hover { background-color: var(--student-solid-accent); filter: brightness(.94); color: var(--student-on-accent); }
+.student-app [class~="hover:bg-red-600/20"]:hover { background-color: var(--student-accent-soft); }
+.student-app [class~="hover:bg-emerald-100/60"]:hover { background-color: var(--student-success-soft); }
+.student-app :is([class~="hover:bg-[#1EBE5D]"], [class~="hover:bg-[#388E3C]"], [class~="hover:bg-emerald-500"]):not(.student-workout-start):hover { background-color: var(--student-solid-success); }
+.student-app :is([class~="hover:text-white"], [class~="hover:text-slate-600"]):hover { color: var(--student-text); }
+.student-app :is([class~="hover:text-red-300"], [class~="hover:text-red-400"], [class~="hover:text-red-600"]):hover { color: var(--student-accent-ink); }
+.student-app [class~="hover:border-[#1976D2]"]:hover { border-color: var(--student-accent-ink); }
+.student-app .group:hover :is([class~="group-hover:text-[#1976D2]"], [class~="group-hover:text-pink-700"]) { color: var(--student-accent-ink); }
+.student-app .student-media-surface :is([class~="hover:bg-white/20"], [class~="hover:bg-white/25"]):hover { background-color: #ffffff38; }
+.student-app .student-workout-start:hover { background-color: var(--student-solid-accent); }
+.student-app :is(.bg-red-600, .bg-red-650, .bg-blue-600, .bg-emerald-600)[class~="hover:text-white"]:hover { color: var(--student-on-accent); }
+.student-app :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible { outline: 2px solid var(--student-accent-ink); outline-offset: 3px; }
+
+/* Fields with no explicit utility background must also follow the theme. */
+.student-app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="hidden"]), textarea, select) {
+  background-color: var(--student-raised);
+  color: var(--student-text);
+  border-color: var(--student-border);
+  caret-color: var(--student-accent-ink);
+  color-scheme: inherit;
+}
+.student-app :is(input, textarea)::placeholder { color: var(--student-muted); opacity: 1; }
+.student-app :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: var(--student-accent); }
+.student-app :is(input, textarea, select):focus { border-color: var(--student-accent-ink); }
+.student-app input:-webkit-autofill { -webkit-text-fill-color: var(--student-text); -webkit-box-shadow: 0 0 0 1000px var(--student-raised) inset; }
+.student-app select option { color: var(--student-text); background-color: var(--student-surface); }
+.student-app input[type="file"] { max-width: 100%; color: var(--student-secondary); }
+.student-app input[type="file"]::file-selector-button { padding: .5rem .7rem; margin-right: .5rem; border: 1px solid var(--student-border); border-radius: .6rem; background: var(--student-raised); color: var(--student-text); }
+
+@media (max-width: 640px) {
+  .student-app .student-resource-page { padding: 1.25rem; }
+  .student-app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="hidden"]), textarea, select) { font-size: 16px; }
+}

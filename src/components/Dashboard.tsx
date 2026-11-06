@@ -7,9 +7,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, TrendingUp, Calendar, Clock, ChevronRight, Activity, BarChart2, Scale, Plus, MessageSquare, Bell, Dumbbell, CheckCircle, DollarSign, Box, Check, AlertCircle, CreditCard, Copy, Trash2, Edit2, Maximize2, User as UserIcon, Loader2, X as CloseIcon } from 'lucide-react';
 import { storage } from '../lib/storage';
 import { Workout, UserProfile } from '../types';
-import caduAvatar from '../assets/images/cadu_ponce_avatar.jpg';
+import StudentHome from './StudentHome';
 import { supabase } from '../lib/supabase';
-import WeeklyCalendar from './WeeklyCalendar';
+
 import { useWorkoutFrequency } from '../lib/useWorkoutFrequency';
 import { localWorkoutDateKey } from '../lib/workoutFrequency';
 import WorkoutList from './WorkoutList';
@@ -598,116 +598,23 @@ export default function Dashboard({ user, workouts, onStartWorkout, onUpdateUser
   );
 
   return (
-    <div className="flex flex-col min-h-full bg-[#F4F6FA] overflow-y-auto">
-      {/* Header Extension (Dark Blue) */}
-      <div className="bg-[#1c2b3e] px-4 pt-4 pb-8 flex flex-col items-center">
-        {/* Avatar and Info */}
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#0070f3] mb-2 bg-slate-400">
-            <img 
-              src={caduAvatar} 
-              alt="Cadu Ponce" 
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <h2 className="text-white text-sm font-medium">Cadu Ponce</h2>
-          <p className="text-slate-400 text-xs">CREF: 044859-G\PR</p>
-        </div>
-
-        {/* Greeting */}
-        <div className="w-full mt-6 text-left">
-          <h1 className="text-white text-xl font-medium">Boa noite, {user?.name?.split(' ')[0] || 'Aluno'}!</h1>
-        </div>
-      </div>
-
-      <div className="px-4 -mt-4 space-y-4 pb-6">
-        {pushStatus !== 'unsupported' && (
-          <div className="bg-white rounded-xl shadow-sm p-3 relative z-10 flex items-center gap-3 text-sm">
-            <Bell aria-hidden="true" className="w-5 h-5 text-slate-500 shrink-0" />
-            <p role="status" className="flex-1 text-slate-600">
-              {pushStatus === 'ready' ? 'Notificações ativadas neste dispositivo.' : pushStatus === 'syncing' ? 'Atualizando notificações...' : pushStatus === 'denied' ? 'Notificações bloqueadas nas permissões do navegador.' : pushStatus === 'error' ? 'Não foi possível ativar as notificações.' : 'Receba avisos do personal neste dispositivo.'}
-            </p>
-            {(pushStatus === 'needs-permission' || pushStatus === 'error') && <button type="button" onClick={() => { void enablePushNotifications(); }} className="font-semibold text-blue-700">{pushStatus === 'error' ? 'Tentar novamente' : 'Ativar'}</button>}
-          </div>
-        )}
-        {/* Frequência de Treinos */}
-        <button
-          onClick={() => setShowFreqCalendar(true)}
-          className="w-full bg-white rounded-xl shadow-sm p-4 relative z-10 text-left"
-        >
-          <WeeklyCalendar dates={frequency.weekDates} completedDates={frequency.dates} />
-          {frequency.error && <p role="status" className="text-amber-700 text-xs mt-2">{frequency.error}</p>}
-        </button>
-
-
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setShowAnamneses(true)} className="bg-white rounded-xl p-4 text-left text-slate-800 font-semibold">Questionários de saúde</button>
-          <button onClick={() => setShowAgenda(true)} className="bg-white rounded-xl p-4 text-left text-slate-800 font-semibold">Minha agenda</button>
-        </div>
-
-        {/* Grid de Botões */}
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <button
-            onClick={() => { setShowTreinos(true); }}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <Dumbbell className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Treinos</span>
-          </button>
-          
-          <button
-            onClick={() => setShowTreinosExtra(true)}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <Plus className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Treinos<br/>Extras</span>
-          </button>
-          
-          <button
-            onClick={() => setShowAvaliacoes(true)}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <Activity className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Avaliações</span>
-          </button>
-          
-          <button
-            onClick={() => setShowMeuProgresso(true)}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <CheckCircle className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Meu<br/>Progresso</span>
-          </button>
-          
-          <button
-            onClick={() => setShowFaturas(true)}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <DollarSign className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Pagamento</span>
-          </button>
-          
-          <button
-            onClick={() => setShowArquivos(true)}
-            className="bg-[#2c405a] hover:bg-[#233348] transition rounded-xl p-4 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#0070f3] flex items-center justify-center text-white shrink-0 shadow-sm">
-              <Box className="w-5 h-5" />
-            </div>
-            <span className="text-white font-medium text-sm leading-tight">Arquivos</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <StudentHome
+      name={user?.name}
+      weekDates={frequency.weekDates}
+      completedDates={frequency.dates}
+      frequencyLoading={frequency.loading}
+      frequencyError={frequency.error}
+      pushStatus={pushStatus}
+      onEnableNotifications={() => { void enablePushNotifications(); }}
+      onFrequency={() => setShowFreqCalendar(true)}
+      onWorkouts={() => setShowTreinos(true)}
+      onExtraWorkouts={() => setShowTreinosExtra(true)}
+      onAssessments={() => setShowAvaliacoes(true)}
+      onProgress={() => setShowMeuProgresso(true)}
+      onPayment={() => setShowFaturas(true)}
+      onFiles={() => setShowArquivos(true)}
+      onAnamneses={() => setShowAnamneses(true)}
+      onAgenda={() => setShowAgenda(true)}
+    />
   );
 }

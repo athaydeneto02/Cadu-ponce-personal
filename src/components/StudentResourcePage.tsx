@@ -35,7 +35,7 @@ export default function StudentResourcePage({ title, onBack, loading, error, onR
   title: string; onBack: () => void; loading: boolean; error?: string;
   onRefresh: () => Promise<void>; children: React.ReactNode;
 }) {
-  return <section className="min-h-full bg-[#1c2b3e] p-4 space-y-4 pb-10">
+  return <section className="student-resource-page min-h-full bg-[#1c2b3e] p-4 space-y-4 pb-10">
     <div className="flex justify-between items-center text-white">
       <button onClick={onBack} className="flex items-center gap-1 text-sm"><ChevronLeft className="w-4 h-4" />Voltar</button>
       <button onClick={() => void onRefresh()} disabled={loading} aria-label={`Atualizar ${title}`} className="p-2 disabled:opacity-40"><RefreshCw className="w-5 h-5" /></button>

@@ -50,7 +50,7 @@ export default function WorkoutList({ workouts, onBack, trainerPhone, initialKin
   const catalog = studentWorkoutCatalog(routines, legacyWorkouts, studentId);
   const visible = catalog.filter(routine => (routine.kind || 'strength') === kind);
   if (session) return <AdminWorkoutSession key={session.id} routine={session} trainerPhone={trainerPhone} onClose={() => { setSession(null); setRevision(value => value + 1); }} />;
-  return <div className="min-h-full bg-slate-100 pb-8">
+  return <div className="student-workout-library min-h-full bg-slate-100 pb-8">
     <header className="bg-[#1c2b3e] p-4 text-white flex items-center justify-between">
       <div className="flex items-center gap-2">{onBack && <button onClick={onBack} aria-label="Voltar"><ChevronLeft className="w-5 h-5" /></button>}<h1 className="font-bold text-xl">Meus treinos</h1></div>
       <button onClick={() => setRevision(value => value + 1)} disabled={loading} aria-label="Atualizar treinos" className="disabled:opacity-50"><RefreshCw className="w-5 h-5" /></button>

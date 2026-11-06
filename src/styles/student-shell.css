@@ -1,0 +1,105 @@
+.student-app {
+  --student-bg: #f5f5f7;
+  --student-surface: #ffffff;
+  --student-raised: #ededf1;
+  --student-border: #dddde5;
+  --student-text: #1a1a24;
+  --student-muted: #60606f;
+  --student-accent: #c71032;
+  --student-solid-accent: #c71032;
+  --student-accent-soft: #fff0f3;
+  --student-on-accent: #ffffff;
+  --student-shadow: 0 12px 36px #16162108;
+  min-height: 100dvh;
+  background: var(--student-bg);
+  color: var(--student-text);
+  font-family: 'Inter', sans-serif;
+  color-scheme: light;
+  transition: background-color .2s, color .2s;
+}
+.student-app[data-theme='dark'] {
+  --student-bg: #09090c;
+  --student-surface: #131318;
+  --student-raised: #1e1e26;
+  --student-border: #2c2c36;
+  --student-text: #f5f5f8;
+  --student-muted: #acacba;
+  --student-accent: #ff5270;
+  --student-solid-accent: #d81439;
+  --student-accent-soft: #31141e;
+  --student-on-accent: #ffffff;
+  --student-shadow: 0 12px 36px #00000022;
+  color-scheme: dark;
+}
+.student-app :where(button,a,input,select,textarea):focus-visible { outline: 3px solid var(--student-accent); outline-offset: 3px; }
+.student-app :where(button,a) { -webkit-tap-highlight-color: transparent; }
+.student-header { position: relative; background: var(--student-surface); border-bottom: 1px solid var(--student-border); }
+.student-header__inner { max-width: 1120px; min-height: 88px; margin: auto; padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.student-header__brand { cursor: pointer; padding: 0; text-align: left; }
+.student-header__actions { display: flex; align-items: center; gap: 10px; }
+.student-header__label { font-size: 9px; font-weight: 750; letter-spacing: .19em; color: var(--student-muted); margin-right: 14px; }
+.student-icon-button, .student-header__notifications { width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: var(--student-raised); color: var(--student-text); }
+.student-icon-button { display: grid; place-items: center; cursor: pointer; }
+.student-icon-button:hover { color: var(--student-accent); }
+.student-header__notifications { position: relative; }
+.student-header__notifications > button { right: 0; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 14px; color: var(--student-text); }
+.student-header__notifications > button > span { color: #fff; }
+.student-main { max-width: 1120px; margin: auto; padding-bottom: calc(112px + env(safe-area-inset-bottom)); min-height: calc(100dvh - 88px); }
+.student-main--session { padding-bottom: 0; }
+.student-navigation { position: fixed; bottom: max(20px, env(safe-area-inset-bottom)); left: 50%; translate: -50% 0; width: min(520px, calc(100% - 32px)); z-index: 40; background: var(--student-surface); border: 1px solid var(--student-border); border-radius: 22px; box-shadow: 0 8px 40px #0000001a; display: grid; grid-template-columns: repeat(4, 1fr); padding: 7px; }
+.student-navigation :where(button,a) { min-height: 56px; border-radius: 15px; color: var(--student-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: background-color .15s, color .15s; }
+.student-navigation span { font-size: 10px; font-weight: 650; }
+.student-navigation .is-active { background: var(--student-accent-soft); color: var(--student-accent); }
+.student-navigation :where(button,a):hover { color: var(--student-accent); }
+.student-toast { position: fixed; top: 100px; right: 20px; left: 20px; max-width: 480px; margin-left: auto; z-index: 150; background: var(--student-surface); color: var(--student-text); border: 1px solid var(--student-border); border-radius: 18px; box-shadow: var(--student-shadow); padding: 18px; display: flex; align-items: flex-start; gap: 12px; }
+.student-toast > svg { color: var(--student-accent); flex-shrink: 0; }
+.student-toast > div { flex: 1; }
+.student-toast h4 { font-weight: 700; font-size: 14px; }
+.student-toast p { color: var(--student-muted); margin-top: 4px; font-size: 13px; }
+.student-toast button { padding: 4px; cursor: pointer; }
+.student-offline { margin: 16px 24px 0; border-radius: 12px; padding: 12px; background: #fff0c2; color: #664000; font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.student-app[data-theme='dark'] .student-offline { background: #342a11; color: #ffe39d; }
+.student-profile { padding: 38px 28px; }
+.student-page-heading > span { color: var(--student-accent); font-size: 10px; font-weight: 750; letter-spacing: .18em; }
+.student-page-heading h1 { font-size: clamp(27px, 4vw, 36px); font-weight: 750; letter-spacing: -.04em; margin: 6px 0; }
+.student-page-heading p { font-size: 14px; color: var(--student-muted); }
+.student-profile__grid { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); gap: 24px; align-items: start; margin-top: 28px; }
+.student-profile__identity { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 36px 20px; background: var(--student-surface); border: 1px solid var(--student-border); border-radius: 24px; }
+.student-profile__avatar { position: relative; width: 84px; height: 84px; border-radius: 50%; background: var(--student-raised); display: grid; place-items: center; border: 1px solid var(--student-border); cursor: pointer; }
+.student-profile__avatar > img { border-radius: 50%; }
+.student-profile__avatar > span { position: absolute; bottom: -2px; right: -2px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: #d81439; color: #fff; border: 3px solid var(--student-surface); }
+.student-profile__identity h2 { margin: 18px 0 4px; font-size: 21px; font-weight: 700; overflow-wrap: anywhere; }
+.student-profile__identity > p { color: var(--student-muted); font-size: 13px; overflow-wrap: anywhere; }
+.student-profile__badge { background: var(--student-accent-soft); color: var(--student-accent); padding: 7px 12px; border-radius: 8px; margin-top: 20px; font-size: 10px; font-weight: 700; }
+.student-profile__settings { display: grid; gap: 18px; }
+.student-theme-picker { background: var(--student-surface); border: 1px solid var(--student-border); border-radius: 24px; padding: 24px; }
+.student-theme-picker h2 { font-size: 17px; font-weight: 700; }
+.student-theme-picker > p { font-size: 12px; color: var(--student-muted); margin-top: 6px; }
+.student-theme-picker > div { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 12px; }
+.student-theme-picker button { display: flex; align-items: center; gap: 10px; cursor: pointer; border: 1px solid var(--student-border); border-radius: 13px; padding: 16px 12px; font-size: 13px; font-weight: 650; }
+.student-theme-picker button[aria-pressed='true'] { color: var(--student-accent); border-color: var(--student-accent); background: var(--student-accent-soft); }
+.student-theme-picker button i { margin-left: auto; width: 12px; height: 12px; border: 1px solid var(--student-border); border-radius: 50%; }
+.student-theme-picker button[aria-pressed='true'] i { background: var(--student-accent); border: 3px solid var(--student-surface); outline: 1px solid var(--student-accent); }
+.student-theme-picker > small { font-size: 10px; color: var(--student-muted); }
+.student-profile__links { border: 1px solid var(--student-border); background: var(--student-surface); border-radius: 20px; overflow: hidden; }
+.student-profile__links :where(button,a) { display: flex; align-items: center; gap: 14px; text-align: left; width: 100%; padding: 19px; cursor: pointer; }
+.student-profile__links :where(button,a) + :where(button,a) { border-top: 1px solid var(--student-border); }
+.student-profile__links :where(button,a):hover { background: var(--student-raised); }
+.student-profile__link-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--student-raised); color: var(--student-accent); flex-shrink: 0; }
+.student-profile__links strong { display: block; font-size: 13px; font-weight: 650; }
+.student-profile__links small { display: block; color: var(--student-muted); font-size: 11px; margin-top: 4px; }
+.student-profile__links :where(button,a) > svg { margin-left: auto; flex-shrink: 0; color: var(--student-muted); }
+.student-profile__logout { display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 48px; cursor: pointer; color: var(--student-accent); font-size: 13px; font-weight: 650; border-radius: 14px; }
+.student-profile__logout:hover { background: var(--student-accent-soft); }
+@media (max-width: 640px) {
+  .student-header__inner { min-height: 76px; padding: 14px 18px; gap: 8px; }
+  .student-header__label { display: none; }
+  .student-header__actions { gap: 6px; }
+  .student-header__brand .brand-logo { --brand-mark-size: 32px; --brand-name-size: 13px; }
+  .student-profile { padding: 26px 18px; }
+  .student-profile__grid { grid-template-columns: 1fr; gap: 18px; margin-top: 24px; }
+  .student-profile__identity { padding: 26px 20px; }
+  .student-theme-picker { padding: 20px; }
+  .student-offline { margin: 12px 18px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .student-app, .student-app * { scroll-behavior: auto; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }

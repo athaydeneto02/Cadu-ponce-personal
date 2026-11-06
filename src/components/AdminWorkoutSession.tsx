@@ -182,7 +182,7 @@ function VideoModalInner({ name, url, onClose }: { name: string; url?: string; o
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col">
+    <div className="student-media-surface fixed inset-0 z-[100] bg-black/95 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-6 pb-4 border-b border-white/10 shrink-0">
         <div>
@@ -886,7 +886,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-white">
         {/* Header */}
-        <div className="bg-[#1565C0] px-4 pt-4 pb-3 shrink-0">
+        <div className="student-session-heading bg-[#1565C0] px-4 pt-4 pb-3 shrink-0">
           <div className="flex items-center justify-between">
             <button onClick={onClose} className="text-white p-1 hover:bg-white/10 rounded-lg transition cursor-pointer">
               <ChevronLeft className="w-6 h-6" />
@@ -907,7 +907,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
         </div>
 
         {/* INICIAR Banner */}
-        <div className="bg-[#1976D2] px-4 py-3 shrink-0 space-y-2.5">
+        <div className="student-session-intro bg-[#1976D2] px-4 py-3 shrink-0 space-y-2.5">
           {startTimestamp && <div className="rounded-xl bg-white/10 p-3 text-sm text-white space-y-2">
             <p>Treino em andamento desde {startTimestamp.toLocaleString('pt-BR')}. {completedExs.size}/{total} exercícios marcados · {fmtDuration(sessionTime)}.</p>
             <button onClick={() => {
@@ -925,7 +925,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
               setScreen('session');
               setSessionActive(true);
             }}
-            className="w-full bg-[#43A047] hover:bg-[#388E3C] active:scale-[0.99] text-white font-black uppercase py-3.5 rounded-lg text-base tracking-[0.12em] transition shadow-md cursor-pointer"
+            className="student-workout-start w-full bg-[#43A047] hover:bg-[#388E3C] active:scale-[0.99] text-white font-black uppercase py-3.5 rounded-lg text-base tracking-[0.12em] transition shadow-md cursor-pointer"
           >
             {startTimestamp ? 'RETOMAR TREINO' : 'INICIAR'}
           </button>
@@ -1051,7 +1051,7 @@ export default function AdminWorkoutSession({ routine, onClose, trainerPhone }: 
     return (
       <div className="fixed inset-0 z-50 bg-[#1c2b3e] flex flex-col">
         {/* Header */}
-        <div className="bg-[#1565C0] px-4 pt-4 pb-3 shrink-0">
+        <div className="student-session-heading bg-[#1565C0] px-4 pt-4 pb-3 shrink-0">
           <div className="flex items-center justify-between">
             <div className="w-8" />
             <div className="flex items-center gap-1.5">

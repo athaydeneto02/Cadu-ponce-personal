@@ -22,7 +22,7 @@ function harness(file, props, methods, exportName = 'default') {
   };
   react.default = react;
   const storage = { getUser: () => ({ uid: 'student', role: 'student' }), ...methods };
-  const jsx = (type, props) => typeof type === 'function' && type.name === 'StudentResourcePage' ? type(props) : ({ type, props });
+  const jsx = (type, props) => typeof type === 'function' && ['StudentResourcePage', 'StudentHome'].includes(type.name) ? type(props) : ({ type, props });
   const contextFor = () => ({ exports: {}, Date, Error, console, crypto: { randomUUID },
     window: { addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); }, removeEventListener(name, fn) { listeners.get(name)?.delete(fn); }, open() { opens++; return null; }, confirm: () => true },
     require(name) {
@@ -31,8 +31,10 @@ function harness(file, props, methods, exportName = 'default') {
       if (name === '../lib/storage') return { storage };
       if (name === '../lib/mediaDb') return { resolveMediaUrl: async () => 'https://example.test/private-signed-file' };
       if (name === '../lib/useWorkoutFrequency') return { useWorkoutFrequency: () => ({ dates: new Set(), weekDates: [], monthCompletedDays: new Set(), loading: false, error: '' }) };
-      if (name === '../lib/trainerConfig') return { getTrainerWhatsAppUrl: () => 'https://wa.me/5500000000000' };
+      if (name === '../lib/trainerConfig') return { getTrainerWhatsAppUrl: () => 'https://wa.me/5500000000000', TRAINER_CONFIG: { name: 'Cadu Ponce' } };
+      if (name === '../lib/workoutFrequency') return { localWorkoutDateKey: value => { const date = new Date(value); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; } };
       if (name === './StudentResourcePage') return load('StudentResourcePage');
+      if (name === './StudentHome') return load('StudentHome');
       return new Proxy({}, { get: (_, key) => String(key) });
     },
   });

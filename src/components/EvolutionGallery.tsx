@@ -204,7 +204,7 @@ export default function EvolutionGallery() {
                   </div>
                 )}
 
-                <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-slate-950/80 to-transparent">
+                <div className="student-media-surface absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-slate-950/80 to-transparent">
                   <div className="flex items-center text-white space-x-2">
                     <Calendar className="w-3.5 h-3.5 text-red-500" />
                     <span className="text-[10px] font-black uppercase italic">
@@ -215,7 +215,7 @@ export default function EvolutionGallery() {
                 </div>
                 
                 {!isComparisonMode && (
-                  <button className="absolute top-4 right-4 p-2.5 bg-slate-950/40 backdrop-blur-md rounded-xl text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button className="student-media-surface absolute top-4 right-4 p-2.5 bg-slate-950/40 backdrop-blur-md rounded-xl text-white opacity-0 group-hover:opacity-100 transition-opacity">
                     <Maximize2 className="w-4 h-4" />
                   </button>
                 )}

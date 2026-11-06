@@ -13,12 +13,13 @@ const compiled = ts.transpileModule(source, { compilerOptions: {
   jsx: ts.JsxEmit.ReactJSX,
 } }).outputText;
 
-function harness({ profileRole = 'student', status = 'active', pathname = '/', profileFailure = false, verified = true, storageBlocked = false } = {}) {
+function harness({ profileRole = 'student', status = 'active', pathname = '/', profileFailure = false, verified = true, storageBlocked = false, preferences = new Map() } = {}) {
   const state = [];
   const effects = [];
-  const calls = { profileReads: 0, signIns: 0, scopes: [] };
+  const calls = { profileReads: 0, signIns: 0, scopes: [], preferenceWrites: [] };
   let cursor = 0;
   let firstRender = true;
+  let dirty = false;
   let authCallback;
   let resolveProfile;
   let delayedProfile = false;
@@ -31,9 +32,20 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     useState(initial) {
       const index = cursor++;
       if (firstRender) state[index] = typeof initial === 'function' ? initial() : initial;
-      return [state[index], value => { state[index] = typeof value === 'function' ? value(state[index]) : value; }];
+      return [state[index], value => {
+        const next = typeof value === 'function' ? value(state[index]) : value;
+        if (!Object.is(next, state[index])) { state[index] = next; dirty = true; }
+      }];
     },
-    useEffect(effect) { if (firstRender) effects.push(effect); },
+    useEffect(effect, deps) {
+      const index = cursor++;
+      const previous = state[index];
+      if (!previous || !deps || deps.some((value, i) => !Object.is(value, previous.deps?.[i]))) {
+        const current = { deps, cleanup: previous?.cleanup };
+        state[index] = current;
+        effects.push(() => { previous?.cleanup?.(); current.cleanup = effect(); });
+      }
+    },
   };
   const storage = {
     getUser: () => cachedUid ? ({ ...profile, uid: cachedUid, role: 'admin' }) : null,
@@ -55,15 +67,45 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     signInWithPassword: async () => { calls.signIns++; return { error: new Error('Invalid login credentials') }; },
     signOut: async () => { authCallback('SIGNED_OUT', null); return { error: null }; },
   } };
-  const jsx = (type, props) => ({ type, props });
+  const presentationModules = new Map([
+    ['./components/StudentChrome', '../src/components/StudentChrome.tsx'],
+    ['./components/StudentProfile', '../src/components/StudentProfile.tsx'],
+  ]);
+  const presentationExports = new Map();
+  const presentationTypes = new Set();
+  let presentationDepth = 0;
+  const jsx = (type, props) => {
+    if (typeof type === 'function' && (presentationTypes.has(type) || presentationDepth > 0)) {
+      presentationDepth++;
+      try { return type(props); }
+      finally { presentationDepth--; }
+    }
+    return { type, props };
+  };
   const location = { pathname };
   const context = {
     exports: {},
     require(name) {
+      if (presentationModules.has(name)) {
+        if (!presentationExports.has(name)) {
+          const module = { exports: {} };
+          const code = ts.transpileModule(readFileSync(new URL(presentationModules.get(name), import.meta.url), 'utf8'), {
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+          }).outputText;
+          vm.runInNewContext(code, { ...context, exports: module.exports });
+          presentationExports.set(name, module.exports);
+          for (const value of Object.values(module.exports)) if (typeof value === 'function') presentationTypes.add(value);
+        }
+        return presentationExports.get(name);
+      }
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === './lib/supabase') return { supabase };
       if (name === './lib/storage') return { storage };
+      if (name.endsWith('/lib/trainerConfig')) return {
+        TRAINER_CONFIG: { name: 'Cadu Ponce', instagramUrl: 'https://instagram.com/caduponce.personal', instagramHandle: 'caduponce.personal' },
+        getTrainerWhatsAppUrl: () => 'https://wa.me/5500000000000',
+      };
       if (name === 'motion/react') return { motion: new Proxy({}, { get: (_, key) => 'motion.' + String(key) }), AnimatePresence: 'AnimatePresence' };
       if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => String(key) });
       return { default: name.split('/').pop() };
@@ -71,19 +113,33 @@ function harness({ profileRole = 'student', status = 'active', pathname = '/', p
     window: { location, history: { replaceState(_state, _unused, path) { location.pathname = path; } }, addEventListener() {}, removeEventListener() {} },
     navigator: { onLine: true },
     localStorage: {
-      getItem() { if (storageBlocked) throw new Error('Storage unavailable'); return null; },
-      setItem() { if (storageBlocked) throw new Error('QuotaExceededError'); }, removeItem() {},
+      getItem(key) { if (storageBlocked) throw new Error('Storage unavailable'); return preferences.get(key) ?? null; },
+      setItem(key, value) {
+        calls.preferenceWrites.push({ key, value });
+        if (storageBlocked) throw new Error('QuotaExceededError');
+        preferences.set(key, value);
+      }, removeItem(key) { preferences.delete(key); },
     },
     setTimeout,
     clearTimeout,
+    setInterval: () => 1,
+    clearInterval() {},
     console,
   };
   vm.runInNewContext(compiled, context, { filename: 'App.js' });
-  const render = () => { cursor = 0; const result = context.exports.default(); firstRender = false; return result; };
+  const render = () => {
+    let result, count = 0;
+    do {
+      assert.ok(count++ < 20, 'App stabilizes after effects');
+      cursor = 0; dirty = false;
+      result = context.exports.default(); firstRender = false;
+      effects.splice(0).forEach(effect => effect());
+    } while (dirty);
+    return result;
+  };
   render();
-  effects.forEach(effect => effect());
   return {
-    render, calls,
+    render, calls, preferences,
     emit: event => authCallback(event, { user, access_token: 'test-only-token' }),
     switchUser: uid => { user = { ...user, id: uid }; profile = { ...profile, uid }; authCallback('SIGNED_IN', { user, access_token: 'other-test-token' }); },
     signOut: () => authCallback('SIGNED_OUT', null),
@@ -188,7 +244,7 @@ function label(tree) {
   return label(tree.props?.children);
 }
 function button(tree, name) {
-  const result = nodes(tree).find(node => node.type === 'button' && label(node).trim() === name);
+  const result = nodes(tree).find(node => node.type === 'button' && (node.props['aria-label'] || label(node).trim()) === name);
   assert.ok(result, `Button ${name} should exist`);
   return result;
 }
@@ -199,18 +255,63 @@ test('Home resets dashboard subpanels and closes profile and password editing', 
   const initialKey = nodes(app.render()).find(node => node.type === 'Dashboard').props.resetKey;
   button(app.render(), 'Início').props.onClick();
   assert.equal(nodes(app.render()).find(node => node.type === 'Dashboard').props.resetKey, initialKey + 1);
-  button(app.render(), 'Menu').props.onClick();
+  button(app.render(), 'Perfil').props.onClick();
   const profileButton = nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Seus dados'));
   profileButton.props.onClick();
   assert.ok(nodes(app.render()).some(node => node.type === 'PersonalDataForm'));
   button(app.render(), 'Início').props.onClick();
   assert.ok(nodes(app.render()).some(node => node.type === 'Dashboard'));
   assert.equal(nodes(app.render()).some(node => node.type === 'PersonalDataForm'), false);
-  button(app.render(), 'Menu').props.onClick();
+  button(app.render(), 'Perfil').props.onClick();
   nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Atualizar senha')).props.onClick();
   assert.ok(nodes(app.render()).some(node => node.type === 'UpdatePasswordForm'));
   button(app.render(), 'Início').props.onClick();
   assert.equal(nodes(app.render()).some(node => node.type === 'UpdatePasswordForm'), false);
+});
+
+test('student theme controls stay synchronized across pages and persist after reopening the app', async () => {
+  const preferences = new Map([['cadu_ponce_theme', 'light']]);
+  const app = harness({ preferences });
+  app.emit('SIGNED_IN'); await settle();
+  assert.equal(app.render().props['data-theme'], 'light');
+
+  button(app.render(), 'Ativar modo noturno').props.onClick();
+  assert.equal(app.render().props['data-theme'], 'dark');
+  assert.equal(preferences.get('cadu_ponce_theme'), 'dark');
+
+  button(app.render(), 'Treinos').props.onClick();
+  assert.ok(nodes(app.render()).some(node => node.type === 'WorkoutList'));
+  assert.equal(app.render().props['data-theme'], 'dark');
+  button(app.render(), 'Perfil').props.onClick();
+  assert.equal(button(app.render(), 'Noturno').props['aria-pressed'], true);
+  assert.equal(button(app.render(), 'Claro').props['aria-pressed'], false);
+
+  button(app.render(), 'Claro').props.onClick();
+  assert.equal(app.render().props['data-theme'], 'light');
+  assert.equal(preferences.get('cadu_ponce_theme'), 'light');
+  assert.equal(button(app.render(), 'Claro').props['aria-pressed'], true);
+  button(app.render(), 'Noturno').props.onClick();
+  button(app.render(), 'Início').props.onClick();
+  assert.equal(app.render().props['data-theme'], 'dark');
+
+  const reopened = harness({ preferences });
+  reopened.emit('SIGNED_IN'); await settle();
+  assert.equal(reopened.render().props['data-theme'], 'dark');
+  assert.ok(button(reopened.render(), 'Ativar modo claro'));
+});
+
+test('student can change theme in memory when browser storage is unavailable', async () => {
+  const app = harness({ storageBlocked: true });
+  app.emit('SIGNED_IN'); await settle();
+  assert.equal(app.render().props['data-theme'], 'light');
+  button(app.render(), 'Ativar modo noturno').props.onClick();
+  assert.equal(app.render().props['data-theme'], 'dark');
+  assert.ok(nodes(app.render()).some(node => node.type === 'Dashboard'));
+  button(app.render(), 'Perfil').props.onClick();
+  assert.equal(button(app.render(), 'Noturno').props['aria-pressed'], true);
+  button(app.render(), 'Claro').props.onClick();
+  assert.equal(app.render().props['data-theme'], 'light');
+  assert.equal(app.preferences.size, 0, 'failed writes are not reported as persisted');
 });
 
 test('profile update finishing after account switch cannot replace the current screen identity', async () => {
@@ -219,7 +320,7 @@ test('profile update finishing after account switch cannot replace the current s
     app.emit('SIGNED_IN'); await settle();
     let component = nodes(app.render()).find(node => node.type === 'Dashboard');
     if (form) {
-      button(app.render(), 'Menu').props.onClick();
+      button(app.render(), 'Perfil').props.onClick();
       nodes(app.render()).find(node => node.type === 'button' && label(node).includes('Seus dados')).props.onClick();
       component = nodes(app.render()).find(node => node.type === 'PersonalDataForm');
     }
