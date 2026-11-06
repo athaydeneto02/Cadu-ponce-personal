@@ -16,6 +16,7 @@ vm.runInNewContext(transpile('../src/lib/workoutAttendance.ts'), { exports: atte
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
 const label = node => !node ? '' : typeof node === 'string' ? node : Array.isArray(node) ? node.map(label).join('') : label(node.props?.children);
+const hasLabel = (node, text) => node.props?.['aria-label'] === text || all(node).some(child => ['span', 'h2', 'h3'].includes(child.type) && label(child) === text);
 
 function harness() {
   const item = { id: 'original-id', title: 'Agachamento', group: 'Pernas', category: 'Livre', image: '', isCustom: true,
@@ -43,10 +44,36 @@ function harness() {
     useRef(initial) { const i = cursor++; if (first) state[i] = { current: initial }; return state[i]; },
     useEffect(effect) { if (first) effects.push(effect); }, useCallback: fn => fn,
   };
-  const jsx = (type, props) => ({ type, props });
+  const presentationModules = new Map([
+    ['./AdminChrome', '../src/components/AdminChrome.tsx'],
+    ['./AdminDashboardHome', '../src/components/AdminDashboardHome.tsx'],
+  ]);
+  const presentationExports = new Map();
+  const presentationTypes = new Set();
+  let presentationDepth = 0;
+  const jsx = (type, props) => {
+    // Expand the real presentation tree, including its local card components,
+    // while keeping unrelated stateful children outside this focused harness.
+    if (typeof type === 'function' && (presentationTypes.has(type) || presentationDepth > 0)) {
+      presentationDepth++;
+      try { return type(props); }
+      finally { presentationDepth--; }
+    }
+    return { type, props };
+  };
   const channel = { on() { return this; }, subscribe() { return this; } };
   const context = { exports: {}, crypto: { randomUUID }, URL, URLSearchParams, Error, console,
     require(name) {
+      if (presentationModules.has(name)) {
+        if (!presentationExports.has(name)) {
+          const module = { exports: {} };
+          vm.runInNewContext(transpile(presentationModules.get(name)), { ...context, exports: module.exports });
+          presentationExports.set(name, module.exports);
+          for (const value of Object.values(module.exports)) if (typeof value === 'function') presentationTypes.add(value);
+        }
+        return presentationExports.get(name);
+      }
+      if (name === './BrandLogo') return { default: 'BrandLogo' };
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === '../lib/storage') return { storage, safeSetItem() {} };
@@ -76,7 +103,7 @@ function harness() {
 test('exercise editor waits for persistence, preserves videoFileUrl and does not rewrite same-name prescriptions', async () => {
   const app = harness();
   await settle();
-  app.click(app.render(), node => label(node) === 'Biblioteca de exercícios');
+  app.click(app.render(), node => hasLabel(node, 'Exercícios'));
   app.click(app.render(), node => node.props['aria-label'] === 'Editar exercício Agachamento');
   const form = all(app.render()).find(node => node.type === 'form' && all(node).some(child => child.props?.value === 'Agachamento'));
   assert.ok(form);

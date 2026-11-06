@@ -73,6 +73,10 @@ import {
   QrCode,
 } from 'lucide-react';
 import { AdminAgenda } from './AdminAgenda';
+import AdminChrome, { type AdminSection } from './AdminChrome';
+import AdminDashboardHome from './AdminDashboardHome';
+import '../styles/admin-shell.css';
+import '../styles/admin-surfaces.css';
 import AdminStudentModules, { newAnamnesis } from './AdminStudentModules';
 import AdminRoutineModule from './AdminRoutineModule';
 import StudentProfileEditor from './StudentProfileEditor';
@@ -850,45 +854,26 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
   // Training updates timeline
   const recentUpdates: any[] = [];
 
+  const navigateAdmin = (section: AdminSection) => {
+    setActivePanel(null);
+    setUpdatesSubView('grid');
+    if (section === 'settings') { setActiveTab('menu'); return; }
+    setActiveTab('home');
+    setHomeSubView(section);
+  };
+  const adminSection: AdminSection = activeTab === 'menu' ? 'settings'
+    : homeSubView === 'create_routine' || homeSubView === 'routine_details' ? 'workout_library'
+    : homeSubView === 'retention' ? 'frequency_report' : homeSubView;
+  const sceneTitle = { dashboard: 'Visão geral', student_list: 'Alunos', retention: 'Engajamento', workout_library: 'Treinos', create_routine: 'Nova rotina', routine_details: 'Detalhes da rotina', frequency_report: 'Frequência', exercise_library: 'Biblioteca de exercícios', agenda: 'Agenda' }[homeSubView];
+
   return (
-    <div className="fixed inset-0 z-[60] bg-[#0c131c] text-white overflow-y-auto font-sans flex items-center justify-center p-0 md:p-6 lg:p-10 select-none">
+    <div className="admin-app">
+
+      <AdminChrome section={adminSection} unreadCount={unreadNotifCount} onNavigate={navigateAdmin} onNotifications={() => setIsNotificationsOpen(true)} onLogout={onClose} />
 
       {dataLoadError && <div role="alert" className="fixed top-14 left-4 right-4 z-[250] bg-red-50 text-red-900 p-4 rounded-lg shadow">{dataLoadError} <button onClick={() => setDataReload(value => value + 1)} className="underline font-bold ml-3">Recarregar dados</button></div>}
       {/* Main Content Area - Full Bleed */}
-      <div className="w-full h-full bg-[#0c1622] relative overflow-hidden flex flex-col">
-
-        {/* Top App Header (Mobile style but visible everywhere) */}
-        <div className="h-14 bg-[#141C2C] px-6 flex items-center justify-between shrink-0 border-b border-[#141C2C]">
-          <div className="flex items-center gap-3">
-            <span className="text-white font-black italic uppercase tracking-tighter text-lg">
-              Painel Admin
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Bell notification button with unread badge counter */}
-            <button
-              onClick={() => setIsNotificationsOpen(true)}
-              className="relative p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white transition active:scale-95 cursor-pointer"
-              title="Notificações de treinos concluídos"
-              aria-label="Abrir notificações de treinos concluídos"
-            >
-              <Bell className="w-5 h-5 text-white" />
-              {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] bg-[#E23737] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-md animate-pulse">
-                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-[#E23737] font-black uppercase text-[10px] tracking-widest transition-colors hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
-              title="Encerrar sessão e sair da conta"
-            >
-              <Lock className="w-3.5 h-3.5" /> Sair
-            </button>
-          </div>
-        </div>
+      <div className="admin-main-frame">
 
         {/* Real-time Workout Completion Banner Toast */}
         <AnimatePresence>
@@ -960,22 +945,10 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   exit={{ opacity: 0 }}
                   className="flex-1 flex flex-col bg-[#F4F6FA] overflow-hidden"
                 >
-                  {/* Top Tab Bar */}
-                  <div className="flex bg-[#141C2C] shrink-0 pt-2 px-1">
-                    <button
-                      onClick={() => {
-                        setActiveTab('home');
-                        setHomeSubView('dashboard');
-                      }}
-                      className={`flex-1 py-3 text-sm font-bold border-b-4 transition ${activeTab === 'home' && homeSubView === 'dashboard' ? 'bg-white text-slate-900 border-white rounded-t-lg shadow-sm' : 'bg-[#E23737] text-white border-[#E23737]'}`}
-                    >
-                      Início
-                    </button>
-
-                  </div>
+                  {homeSubView !== 'dashboard' && <div className="admin-breadcrumb"><button type="button" onClick={() => navigateAdmin('dashboard')}><Home size={14} />Início</button><ChevronRight size={13} aria-hidden="true" /><span>{sceneTitle}</span></div>}
 
                   {/* SCROLLABLE SCENE CONTAINER */}
-                  <div className="flex-1 overflow-y-auto pb-4 scrollbar-none">
+                  <div className="admin-scene">
 
                     {/* CONDITIONAL RENDERING: LOADING VS WELCOME VS DASHBOARD VS STUDENT LIST */}
                     {isLoadingUsers && users.filter(u => u.role === 'student').length === 0 ? (
@@ -994,174 +967,27 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                             Tentar novamente
                           </button>
                        </div>
-                    ) : users.filter(u => u.role === 'student').length === 0 ? (
-                       /* WELCOME VIEW */
-                       <div className="flex-1 flex flex-col items-center justify-center pt-20 px-6 text-center">
-                          <div className="w-24 h-24 bg-[#E23737] rounded-full flex items-center justify-center shadow-lg mb-8">
-                             <Dumbbell className="w-12 h-12 text-white" />
-                          </div>
-                          <h3 className="text-2xl font-black text-slate-900 leading-tight mb-2">Bem-vindo ao Cadu Ponce</h3>
-                          <p className="text-slate-500 text-sm font-semibold mb-10 max-w-[280px]">
-                            Bora dar o primeiro passo e cadastrar seu primeiro aluno no app?
-                          </p>
-
-                          <div className="w-full space-y-3 max-w-xs">
-                            <button
-                              onClick={() => setIsAddingUser(true)}
-                              className="w-full bg-[#dc2626] hover:bg-[#ef4444] text-white font-black py-4 rounded-xl shadow-md transition-all active:scale-95 text-xs uppercase tracking-wider"
-                            >
-                              Cadastrar aluno
-                            </button>
-                            <button
-                              onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
-                              className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-600 font-black py-4 rounded-xl transition-all active:scale-95 text-xs uppercase tracking-wider"
-                            >
-                              {copiedLink === 'reg' ? '✓ Contato copiado!' : 'Copiar contato do personal'}
-                            </button>
-                          </div>
-                       </div>
                     ) : homeSubView === 'dashboard' ? (
-                       /* DASHBOARD VIEW (Image 3) */
-                       <div className="px-4 pt-4 space-y-4">
-                          {/* Top Icons Row (Image Row 1) */}
-                          <div className="grid grid-cols-3 gap-2">
-                              <button
-                                 onClick={() => setActivePanel('feedbacks')}
-                                 className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
-                              >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
-                                   <MessageSquare className="w-5 h-5" />
-                                 </div>
-                                 <span className="text-[10px] text-slate-700 font-bold font-sans">Feedbacks</span>
-                              </button>
-                              <button
-                                 onClick={() => setActivePanel('updates')}
-                                 className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer"
-                              >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10">
-                                   <Calendar className="w-5 h-5" />
-                                 </div>
-                                 <span className="text-[10px] text-slate-700 font-bold font-sans">Atualizações</span>
-                              </button>
-                              <button
-                                 onClick={() => setIsNotificationsOpen(true)}
-                                 className="flex flex-col items-center space-y-1 focus:outline-none group active:scale-95 transition cursor-pointer relative"
-                              >
-                                 <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-[#dc2626] border border-slate-100 group-hover:bg-red-50/50 transition shadow-md shadow-red-150/10 relative">
-                                   <Bell className="w-5 h-5" />
-                                   {unreadNotifCount > 0 && (
-                                     <span className="absolute -top-1 -right-1 min-w-[19px] h-[19px] bg-[#dc2626] text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white shadow px-1 animate-pulse">
-                                       {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                                     </span>
-                                   )}
-                                 </div>
-                                 <span className="text-[10px] text-slate-700 font-bold font-sans">Notificações</span>
-                              </button>
-                           </div>
-
-                          {/* Section Seus Alunos */}
-                          <div className="space-y-2 text-left">
-                            <h4 className="text-xs font-black uppercase text-slate-900 tracking-tight">Seus alunos</h4>
-
-                            <div className="grid grid-cols-2 gap-3">
-                               <button
-                                 onClick={() => setIsAddingUser(true)}
-                                 className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
-                               >
-                                  <UserCheck className="w-6 h-6" />
-                                  <div className="space-y-0.5">
-                                     <p className="text-[10px] font-black italic uppercase">Adicionar alunos</p>
-                                     <Plus className="w-4 h-4 opacity-70" />
-                                  </div>
-                               </button>
-
-                               <button
-                                 onClick={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
-                                 className="bg-[#dc2626] p-4 rounded-xl text-white text-left flex flex-col justify-between h-24 hover:bg-red-600 transition shadow-lg shadow-red-200"
-                               >
-                                  <LinkIcon className="w-6 h-6 rotate-45" />
-                                  <div className="space-y-0.5">
-                                     <p className="text-[10px] font-black italic uppercase">Contato do personal</p>
-                                     <Plus className="w-4 h-4 opacity-70" />
-                                  </div>
-                               </button>
-                            </div>
-
-                            <button
-                              onClick={() => setHomeSubView('student_list')}
-                              className="w-full bg-[#dc2626] p-4 rounded-xl text-white flex items-center justify-between shadow-lg shadow-red-200"
-                            >
-                               <div className="flex items-center gap-4">
-                                  <Users className="w-8 h-8" />
-                                  <div className="text-left">
-                                     <p className="text-sm font-black italic uppercase">Alunos</p>
-                                     <div className="flex gap-2 mt-1">
-                                        <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-bold">Ativos: {activeStudents.length}</span>
-                                        <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-bold">Inativos: {inactiveStudents.length}</span>
-                                     </div>
-                                  </div>
-                               </div>
-                               <ChevronLeft className="w-5 h-5 rotate-180" />
-                            </button>
-
-                            <button
-                              onClick={() => setHomeSubView('retention')}
-                              className="w-full bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm hover:bg-slate-50 transition"
-                            >
-                               <div className="flex items-center gap-3">
-                                  <BarChart3 className="w-5 h-5 text-[#dc2626]" />
-                                  <span className="text-[11px] font-black italic uppercase text-[#dc2626]">Retenção</span>
-                               </div>
-                               <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black text-[#dc2626] uppercase tracking-tighter">{engagementRate === null ? '—' : engagementRate + '%'} de engajamento</span>
-                                  <ChevronLeft className="w-4 h-4 text-[#dc2626] rotate-180" />
-                               </div>
-                            </button>
-                          </div>
-
-                          {/* Section Treinos */}
-                          <div className="space-y-2 text-left">
-                             <h4 className="text-xs font-black uppercase text-slate-900 tracking-tight">Treinos</h4>
-                          <div className="grid grid-cols-2 gap-3 pb-8">
-                             <button
-                               onClick={() => setHomeSubView('workout_library')}
-                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
-                             >
-                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
-                                   <Dumbbell className="w-4 h-4" />
-                                </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Treinos</span>
-                             </button>
-                             <button
-                               onClick={() => setHomeSubView('agenda')}
-                               className="flex flex-col items-center justify-center p-4 bg-white rounded-xl shadow-sm border border-slate-100 gap-3 hover:border-[#dc2626]/30 transition group cursor-pointer"
-                             >
-                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
-                                   <Calendar className="w-4 h-4" />
-                                </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Agenda</span>
-                             </button>
-                             <button
-                               onClick={() => setHomeSubView('frequency_report')}
-                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
-                             >
-                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
-                                   <FileText className="w-4 h-4" />
-                                </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Relatório de frequência</span>
-                             </button>
-                             <button
-                               onClick={() => setHomeSubView('exercise_library')}
-                               className="border-2 border-[#dc2626]/20 bg-white p-4 rounded-xl flex flex-col justify-between h-24 text-left hover:bg-slate-50 transition"
-                             >
-                                <div className="w-8 h-8 bg-[#dc2626]/10 rounded-full flex items-center justify-center text-[#dc2626]">
-                                   <PlayCircle className="w-4 h-4" />
-                                </div>
-                                <span className="text-[11px] font-black italic uppercase text-[#dc2626] leading-none">Biblioteca de exercícios</span>
-                             </button>
-                          </div>
-                          </div>
-                       </div>
+                       <AdminDashboardHome
+                         activeStudents={activeStudents.length}
+                         inactiveStudents={inactiveStudents.length}
+                         unreadNotifications={notifications.loading || notifications.error ? null : unreadNotifCount}
+                         completedWorkoutsThisMonth={attendanceFeed.loading || attendanceFeed.error ? null : attendance.monthLogs.length}
+                         studentsToday={attendanceFeed.loading || attendanceFeed.error ? null : attendance.studentsToday}
+                         engagementRate={engagementRate}
+                         contactCopied={copiedLink === 'reg'}
+                         onAddStudent={() => setIsAddingUser(true)}
+                         onStudents={() => navigateAdmin('student_list')}
+                         onRetention={() => navigateAdmin('retention')}
+                         onRoutines={() => navigateAdmin('workout_library')}
+                         onExercises={() => navigateAdmin('exercise_library')}
+                         onAgenda={() => navigateAdmin('agenda')}
+                         onFrequencyReport={() => navigateAdmin('frequency_report')}
+                         onNotifications={() => setIsNotificationsOpen(true)}
+                         onFeedbacks={() => setActivePanel('feedbacks')}
+                         onUpdates={() => setActivePanel('updates')}
+                         onPersonalContact={() => handleCopyLink(getTrainerWhatsAppUrl(), 'reg')}
+                       />
                     ) : homeSubView === 'agenda' ? (
                        <AdminAgenda onBack={() => setHomeSubView('dashboard')} />
                     ) : homeSubView === 'retention' ? (
@@ -2730,12 +2556,12 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                   key="menu-tab"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: -15 }}
-                  className="flex-1 flex flex-col overflow-y-auto px-4 sm:px-6 py-4 space-y-5 text-left pb-24"
+                  exit={{ opacity: 0 }}
+                  className="admin-settings flex-1 flex flex-col overflow-y-auto space-y-5 text-left"
                 >
                   <div className="space-y-1">
                     <span className="text-[9px] text-red-500 font-black tracking-widest uppercase">Painel do Treinador</span>
-                    <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">CONFIGURAÇÕES</h3>
+                    <h3 className="text-2xl font-semibold tracking-tight text-white">Configurações</h3>
                   </div>
 
                   {/* SEÇÃO 1: FORMAS DE PAGAMENTO PARA OS ALUNOS */}
@@ -2876,11 +2702,11 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
                         <span className="text-[9px] text-slate-500 font-black uppercase tracking-wider block">WhatsApp de Atendimento</span>
-                        <span className="font-extrabold text-white block mt-0.5">+55 43 8463-9369</span>
+                        <span className="font-extrabold text-white block mt-0.5">+{TRAINER_CONFIG.phone.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '$1 $2 $3-$4')}</span>
                       </div>
                       <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
                         <span className="text-[9px] text-slate-500 font-black uppercase tracking-wider block">Instagram Oficial</span>
-                        <span className="font-extrabold text-red-400 block mt-0.5">@caduponce.personal</span>
+                        <span className="font-extrabold text-red-400 block mt-0.5">@{TRAINER_CONFIG.instagramHandle}</span>
                       </div>
                     </div>
                   </div>
@@ -3657,38 +3483,7 @@ export default function AccountManagement({ onClose, isDark }: AccountManagement
             )}
           </AnimatePresence>
 
-          {/* SMARTPHONE BOTTOM BAR NAVIGATION TAB VIEWPORTS (Same as design requested!) */}
-          <nav className="h-[64px] border-t border-[#132235] bg-[#0c1622] px-3 flex justify-between items-center shrink-0 z-30 select-none">
 
-            {/* Tab 1: Inicio */}
-            <button
-              onClick={() => {
-                setActiveTab('home');
-                setActivePanel(null);
-              }}
-              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none ${
-                activeTab === 'home' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
-              }`}
-            >
-              <Home className="w-5 h-5 mx-auto" />
-              <span className="text-[8.5px] font-black uppercase tracking-wider">Início</span>
-            </button>
-
-            {/* Tab 2: Configurações / Formas de Pagamento */}
-            <button
-              onClick={() => {
-                setActiveTab('menu');
-                setActivePanel(null);
-              }}
-              className={`flex-1 flex flex-col items-center justify-center text-center space-y-1 outline-none select-none cursor-pointer ${
-                activeTab === 'menu' ? 'text-[#dc2626]' : 'text-slate-500 hover:text-white'
-              }`}
-            >
-              <Settings className="w-5 h-5 mx-auto" />
-              <span className="text-[8.5px] font-black uppercase tracking-wider">Configurações</span>
-            </button>
-
-          </nav>
 
         </div>
 

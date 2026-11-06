@@ -1,0 +1,67 @@
+.admin-app {
+  --admin-bg: #09090b;
+  --admin-surface: #141416;
+  --admin-elevated: #1c1c1f;
+  --admin-border: #ffffff14;
+  --admin-text: #f5f3ef;
+  --admin-muted: #a1a1aa;
+  --admin-red: #e32636;
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; grid-template-areas: "header" "main" "navigation";
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--admin-bg); color: var(--admin-text);
+  font-family: var(--font-sans); color-scheme: dark; overflow: hidden;
+}
+.admin-header { grid-area: header; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 76px; padding: 12px 22px; border-bottom: 1px solid var(--admin-border); background: #0d0d10; z-index: 40; }
+.admin-header__brand { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.admin-header__brand .brand-logo { --brand-mark-size: 40px; --brand-name-size: 17px; }
+.admin-header__caption { margin-left: 45px; margin-top: -5px; color: #9d979c; font-size: 9px; letter-spacing: .12em; }
+.admin-header__actions { display: flex; align-items: center; gap: 14px; }
+.admin-header__role { display: none; font-size: 11px; color: var(--admin-muted); }
+.admin-icon-button { position: relative; display: grid; place-items: center; width: 40px; height: 40px; background: #18181c; color: #e4e1e4; border: 1px solid var(--admin-border); border-radius: 12px; cursor: pointer; transition: background .18s; }
+.admin-icon-button:hover { background: #29292f; }
+.admin-notification-count { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid #0d0d10; border-radius: 10px; display: grid; place-items: center; background: var(--admin-red); color: #fff; font-size: 9px; font-weight: 650; }
+.admin-header__divider { height: 22px; width: 1px; background: var(--admin-border); }
+.admin-logout { display: flex; align-items: center; gap: 7px; min-height: 40px; color: #b2acb1; font-size: 12px; cursor: pointer; transition: color .18s; }
+.admin-logout:hover { color: #f36b78; }
+.admin-sidebar { display: none; }
+.admin-main-frame { grid-area: main; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--admin-bg); }
+.admin-scene { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; scrollbar-color: #3e363b transparent; scrollbar-width: thin; }
+.admin-breadcrumb { display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 51px; padding: 10px 22px; border-bottom: 1px solid var(--admin-border); font-size: 12px; color: #e4dfe3; }
+.admin-breadcrumb button { display: flex; align-items: center; gap: 6px; color: var(--admin-muted); cursor: pointer; }
+.admin-breadcrumb button:hover { color: #fff; }
+.admin-mobile-nav { grid-area: navigation; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 7px 8px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid var(--admin-border); background: #101013; z-index: 40; }
+.admin-mobile-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 48px; border-radius: 11px; color: #8f8991; font-size: 10px; cursor: pointer; }
+.admin-mobile-nav button.is-active { color: #ff6d7b; background: #e3263612; }
+.admin-mobile-nav button:hover { color: #eee8ed; }
+.admin-app :is(button, a, input, textarea, select):focus-visible { outline: 2px solid #fb7185; outline-offset: 3px; }
+.admin-state { padding: 64px 24px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; color: var(--admin-muted); }
+.admin-state__spinner { width: 32px; height: 32px; border: 2px solid #ffffff14; border-top-color: var(--admin-red); border-radius: 50%; animation: brand-orbit .9s linear infinite; }
+.admin-settings { max-width: 1000px; width: 100%; margin: 0 auto; padding: 26px 22px 40px; }
+@media (min-width: 700px) { .admin-header { padding-inline: 28px; } .admin-header__role { display: inline; } }
+@media (min-width: 1100px) {
+  .admin-app { grid-template-areas: "header header" "sidebar main"; grid-template-columns: 224px minmax(0, 1fr); grid-template-rows: 80px minmax(0, 1fr); }
+  .admin-sidebar { grid-area: sidebar; display: flex; flex-direction: column; padding: 30px 16px 24px; background: #0d0d10; border-right: 1px solid var(--admin-border); min-height: 0; overflow-y: auto; }
+  .admin-sidebar__label { margin: 0 14px 18px; color: #777079; font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .13em; }
+  .admin-sidebar__nav { display: flex; flex-direction: column; gap: 5px; }
+  .admin-nav-item { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 0 14px; border: 1px solid transparent; border-radius: 11px; font-size: 12px; color: #aaa4ad; text-align: left; cursor: pointer; transition: background .18s, color .18s; }
+  .admin-nav-item span { flex: 1; }
+  .admin-nav-item:hover { background: #ffffff05; color: #fff; }
+  .admin-nav-item.is-active { border-color: #e3263629; background: #e3263612; color: #ff6575; }
+  .admin-nav-item:last-child { margin-top: 20px; }
+  .admin-sidebar__signature { margin-top: auto; padding: 42px 12px 4px; color: #aaa0aa; font-size: 11px; }
+  .admin-sidebar__signature > span { display: block; width: 28px; height: 2px; background: #e32636; margin-bottom: 14px; }
+  .admin-sidebar__signature small { display: block; font-size: 8px; color: #716973; margin-top: 8px; }
+  .admin-mobile-nav { display: none; }
+  .admin-breadcrumb { padding-inline: 34px; }
+  .admin-settings { padding-top: 34px; }
+}
+@media (max-width: 370px) {
+  .admin-header { padding: 10px 14px; gap: 6px; }
+  .admin-header__actions { gap: 8px; }
+  .admin-header__brand .brand-logo { --brand-mark-size: 32px; --brand-name-size: 15px; }
+  .admin-header__caption { margin-left: 37px; font-size: 8px; }
+  .admin-header__divider, .admin-logout span { display: none; }
+  .admin-logout { width: 30px; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .admin-app *, .admin-app *::before, .admin-app *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

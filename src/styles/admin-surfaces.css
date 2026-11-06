@@ -1,0 +1,98 @@
+/*
+ * Compatibility theme for the existing trainer forms and detail screens.
+ * Only exact legacy utility tokens are mapped, beneath .admin-app. Student
+ * screens and the new semantic admin-* components keep their own styling.
+ */
+.admin-app {
+  color-scheme: dark;
+  --admin-legacy-canvas: #0e0e10;
+  --admin-legacy-surface: #17171a;
+  --admin-legacy-raised: #222226;
+  --admin-legacy-border: #34343b;
+  --admin-legacy-ink: #f3f0ef;
+  --admin-legacy-muted: #aaa7af;
+}
+
+/* A neutral default for older modules that only specify a border width.
+ * Base layer lets explicit semantic utility colors continue to win. */
+@layer base {
+  .admin-app :where(.border, .border-t, .border-b, .border-r, .border-l) { border-color: #34343b; }
+}
+
+/* Canvas, cards and nested controls retain their existing layout. */
+.admin-app :is([class~="bg-[#F4F6FA]"], [class~="bg-[#f4f7fa]"], [class~="bg-[#0c131c]"], [class~="bg-[#0c1622]"], .bg-slate-950) { background-color: var(--admin-legacy-canvas); }
+.admin-app :is(.bg-white, .bg-slate-900, [class~="bg-[#141C2C]"], [class~="bg-[#0c1d2e]"]) { background-color: var(--admin-legacy-surface); }
+.admin-app :is(.bg-slate-50, .bg-slate-100) { background-color: #202024; }
+.admin-app :is(.bg-slate-200, .bg-slate-300, .bg-slate-700) { background-color: #303036; }
+.admin-app .bg-slate-400 { background-color: #52515b; }
+/* The inactive series is still data: keep it visible against the dark track. */
+.admin-app .h-full.bg-slate-300 { background-color: #8e8995; }
+.admin-app [class~="bg-slate-800/80"] { background-color: #27272c; }
+.admin-app [class~="bg-slate-900/60"] { background-color: #17171aa6; }
+.admin-app [class~="bg-slate-900/40"] { background-color: #09090b80; }
+.admin-app [class~="bg-slate-950/60"] { background-color: #09090b99; }
+.admin-app [class~="bg-slate-950/80"] { background-color: #09090bd9; }
+.admin-app [class~="bg-slate-950/95"] { background-color: #09090bf2; }
+
+.admin-app :is(.border-slate-50, .border-slate-100, .border-slate-150, .border-slate-200, .border-slate-300, .border-slate-800, .border-slate-850, .border-slate-900, [class~="border-[#132235]"], [class~="border-[#141C2C]"], .border-white) { border-color: var(--admin-legacy-border); }
+.admin-app [class~="border-slate-800/80"] { border-color: #34343bcc; }
+.admin-app :is([class~="border-slate-700/30"], [class~="border-slate-500/20"]) { border-color: #34343b; }
+.admin-app :is(.text-slate-800, .text-slate-900, [class~="text-[#1a202c]"]) { color: var(--admin-legacy-ink); }
+.admin-app :is(.text-slate-600, .text-slate-700) { color: #cbc7ce; }
+.admin-app :is(.text-slate-400, .text-slate-500) { color: var(--admin-legacy-muted); }
+.admin-app :is(.text-slate-200, .text-slate-300) { color: #dad6db; }
+
+/* Former blue primary actions join the red identity; calendar sky labels
+ * retain their meaning for online appointments. Success/warning remain distinct. */
+.admin-app :is([class~="bg-[#dc2626]"], [class~="bg-[#E23737]"], [class~="bg-[#3182ce]"], [class~="bg-[#2b88ff]"], [class~="bg-[#0070f3]"], .bg-blue-600, .bg-blue-500, .bg-red-600, .bg-red-650) { background-color: #d91c30; }
+.admin-app :is(.bg-red-50, .bg-red-100, .bg-blue-50, .bg-blue-100, [class~="bg-[#fef2f2]"], [class~="bg-[#EBF4FF]"], [class~="bg-[#dbeafe]"]) { background-color: #32181f; }
+.admin-app :is([class~="bg-red-50/50"], [class~="bg-[#dc2626]/10"], [class~="bg-[#dc2626]/5"]) { background-color: #e3263617; }
+.admin-app :is(.text-red-500, .text-red-600, .text-red-700, .text-red-800, .text-red-900, .text-blue-500, .text-blue-600, .text-blue-700, .text-blue-900, [class~="text-[#dc2626]"], [class~="text-[#E23737]"], [class~="text-[#3182ce]"], [class~="text-[#2b88ff]"], [class~="text-[#0070f3]"]) { color: #ff8491; }
+.admin-app :is(.border-red-100, .border-red-200, .border-red-300, .border-blue-300) { border-color: #6d2a36; }
+.admin-app :is([class~="border-[#dc2626]"], [class~="border-[#E23737]"], [class~="border-[#2b88ff]"], [class~="border-[#3182ce]"]) { border-color: #e32636; }
+.admin-app .border-t-transparent { border-top-color: transparent; }
+
+.admin-app :is(.bg-emerald-50, .bg-emerald-100) { background-color: #17362b; }
+.admin-app :is(.text-emerald-600, .text-emerald-700, .text-emerald-800, .text-green-700) { color: #82e3b4; }
+.admin-app .bg-amber-50 { background-color: #382c18; }
+.admin-app :is(.text-amber-700, .text-amber-800) { color: #f0cd88; }
+.admin-app .border-amber-300 { border-color: #80652d; }
+.admin-app .bg-sky-50 { background-color: #132b38; }
+.admin-app :is(.text-sky-600, .text-sky-700, .text-sky-900) { color: #94d7ef; }
+.admin-app .border-sky-100 { border-color: #28566c; }
+
+/* Avoid pastel hover flashes on dark cards. */
+.admin-app :is([class~="hover:bg-white"], [class~="hover:bg-slate-50"], [class~="hover:bg-slate-100"], [class~="hover:bg-slate-200"], [class~="hover:bg-slate-700"]):hover { background-color: #2a2a30; }
+.admin-app :is([class~="hover:bg-red-50"], [class~="hover:bg-red-100"], [class~="hover:bg-red-200"], [class~="hover:bg-blue-100"]):hover { background-color: #48212a; }
+.admin-app :is([class~="hover:bg-red-500"], [class~="hover:bg-red-600"], [class~="hover:bg-red-700"], [class~="hover:bg-blue-600"], [class~="hover:bg-[#ef4444]"], [class~="hover:bg-[#1e78eb]"], [class~="hover:bg-[#005ccc]"]):hover { background-color: #eb2940; }
+.admin-app :is([class~="hover:text-slate-600"], [class~="hover:text-white"]):hover { color: #fff; }
+.admin-app :is([class~="hover:text-blue-500"], [class~="hover:text-red-500"], [class~="hover:text-red-600"], [class~="hover:text-[#dc2626]"], [class~="hover:text-[#ef4444]"]):hover { color: #ff9ba5; }
+.admin-app .group:hover [class~="group-hover:bg-red-50/50"] { background-color: #e3263626; }
+.admin-app .group:hover [class~="group-hover:text-[#dc2626]"] { color: #ff8491; }
+
+/* Labels keep their hierarchy without the old italic poster treatment. */
+.admin-app .italic { font-style: normal; }
+.admin-app .font-black { font-weight: 650; }
+.admin-app .italic.uppercase { text-transform: none; letter-spacing: normal; }
+.admin-app .grayscale.opacity-50 { opacity: 1; }
+.admin-app .grayscale.opacity-30 { opacity: .8; }
+.admin-app :is([class~="shadow-red-100"], [class~="shadow-red-200"]) { --tw-shadow-color: #0003; }
+
+/* Native controls need their own colors, including fields without bg utilities. */
+.admin-app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="hidden"]), textarea, select) {
+  background-color: #101013;
+  border-color: #3a3a42;
+  color: #f3f0ef;
+  color-scheme: dark;
+  caret-color: #ff8491;
+}
+.admin-app :is(input, textarea)::placeholder { color: #93909b; opacity: 1; }
+.admin-app :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: #e32636; }
+.admin-app :is(input, textarea, select):focus { border-color: #e32636; }
+.admin-app :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible { outline: 2px solid #ff7183; outline-offset: 3px; }
+.admin-app input:-webkit-autofill { -webkit-text-fill-color: #f3f0ef; -webkit-box-shadow: 0 0 0 1000px #101013 inset; }
+.admin-app select option { color: #f3f0ef; background: #17171a; }
+
+@media (max-width: 640px) {
+  .admin-app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="hidden"]), textarea, select) { font-size: 16px; }
+}

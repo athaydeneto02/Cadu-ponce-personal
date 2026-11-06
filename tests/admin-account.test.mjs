@@ -16,6 +16,7 @@ vm.runInNewContext(transpile('../src/lib/workoutAttendance.ts'), { exports: atte
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
 const label = node => !node ? '' : typeof node === 'string' ? node : Array.isArray(node) ? node.map(label).join('') : label(node.props?.children);
+const hasLabel = (node, text) => node.props?.['aria-label'] === text || all(node).some(child => ['span', 'h2', 'h3'].includes(child.type) && label(child) === text);
 
 function harness(overrides = {}) {
   const item = { id: 'original-id', title: 'Agachamento', group: 'Pernas', category: 'Livre', image: '', isCustom: true,
@@ -44,10 +45,36 @@ function harness(overrides = {}) {
     useRef(initial) { const i = cursor++; if (first) state[i] = { current: initial }; return state[i]; },
     useEffect(effect) { if (first) effects.push(effect); }, useCallback: fn => fn,
   };
-  const jsx = (type, props) => ({ type, props });
+  const presentationModules = new Map([
+    ['./AdminChrome', '../src/components/AdminChrome.tsx'],
+    ['./AdminDashboardHome', '../src/components/AdminDashboardHome.tsx'],
+  ]);
+  const presentationExports = new Map();
+  const presentationTypes = new Set();
+  let presentationDepth = 0;
+  const jsx = (type, props) => {
+    // Expand the real presentation tree, including its local card components,
+    // while keeping unrelated stateful children outside this focused harness.
+    if (typeof type === 'function' && (presentationTypes.has(type) || presentationDepth > 0)) {
+      presentationDepth++;
+      try { return type(props); }
+      finally { presentationDepth--; }
+    }
+    return { type, props };
+  };
   const channel = { on() { return this; }, subscribe() { return this; } };
   const context = { exports: {}, crypto: { randomUUID }, URL, URLSearchParams, Error, console,
     require(name) {
+      if (presentationModules.has(name)) {
+        if (!presentationExports.has(name)) {
+          const module = { exports: {} };
+          vm.runInNewContext(transpile(presentationModules.get(name)), { ...context, exports: module.exports });
+          presentationExports.set(name, module.exports);
+          for (const value of Object.values(module.exports)) if (typeof value === 'function') presentationTypes.add(value);
+        }
+        return presentationExports.get(name);
+      }
+      if (name === './BrandLogo') return { default: 'BrandLogo' };
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === '../lib/storage') return { storage, safeSetItem() {} };
@@ -82,7 +109,7 @@ test('inactivation and soft exclusion persist remotely before changing the selec
   const updates = [];
   const app = harness({ updateProfile: value => { updates.push(value); return new Promise((yes, no) => { resolve = yes; reject = no; }); } });
   await settle();
-  app.click(app.render(), node => label(node).includes('Ativos:'));
+  app.click(app.render(), node => hasLabel(node, 'Alunos ativos'));
   app.click(app.render(), node => label(node).includes('Aluno') && !label(node).includes('Alunos'));
   app.click(app.render(), node => label(node) === 'Opções');
   app.click(app.render(), node => label(node).trim() === 'Inativar aluno');
@@ -101,7 +128,7 @@ test('routine assignment sends one versioned atomic save and never creates cache
   const saved = []; let resolve;
   const app = harness({ saveAdminRoutine: value => { saved.push(value); return new Promise(yes => { resolve = yes; }); }, saveWorkout() { throw Error('Must not create copies client-side'); } });
   await settle();
-  app.click(app.render(), node => label(node) === 'Treinos');
+  app.click(app.render(), node => hasLabel(node, 'Treinos'));
   app.click(app.render(), node => node.props.title === 'Atribuir a Alunos');
   app.click(app.render(), node => label(node).includes('Salvar Atribuição'));
   app.click(app.render(), node => label(node).includes('Salvar Atribuição'));
@@ -113,7 +140,7 @@ test('routine assignment sends one versioned atomic save and never creates cache
 test('creating a student normalizes their own phone and discloses manual delivery only after success', async () => {
   let resolve; const calls = [];
   const app = harness({ adminCreateUser: (...args) => { calls.push(args); return new Promise(yes => { resolve = yes; }); } });
-  await settle(); app.click(app.render(), node => label(node).trim() === 'Adicionar alunos');
+  await settle(); app.click(app.render(), node => hasLabel(node, 'Adicionar aluno'));
   const change = (labelText, value) => { const field = app.find(node => node.type === 'div' && all(node).some(child => child.type === 'label' && label(child).includes(labelText)) && all(node).filter(child => child.type === 'input').length === 1); assert.ok(field, labelText); all(field).find(child => child.type === 'input').props.onChange({ target: { value } }); };
   change('Nome completo', 'Novo aluno'); change('E-mail', 'new@example.test'); change('Senha', 'senha-inicial-segura'); change('WhatsApp do aluno', '(43) 99999-1234');
   const operation = app.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });

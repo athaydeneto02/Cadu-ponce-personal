@@ -288,8 +288,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onBack }) => {
                       height: `${height}px`,
                       left: `calc((100% / 8) * ${dayIndex + 1} + 4px)`,
                       width: `calc((100% / 8) - 8px)`,
-                      backgroundColor: ev.type === 'presential' ? '#fee2e2' : ev.type === 'online' ? '#e0f2fe' : '#f3f4f6',
-                      borderColor: ev.type === 'presential' ? '#fca5a5' : ev.type === 'online' ? '#bae6fd' : '#e5e7eb',
+                      backgroundColor: ev.type === 'presential' ? '#36191f' : ev.type === 'online' ? '#132b38' : '#242427',
+                      borderColor: ev.type === 'presential' ? '#73303b' : ev.type === 'online' ? '#28566c' : '#3b3b42',
                     }}
                   >
                     <div className={`w-1 h-full absolute left-0 top-0 ${ev.type === 'presential' ? 'bg-red-500' : ev.type === 'online' ? 'bg-sky-500' : 'bg-slate-400'}`} />
